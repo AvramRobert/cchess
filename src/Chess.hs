@@ -32,6 +32,9 @@ data Move =
 
 data Board = Board {positions :: Map Pos Piece, pieces :: Map Piece Pos }
 
+adapt :: Ord k => k -> (k, v) -> Map k v -> Map k v
+adapt k (k', v) = M.insert k v . M.delete k
+
 left :: Pos -> Pos
 left (x, y) = (x - 1, y)
 
@@ -84,14 +87,6 @@ opposite :: Colour -> Piece -> Bool
 opposite B = white
 opposite W = black
 
-maybeEmpty :: Maybe Piece -> Bool
-maybeEmpty (Just p) = empty p
-maybeEmpty _ = False
-
-maybeOpposite :: Colour -> Maybe Piece -> Bool
-maybeOpposite colour (Just p) = opposite colour p
-maybeOpposite _ _ = False
-
 attack :: Pos -> Colour -> Board -> Maybe Move
 attack pos colour = fmap (const (Attack pos)) . mfilter viable . at pos
         where viable piece = (opposite colour piece) || (empty piece)
@@ -106,10 +101,12 @@ jump :: Pos -> Board -> Maybe Move
 jump pos = fmap (const (Jump pos)) . mfilter empty . at pos
 
 attackf :: (Pos -> Pos) -> Pos -> Colour -> Board -> [Move]
-attackf f pos colour board = keep $ iterate f pos 
-    where keep (pos : ps) | maybeEmpty $ at pos board = (Attack pos) : (keep ps)
-          keep (pos : ps) | maybeOpposite colour $ at pos board = (Attack pos) : []
-          keep  _  = []
+attackf f pos colour board = keepValid $ iterate f pos 
+    where keepValid (pos : ps) = let piece = at pos board
+                                 in keep piece ps 
+          keep (Just piece) ps | empty piece = (Attack pos) : (keepValid ps) 
+          keep (Just piece) ps | opposite colour piece = (Attack pos) : []
+          keep _ _ = []
 
 pawnMoves :: Pos -> Colour -> Board -> [Move]
 pawnMoves p colour board = catMaybes [take' (leftUp p)  colour board, 
@@ -161,9 +158,6 @@ moves pos Empty             = const []
 
 legality :: Pos -> Move -> Board -> Maybe Move
 legality _ _ _ = Nothing
-
-adapt :: Ord k => k -> (k, v) -> Map k v -> Map k v
-adapt k (k', v) = M.insert k v . M.delete k
 
 streamLine :: [(Pos, Pos)] -> Board -> Board
 streamLine moves board = foldl transform board moves
