@@ -153,6 +153,7 @@ moves pos (Bishop _ colour) = bishopMoves pos colour
 moves pos (Knight _ colour) = knightMoves pos colour 
 moves pos (Queen colour)    = queenMoves pos colour
 moves pos (King  colour)    = kingMoves pos colour
+moves pos Empty             = []
 
 legality :: Pos -> Move -> Board -> Maybe Move
 legality _ _ _ = Nothing
