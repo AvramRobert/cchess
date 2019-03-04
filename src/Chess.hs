@@ -80,26 +80,30 @@ when preds pos board = let piece = at pos board
                           then Just pos 
                           else Nothing
 
-maybeOpposite :: Colour -> Maybe Piece -> Bool
-maybeOpposite B (Just p) = white p
-maybeOpposite W (Just p) = black p
-maybeOpposite _ _ = False 
+opposite :: Colour -> Piece -> Bool
+opposite B = white
+opposite W = black
 
 maybeEmpty :: Maybe Piece -> Bool
 maybeEmpty (Just p) = empty p
 maybeEmpty _ = False
 
+maybeOpposite :: Colour -> Maybe Piece -> Bool
+maybeOpposite colour (Just p) = opposite colour p
+maybeOpposite _ _ = False
+
 attack :: Pos -> Colour -> Board -> Maybe Move
-attack pos colour = fmap Attack . when [maybeOpposite colour, maybeEmpty] pos
+attack pos colour = fmap (const (Attack pos)) . mfilter viable . at pos
+        where viable piece = (opposite colour piece) || (empty piece)
 
 take' :: Pos -> Colour -> Board -> Maybe Move
-take' pos colour = fmap Take . when [maybeOpposite colour] pos
+take' pos colour = fmap (const (Take pos)) . mfilter (opposite colour) . at pos
 
 block :: Pos -> Board -> Maybe Move
-block pos = fmap Block . when [maybeEmpty] pos
+block pos = fmap (const (Block pos)) . mfilter empty . at pos
 
 jump :: Pos -> Board -> Maybe Move
-jump pos = fmap Jump . when [maybeEmpty] pos
+jump pos = fmap (const (Jump pos)) . mfilter empty . at pos
 
 attackf :: (Pos -> Pos) -> Pos -> Colour -> Board -> [Move]
 attackf f pos colour board = keep $ iterate f pos 
@@ -153,7 +157,7 @@ moves pos (Bishop _ colour) = bishopMoves pos colour
 moves pos (Knight _ colour) = knightMoves pos colour 
 moves pos (Queen colour)    = queenMoves pos colour
 moves pos (King  colour)    = kingMoves pos colour
-moves pos Empty             = []
+moves pos Empty             = const []
 
 legality :: Pos -> Move -> Board -> Maybe Move
 legality _ _ _ = Nothing
