@@ -35,18 +35,21 @@ data Move =
 
 data Board = Board {positions :: Map Pos Piece, pieces :: Map Piece Pos}
 
-kingCastleRookS  = (8, 1)
-queenCastleRookS = (1, 1)
-kingCastleRookE  = (6, 1)
-queenCastleRookE = (4, 1)
-kingCastleKing   = (7, 1)
-queenCastleKing  = (3, 1)
+(>?=) :: Monad f => f a -> f b -> f b
+fa >?= fb = fa >>= (const fb)
 
 adapt :: Ord k => k -> (k, v) -> Map k v -> Map k v
 adapt k (k', v) = M.insert k v . M.delete k
 
 filterByKey :: (k -> Bool) -> Map k v -> Map k v
 filterByKey p = M.filterWithKey (\k _ -> p k)
+
+kingCastleRookS  = (8, 1)
+queenCastleRookS = (1, 1)
+kingCastleRookE  = (6, 1)
+queenCastleRookE = (4, 1)
+kingCastleKing   = (7, 1)
+queenCastleKing  = (3, 1)
 
 invert :: Colour -> Colour
 invert B = W
@@ -215,9 +218,6 @@ checked pos piece m board = check pos piece m $ apply pos m board
 -- Chess total number of moves check missing
 checks :: Pos -> Piece -> Move -> Board -> Maybe Move -- maybe outcome
 checks pos piece move board = (check pos piece move board) <|> (checkmate pos piece move board)
-
-(>?=) :: Monad f => f a -> f b -> f b
-fa >?= fb = fa >>= (const fb)
 
 qcastle :: Pos -> Piece -> Move -> Board -> Maybe Move
 qcastle _ piece m board = fmap (const m) $ mfilter (const (not blocked)) $ (pure (&&) <*> hasKing <*> hasRook)
