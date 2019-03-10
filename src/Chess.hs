@@ -4,7 +4,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.List (find, intersperse)
+import Data.List (find, intersperse, unfoldr)
 import Data.Tuple (swap)
 import Control.Monad (foldM, mfilter)
 import Control.Applicative ((<|>))
@@ -73,6 +73,7 @@ mposition :: Move -> Pos
 mposition (Take p) = p
 mposition (Block p) = p
 mposition (Attack p) = p
+mposition (Jump p) = p
 
 king :: Piece -> Bool
 king (King _ _) = True
@@ -119,12 +120,12 @@ opposite B = white
 opposite W = black
 opposite _ = (const False)
 
-lookAt:: Pos -> Board -> Maybe Piece
+lookAt :: Pos -> Board -> Maybe Piece
 lookAt p (Board ps _ _) = M.lookup p ps
 
 attack :: Pos -> Colour -> Board -> Maybe Move
-attack pos colour = fmap (const (Attack pos)) . mfilter viable . lookAt pos
-        where viable piece = (opposite colour piece) || (empty piece)
+attack pos colour = fmap (const (Attack pos)) . mfilter valid . lookAt pos
+    where valid piece = (opposite colour piece) || (empty piece)
 
 take' :: Pos -> Colour -> Board -> Maybe Move
 take' pos colour = fmap (const (Take pos)) . mfilter (opposite colour) . lookAt pos
@@ -144,32 +145,68 @@ attackf f pos colour board = keepValid $ iterate (f colour) pos -- Do better, cr
           keep (Just piece) ps | opposite colour piece = (Attack pos) : []
           keep _ _ = []
 
--- En Passant move missing
--- Jumps shouldn't be allowed after jumping once
+data Dir = U | D | L | R
+
+steer :: Piece -> [Dir] -> Pos
+steer piece = foldl shift (position piece)
+    where shift (x, y) U   | white piece = (x, y + 1)
+          shift (x, y) D | white piece = (x, y - 1)
+          shift (x, y) U   | black piece = (x, y - 1)
+          shift (x, y) D | black piece = (x, y + 1)
+          shift (x, y) L  = (x - 1, y)
+          shift (x, y) R = (x + 1, y)   
+
+takes :: Piece -> [Dir] -> Board -> Maybe Move
+takes piece dir = fmap (const (Take pos)) . mfilter (opposite $ colour piece) . lookAt pos
+    where pos = steer piece dir
+
+blocks :: Piece -> [Dir] -> Board -> Maybe Move
+blocks piece dir = fmap (const (Block pos)) . mfilter empty . lookAt pos
+    where pos = steer piece dir
+
+jumps :: Piece -> [Dir] -> Board -> Maybe Move
+jumps piece dir = fmap (const (Jump pos)) . mfilter empty . lookAt pos
+    where pos = steer piece dir
+
+attacks :: Piece -> [Dir] -> Board -> Maybe Move
+attacks piece dir board = lookAt pos board >>= attack
+    where pos = steer piece dir
+          attack piece' | opposite (colour piece) piece' = Just (Take pos)
+          attack piece' | empty piece' = Just (Block pos)
+          attack _ = Nothing 
+
 pawnMoves :: Piece -> Board -> [Move]
-pawnMoves (Pawn colour pos) board = catMaybes [take' (leftUp colour pos)  colour board, 
-                                               take' (rightUp colour pos) colour board,
-                                               block (up colour pos) board,
-                                               jump  (up colour (up colour pos)) board]
+pawnMoves pawn board = catMaybes [takes pawn  [L, U] board,
+                                  takes pawn  [R, U] board,
+                                  blocks pawn [U] board,
+                                  jumps pawn  [U, U] board]
 
 kingMoves :: Piece -> Board -> [Move]
-kingMoves (King colour pos) board = catMaybes [attack (leftUp colour pos) colour board, 
-                                               attack (up colour pos) colour board, 
-                                               attack (rightUp colour pos) colour board, 
-                                               attack (right colour pos) colour board,
-                                               attack (rightDown colour pos) colour board,
-                                               attack (down colour pos) colour board, 
-                                               attack (leftDown colour pos) colour board, 
-                                               attack (left colour pos) colour board,
-                                               Just QCastle,
-                                               Just KCastle]
+kingMoves king board = catMaybes [attacks king [L, U] board,
+                                  attacks king [U] board,
+                                  attacks king [U, R] board,
+                                  attacks king [R] board,
+                                  attacks king [D, R] board,
+                                  attacks king [D] board,
+                                  attacks king [D, L] board,
+                                  attacks king [L] board,
+                                  Just QCastle,
+                                  Just KCastle]
+
+attacksR :: Piece -> [Dir] -> Board -> [Move]
+attacksR piece dir board = keep $ unfoldr move piece
+    where move piece = fmap (\p -> (p, p)) $ lookAt (steer piece dir) board
+          keep (piece' : pieces) | empty piece = (Block $ position piece') : (keep pieces)
+          keep (piece' : pieces) | (opposite (colour piece) piece') = (Take $ position piece') : (keep pieces)
+          keep _ = []
 
 rookMoves :: Piece -> Board -> [Move]
-rookMoves (Rook colour pos) board = (attackf up pos colour board)    ++ 
-                                    (attackf left pos colour board)  ++
-                                    (attackf right pos colour board) ++
-                                    (attackf down pos colour board)
+rookMoves rook board = (attacksR rook [U] board) ++ 
+                       (attacksR rook [L] board) ++ 
+                       (attacksR rook [R] board) ++
+                       (attacksR rook [D] board)
 
+                    
 bishopMoves :: Piece -> Board -> [Move]
 bishopMoves (Bishop colour pos) board = (attackf leftUp pos colour board)    ++
                                         (attackf rightUp pos colour board)   ++
@@ -279,7 +316,7 @@ streamLine moves board = foldl transform board moves
 apply :: Piece -> Move -> Board -> Board
 apply piece KCastle = streamLine [(position piece, kingCastleKing),  (kingCastleRookS, kingCastleRookE)]
 apply piece QCastle = streamLine [(position piece, queenCastleKing), (queenCastleRookS, queenCastleRookE)]
-apply piece move   = streamLine [(position piece, mposition move)]
+apply piece move    = streamLine [(position piece, mposition move)]
 
 move :: Pos -> Move -> Board -> Board
 move pos m board = fromMaybe board newBoard
