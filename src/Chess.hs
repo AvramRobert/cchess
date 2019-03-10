@@ -38,9 +38,6 @@ data Board = Board {positions :: Map Pos Piece, pieces :: Map Piece Pos}
 (>?=) :: Monad f => f a -> f b -> f b
 fa >?= fb = fa >>= (const fb)
 
-adapt :: Ord k => k -> (k, v) -> Map k v -> Map k v
-adapt k (k', v) = M.insert k v . M.delete k
-
 filterByKey :: (k -> Bool) -> Map k v -> Map k v
 filterByKey p = M.filterWithKey (\k _ -> p k)
 
@@ -65,29 +62,31 @@ colour (Bishop _ c) = c
 colour (Knight _ c) = c
 colour Empty = T
 
-left :: Pos -> Pos
-left (x, y) = (x - 1, y)
+left :: Colour -> Pos -> Pos
+left _ (x, y) = (x - 1, y)
 
-right :: Pos -> Pos
-right (x, y) = (x + 1, y)
+right :: Colour -> Pos -> Pos
+right _ (x, y) = (x + 1, y)
 
-up :: Pos -> Pos
-up (x, y) = (x, y + 1)
+up :: Colour -> Pos -> Pos
+up W (x, y) = (x, y + 1)
+up B (x, y) = (x, y - 1)
 
-down :: Pos -> Pos
-down (x, y) = (x, y - 1)
+down :: Colour -> Pos -> Pos
+down W (x, y) = (x, y - 1)
+down B (x, y) = (x, y + 1)
 
-leftUp :: Pos -> Pos
-leftUp = left . up
+leftUp :: Colour -> Pos -> Pos
+leftUp c = (left c) . (up c)
 
-leftDown :: Pos -> Pos
-leftDown = left . down
+leftDown :: Colour -> Pos -> Pos
+leftDown c = (left c) . (down c)
 
-rightUp :: Pos -> Pos
-rightUp = right . up
+rightUp :: Colour -> Pos -> Pos
+rightUp c = (right c) . (up c)
 
-rightDown :: Pos -> Pos
-rightDown = right . down
+rightDown :: Colour -> Pos -> Pos
+rightDown c = (right c) . (down c)
 
 black :: Piece -> Bool
 black = (== B) . colour
@@ -124,8 +123,8 @@ jump :: Pos -> Board -> Maybe Move
 jump pos = fmap (const (Jump pos)) . mfilter empty . lookAt pos
 
 -- DO BETTER. MOVE FROM LIST TO SET
-attackf :: (Pos -> Pos) -> Pos -> Colour -> Board -> [Move]
-attackf f pos colour board = keepValid $ iterate f pos -- Do better, create a set directly 
+attackf :: (Colour -> Pos -> Pos) -> Pos -> Colour -> Board -> [Move]
+attackf f pos colour board = keepValid $ iterate (f colour) pos -- Do better, create a set directly 
     where keepValid (pos : ps) = let piece = lookAt pos board
                                  in keep piece ps 
           keep (Just piece) ps | empty piece = (Attack pos) : (keepValid ps) 
@@ -133,21 +132,22 @@ attackf f pos colour board = keepValid $ iterate f pos -- Do better, create a se
           keep _ _ = []
 
 -- En Passant move missing
+-- Jumps shouldn't be allowed after jumping once
 pawnMoves :: Pos -> Colour -> Board -> [Move]
-pawnMoves p colour board = catMaybes [take' (leftUp p)  colour board, 
-                                      take' (rightUp p) colour board,
-                                      block (up p) board,
-                                      jump  (up (up p)) board]
+pawnMoves p colour board = catMaybes [take' (leftUp colour p)  colour board, 
+                                      take' (rightUp colour p) colour board,
+                                      block (up colour p) board,
+                                      jump  (up colour (up colour p)) board]
 
 kingMoves :: Pos -> Colour -> Board -> [Move]
-kingMoves p colour board = catMaybes [attack (leftUp p) colour board, 
-                                      attack (up p) colour board, 
-                                      attack (rightUp p) colour board, 
-                                      attack (right p) colour board,
-                                      attack (rightDown p) colour board,
-                                      attack (down p) colour board, 
-                                      attack (leftDown p) colour board, 
-                                      attack (left p) colour board,
+kingMoves p colour board = catMaybes [attack (leftUp colour p) colour board, 
+                                      attack (up colour p) colour board, 
+                                      attack (rightUp colour p) colour board, 
+                                      attack (right colour p) colour board,
+                                      attack (rightDown colour p) colour board,
+                                      attack (down colour p) colour board, 
+                                      attack (leftDown colour p) colour board, 
+                                      attack (left colour p) colour board,
                                       Just QCastle,
                                       Just KCastle]
 
@@ -167,10 +167,10 @@ queenMoves :: Pos -> Colour -> Board -> [Move]
 queenMoves p colour board = (rookMoves p colour board) ++ (bishopMoves p colour board)
 
 knightMoves :: Pos -> Colour -> Board -> [Move]
-knightMoves p colour board = catMaybes [attack (right (up (up p))) colour board,
-                                        attack (right (down (down p))) colour board,
-                                        attack (left (down (down p))) colour board,
-                                        attack (left (up (up p))) colour board]
+knightMoves p colour board = catMaybes [attack (right colour (up colour (up colour p))) colour board,
+                                        attack (right colour (down colour (down colour p))) colour board,
+                                        attack (left colour (down colour (down colour p))) colour board,
+                                        attack (left colour (up colour (up colour p))) colour board]
 
 moves :: Pos -> Piece -> Board -> [Move]
 moves pos (Pawn _ colour)   = pawnMoves pos colour
