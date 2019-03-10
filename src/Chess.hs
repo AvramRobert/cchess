@@ -275,7 +275,6 @@ move pos m board = fromMaybe board newBoard
             _     <- legality pos piece m board
             return (apply pos m board)
 
-
 board :: Board 
 board = Board { positions = M.fromList ps, pieces = M.fromList pcs }
     where pawns c y = fmap (\x -> ((x, y), Pawn x c)) [1..8]
@@ -304,5 +303,16 @@ instance Show Piece where
     show (King W)     = " ♔ "
     show (King B)     = " ♚ "
     show Empty        = "   "
+
+--- Improvements: 
+--- a) Remove Attack
+--- b) Remove `pieces` field from board, replace with explicit king positions
+--- c) Replace directional functions with ADT
+--- d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
+--- e) Add position to pieces
+--- f) Replace list of moves with set of moves
+--- g) Keep latest 3 moves on the board and disallow moves accordingly
+--- h) Keep track of whose move it is and disallow moves accordingly
+--- i) Keep track of the number of moves made so far
     
 ---- CHESS PIECES HAVE THEIR OWN UNICODE CHARACTERS!
