@@ -4,7 +4,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.List (find)
+import Data.List (find, intersperse)
 import Data.Tuple (swap)
 import Control.Monad (foldM, mfilter)
 import Control.Applicative ((<|>))
@@ -22,7 +22,7 @@ data Piece =
     Queen Colour      |
     King Colour       |
     Empty
-    deriving (Eq, Show, Ord)
+    deriving (Eq, Ord)
 
 data Move =
     Take Pos    |
@@ -251,13 +251,13 @@ legality pos p m @ KCastle board       = (checks pos p m board) >?= (checked pos
 
 streamLine :: [(Pos, Pos)] -> Board -> Board
 streamLine moves board = foldl transform board moves
-    where transform (Board ps pcs) (pos, pos') = 
-            let piece  = M.lookup pos  ps
-                piece' = M.lookup pos' ps
-                positions = maybe ps  (\piece -> adapt pos (pos', piece) ps) piece
-                pieces    = maybe pcs (\piece -> M.adjust (const pos') piece pcs) piece
-                pieces'   = maybe pieces (\piece -> M.delete piece pieces) piece'
-            in Board { positions = positions, pieces = pieces' }
+    where transform board change = maybe board id (adapt board change)
+          adapt (Board ps pcs) (pos, pos') = do
+            piece  <- M.lookup pos  ps
+            piece' <- M.lookup pos' ps
+            let positions = M.insert pos' piece $ M.insert pos Empty ps
+            let pieces = M.delete piece' $ M.insert piece pos' pcs
+            return $ Board { positions = positions, pieces = pieces }
 
 apply :: Pos -> Move -> Board -> Board
 apply pos (Take pos')   = streamLine [(pos, pos')]
@@ -275,4 +275,34 @@ move pos m board = fromMaybe board newBoard
             _     <- legality pos piece m board
             return (apply pos m board)
 
+
+board :: Board 
+board = Board { positions = M.fromList ps, pieces = M.fromList pcs }
+    where pawns c y = fmap (\x -> ((x, y), Pawn x c)) [1..8]
+          pieces c y = zipWith (\x p -> ((x, y), p)) [1..8] (row c)
+          row c = [Rook 1 c, Knight 1 c, Bishop 1 c, Queen c, King c, Bishop 2 c, Knight 2 c, Rook 2 c]
+          empties = [((x, y), Empty) | x <- [1..8], y <- [3..6]]
+          ps  = (pawns B 7) ++ (pieces B 8) ++ (pawns W 2) ++ (pieces W 1) ++ empties
+          pcs = fmap swap ps
+
+
+instance Show Board where
+    show board = unlines $ fmap row [1..8]
+        where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
+
+instance Show Piece where
+    show (Pawn _ W)   = " ♙ "
+    show (Pawn _ B)   = " ♟ "
+    show (Rook _ W)   = " ♖ "
+    show (Rook _ B)   = " ♜ "
+    show (Bishop _ W) = " ♗ "
+    show (Bishop _ B) = " ♝ "
+    show (Knight _ W) = " ♘ "
+    show (Knight _ B) = " ♞ "
+    show (Queen W)    = " ♕ "
+    show (Queen B)    = " ♛ "
+    show (King W)     = " ♔ "
+    show (King B)     = " ♚ "
+    show Empty        = "   "
+    
 ---- CHESS PIECES HAVE THEIR OWN UNICODE CHARACTERS!
