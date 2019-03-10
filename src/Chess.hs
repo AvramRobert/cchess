@@ -217,12 +217,12 @@ checkmate piece move board = if (not $ inCheckmate) then Just move else Nothing
           inCheckmate = inCheck && cannotMove && unblockable
           inCheck     = S.member (position king) threats
           cannotMove  = S.isSubsetOf kingMoves threats
-          unblockable = isNothing $ check piece move $ apply (position piece) move board 
+          unblockable = isNothing $ check piece move $ apply piece move board 
           kingMoves   = S.fromList $ fmap mposition $ moves king board
           threats     = threatsFor piece board
 
 checked :: Piece -> Move -> Board -> Maybe Move
-checked piece m board = check piece m $ apply (position piece) m board 
+checked piece m board = check piece m $ apply piece m board 
 
 -- Stalemate check missing
 -- Chess total number of moves check missing
@@ -266,7 +266,6 @@ legality p m @ (Jump pos') board   = (checks p m board) >?= (checked p m board)
 legality p m @ QCastle board       = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
 legality p m @ KCastle board       = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
 
--- TODO: This should change the king positions on the board if `piece` is one of the kings
 streamLine :: [(Pos, Pos)] -> Board -> Board
 streamLine moves board = foldl transform board moves
           where transform board move = maybe board id $ adapt board move
@@ -277,13 +276,10 @@ streamLine moves board = foldl transform board moves
                     let blackKing = if (black piece && king piece) then pos' else bk
                     return $ Board { positions = positions, whiteKing = whiteKing, blackKing = blackKing }
 
-apply :: Pos -> Move -> Board -> Board
-apply pos (Take pos')   = streamLine [(pos, pos')]
-apply pos (Block pos')  = streamLine [(pos, pos')]
-apply pos (Attack pos') = streamLine [(pos, pos')]
-apply pos (Jump pos')   = streamLine [(pos, pos')]
-apply pos KCastle       = streamLine [(pos, kingCastleKing),  (kingCastleRookS, kingCastleRookE)]
-apply pos QCastle       = streamLine [(pos, queenCastleKing), (queenCastleRookS, queenCastleRookE)]
+apply :: Piece -> Move -> Board -> Board
+apply piece KCastle = streamLine [(position piece, kingCastleKing),  (kingCastleRookS, kingCastleRookE)]
+apply piece QCastle = streamLine [(position piece, queenCastleKing), (queenCastleRookS, queenCastleRookE)]
+apply piece move   = streamLine [(position piece, mposition move)]
 
 move :: Pos -> Move -> Board -> Board
 move pos m board = fromMaybe board newBoard
@@ -291,7 +287,7 @@ move pos m board = fromMaybe board newBoard
             piece <- lookAt pos board 
             _     <- find (== m) $ moves piece board
             _     <- legality piece m board
-            return (apply pos m board)
+            return (apply piece m board)
 
 board :: Board 
 board = Board { positions = M.fromList positions, 
@@ -329,10 +325,10 @@ instance Show Piece where
 
 --- Improvements: 
 --- a) Remove Attack
---- b) Remove `pieces` field from board, replace with explicit king positions
+--- ✓ b) Remove `pieces` field from board, replace with explicit king positions
 --- c) Replace directional functions with ADT
 --- d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
---- e) Add position to pieces
+--- ✓ e) Add position to pieces
 --- f) Replace list of moves with set of moves
 --- g) Keep latest 3 moves on the board and disallow moves accordingly
 --- h) Keep track of whose move it is and disallow moves accordingly
