@@ -27,7 +27,6 @@ data Piece =
 data Move =
     Take Pos    |
     Block Pos   |
-    Attack Pos  |
     Jump Pos    |
     KCastle     |
     QCastle
@@ -72,7 +71,6 @@ position (Knight _ p) = p
 mposition :: Move -> Pos
 mposition (Take p) = p
 mposition (Block p) = p
-mposition (Attack p) = p
 mposition (Jump p) = p
 
 king :: Piece -> Bool
@@ -120,31 +118,6 @@ opposite B = white
 opposite W = black
 opposite _ = (const False)
 
-lookAt :: Pos -> Board -> Maybe Piece
-lookAt p (Board ps _ _) = M.lookup p ps
-
-attack :: Pos -> Colour -> Board -> Maybe Move
-attack pos colour = fmap (const (Attack pos)) . mfilter valid . lookAt pos
-    where valid piece = (opposite colour piece) || (empty piece)
-
-take' :: Pos -> Colour -> Board -> Maybe Move
-take' pos colour = fmap (const (Take pos)) . mfilter (opposite colour) . lookAt pos
-
-block :: Pos -> Board -> Maybe Move
-block pos = fmap (const (Block pos)) . mfilter empty . lookAt pos
-
-jump :: Pos -> Board -> Maybe Move
-jump pos = fmap (const (Jump pos)) . mfilter empty . lookAt pos
-
--- DO BETTER. MOVE FROM LIST TO SET
-attackf :: (Colour -> Pos -> Pos) -> Pos -> Colour -> Board -> [Move]
-attackf f pos colour board = keepValid $ iterate (f colour) pos -- Do better, create a set directly 
-    where keepValid (pos : ps) = let piece = lookAt pos board
-                                 in keep piece ps 
-          keep (Just piece) ps | empty piece = (Attack pos) : (keepValid ps) 
-          keep (Just piece) ps | opposite colour piece = (Attack pos) : []
-          keep _ _ = []
-
 data Dir = U | D | L | R
 
 steer :: Piece -> [Dir] -> Pos
@@ -155,6 +128,9 @@ steer piece = foldl shift (position piece)
           shift (x, y) D | black piece = (x, y + 1)
           shift (x, y) L  = (x - 1, y)
           shift (x, y) R = (x + 1, y)   
+
+lookAt :: Pos -> Board -> Maybe Piece
+lookAt p (Board ps _ _) = M.lookup p ps
 
 takes :: Piece -> [Dir] -> Board -> Maybe Move
 takes piece dir = fmap (const (Take pos)) . mfilter (opposite $ colour piece) . lookAt pos
@@ -201,27 +177,26 @@ attacksR piece dir board = keep $ unfoldr move piece
           keep _ = []
 
 rookMoves :: Piece -> Board -> [Move]
-rookMoves rook board = (attacksR rook [U] board) ++ 
-                       (attacksR rook [L] board) ++ 
-                       (attacksR rook [R] board) ++
-                       (attacksR rook [D] board)
+rookMoves piece board = (attacksR piece [U] board) ++ 
+                        (attacksR piece [L] board) ++ 
+                        (attacksR piece [R] board) ++
+                        (attacksR piece [D] board)
 
                     
 bishopMoves :: Piece -> Board -> [Move]
-bishopMoves (Bishop colour pos) board = (attackf leftUp pos colour board)    ++
-                                        (attackf rightUp pos colour board)   ++
-                                        (attackf leftDown pos colour board)  ++
-                                        (attackf rightDown pos colour board)
+bishopMoves piece board = (attacksR piece [L, U] board) ++
+                          (attacksR piece [R, U] board) ++
+                          (attacksR piece [L, D] board) ++
+                          (attacksR piece [R, D] board)
 
 queenMoves :: Piece -> Board -> [Move]
-queenMoves (Queen colour pos) board = (rookMoves (Rook colour pos) board) ++ 
-                                      (bishopMoves (Bishop colour pos) board)
+queenMoves piece board = (rookMoves piece board) ++ (bishopMoves piece board)
 
 knightMoves :: Piece -> Board -> [Move]
-knightMoves (Knight colour pos) board = catMaybes [attack (right colour (up colour (up colour pos))) colour board,
-                                                   attack (right colour (down colour (down colour pos))) colour board,
-                                                   attack (left colour (down colour (down colour pos))) colour board,
-                                                   attack (left colour (up colour (up colour pos))) colour board]
+knightMoves piece board = catMaybes [attacks piece [U, U, R] board,
+                                     attacks piece [U, U, L] board,
+                                     attacks piece [D, D, R] board,
+                                     attacks piece [D, D, L] board]
 
 moves :: Piece -> Board -> [Move]
 moves piece @ (Pawn _ _)   = pawnMoves piece
@@ -235,7 +210,6 @@ moves Empty                = const []
 threatsFor :: Piece -> Board -> Set Pos
 threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ colour piece) $ positions board
         where gatherThreats set piece = set <> (S.fromList $ fmap mposition $ filter threats $ moves piece board)
-              threats (Attack _) = True
               threats (Take _) = True
               threats _ = False
 
@@ -266,7 +240,6 @@ checked piece m board = check piece m $ apply piece m board
 checks :: Piece -> Move -> Board -> Maybe Move -- maybe outcome
 checks piece move board = (check piece move board) <|> (checkmate piece move board)
 
--- castling is also colour dependent
 qcastle :: Piece -> Move -> Board -> Maybe Move
 qcastle piece m board = fmap (const m) $ mfilter (const $ not blocked) $ (pure (&&) <*> hasKing <*> hasRook)
     where c = colour piece
@@ -296,12 +269,11 @@ kcastle piece m board = fmap (const m) $ mfilter (const (not blocked)) $ (pure (
                   else [(5, 8), (6, 8), (7, 8)]   
 
 legality :: Piece -> Move -> Board -> Maybe Move
-legality p m @ (Take pos') board   = (checks p m board) >?= (checked p m board)
-legality p m @ (Block pos') board  = (checks p m board) >?= (checked p m board)
-legality p m @ (Attack pos') board = (checks p m board) >?= (checked p m board)
-legality p m @ (Jump pos') board   = (checks p m board) >?= (checked p m board)
-legality p m @ QCastle board       = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
-legality p m @ KCastle board       = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
+legality p m @ (Take  _) board  = (checks p m board) >?= (checked p m board)
+legality p m @ (Block _) board  = (checks p m board) >?= (checked p m board)
+legality p m @ (Jump  _) board  = (checks p m board) >?= (checked p m board)
+legality p m @ QCastle board    = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
+legality p m @ KCastle board    = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
 
 streamLine :: [(Pos, Pos)] -> Board -> Board
 streamLine moves board = foldl transform board moves
@@ -311,7 +283,7 @@ streamLine moves board = foldl transform board moves
                     let positions = M.insert pos' piece $ M.insert pos Empty ps
                     let whiteKing = if (white piece && king piece) then pos' else wk
                     let blackKing = if (black piece && king piece) then pos' else bk
-                    return $ Board { positions = positions, whiteKing = whiteKing, blackKing = blackKing }
+                    return Board { positions = positions, whiteKing = whiteKing, blackKing = blackKing }
 
 apply :: Piece -> Move -> Board -> Board
 apply piece KCastle = streamLine [(position piece, kingCastleKing),  (kingCastleRookS, kingCastleRookE)]
@@ -340,7 +312,6 @@ board = Board { positions = M.fromList positions,
                        (row W 2 pawns) ++ 
                        (row W 1 pieces)
 
-
 instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
@@ -361,9 +332,9 @@ instance Show Piece where
     show Empty        = "   "
 
 --- Improvements: 
---- a) Remove Attack
+--- ✓ a) Remove Attack
 --- ✓ b) Remove `pieces` field from board, replace with explicit king positions
---- c) Replace directional functions with ADT
+--- ✓ c) Replace directional functions with ADT
 --- d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
 --- ✓ e) Add position to pieces
 --- f) Replace list of moves with set of moves
