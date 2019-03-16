@@ -192,7 +192,7 @@ attacksR piece dir board = keep $ unfoldr move piece
 
 -- Once the king or rooks move, you cannot castle anymore
 castlesK :: Piece -> Board -> Maybe Move
-castlesK piece = fmap (const castle) . mfilter inPlace . lookAt rookPos
+castlesK piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ lookAt rookPos board
     where inPlace rook = (rook == eRook) && (piece == eKing)
           rookPos  = if (white piece) then (8, 1) else (8, 8)
           rookPos' = if (white piece) then (6, 1) else (6, 8)
@@ -200,10 +200,14 @@ castlesK piece = fmap (const castle) . mfilter inPlace . lookAt rookPos
           kingPos' = if (white piece) then (7, 1) else (7, 8)
           eRook = Rook (colour piece) rookPos
           eKing = King (colour piece) kingPos
+          firstMove = isNothing $ find (moved . extract) $ pastMoves board
+          moved ((King c p), _) = colour piece == c && p == kingPos
+          moved ((Rook c p), _) = colour piece == c && p == rookPos
+          moved _ = False
           castle = CastleK (eKing, Empty kingPos') (eRook, Empty rookPos')
     
 castlesQ :: Piece -> Board -> Maybe Move
-castlesQ piece = fmap (const castle) . mfilter inPlace . lookAt rookPos
+castlesQ piece = fmap (const castle) . mfilter (const firstMove) . mfilter inPlace . lookAt rookPos
     where inPlace rook = (rook == eRook) && (piece == eKing)
           rookPos  = if (white piece) then (1, 1) else (1, 8)
           rookPos' = if (white piece) then (4, 1) else (4, 8)
@@ -211,6 +215,10 @@ castlesQ piece = fmap (const castle) . mfilter inPlace . lookAt rookPos
           kingPos' = if (white piece) then (3, 1) else (3, 8)
           eRook = Rook (colour piece) rookPos
           eKing = King (colour piece) kingPos
+          firstMove = isNothing $ find (moved . extract) $ pastMoves board
+          moved ((King c p), _) = colour piece == c && p == kingPos
+          moved ((Rook c p), _) = colour piece == c && p == rookPos
+          moved _ = False
           castle = CastleQ (eKing, Empty kingPos') (eRook, Empty rookPos')
 
 streamLine :: [(Piece, Piece)] -> Board -> Board
