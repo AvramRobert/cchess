@@ -76,11 +76,16 @@ commit ((Queen c _), p)  = Queen c $ position p
 commit ((Bishop c _), p) = Bishop c $ position p
 commit ((Knight c _), p) = Rook c $ position p
 
-mposition :: Move -> Pos
-mposition (Take   move)   = position $ snd move
-mposition (Block  move)   = position $ snd move
-mposition (Jump   move)   = position $ snd move
-mposition (TakeEP move _) = position $ snd move 
+extract :: Move -> (Piece, Piece)
+extract (Take move)      = move
+extract (Block move)     = move
+extract (Jump move)      = move
+extract (TakeEP move _)  = move
+extract (CastleK move _) = move
+extract (CastleQ move _) = move
+
+strip :: Move -> (Pos, Pos)
+strip move = case (extract move) of (p, p') -> (position p, position p')
 
 king :: Piece -> Bool
 king (King _ _) = True
@@ -266,9 +271,10 @@ moves piece @ (Queen _ _)  = queenMoves piece
 moves piece @ (King _ _)   = kingMoves piece
 moves piece @ (Empty _)    = const []
 
+-- Thing is, if I take the moves, I have to commit them in order to see which squares are affacted, don't I?
 threatsFor :: Piece -> Board -> Set Pos
 threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ colour piece) $ positions board
-        where gatherThreats set piece = set <> (S.fromList $ fmap mposition $ filter threats $ moves piece board)
+        where gatherThreats set piece = set <> (S.fromList $ fmap (position . commit . extract) $ filter threats $ moves piece board)
               threats (Take _) = True
               threats _ = False
 
@@ -288,7 +294,7 @@ checkmate piece move board = if (not $ inCheckmate) then Just move else Nothing
           inCheck     = S.member (position king) threats
           cannotMove  = S.isSubsetOf kingMoves threats
           unblockable = isNothing $ check piece move $ apply move board 
-          kingMoves   = S.fromList $ fmap mposition $ moves king board
+          kingMoves   = S.fromList $ fmap (position . commit . extract) $ moves king board
           threats     = threatsFor piece board
 
 checked :: Piece -> Move -> Board -> Maybe Move
@@ -341,30 +347,15 @@ legality p m @ (Jump  _) board    = (checks p m board) >?= (checked p m board)
 legality p m @ (CastleK _ _) board = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
 legality p m @ (CastleQ _ _) board = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
 
-extract :: Move -> (Pos, Pos)
-extract (Take (p, p'))      = (position p, position p')
-extract (Block (p, p'))     = (position p, position p')
-extract (Jump (p, p'))      = (position p, position p')
-extract (TakeEP (p, p') _)  = (position p, position p')
-extract (CastleK (p, p') _) = (position p, position p')
-extract (CastleQ (p, p') _) = (position p, position p')
-
 move :: Pos -> Pos -> Board -> Board
 move pos pos' board = fromMaybe board newBoard
     where newBoard = do
             piece <- lookAt pos board 
-            move  <- find (available . extract) $ moves piece board
+            move  <- find (available . strip) $ moves piece board
             _     <- legality piece move board
             return (apply move board)
           available  move = move == (pos, pos')
-       
-moveTest :: Pos -> Pos -> Board -> Maybe [(Pos, Pos)]
-moveTest pos pos' board = newBoard
-    where newBoard = do
-            piece <- lookAt pos board 
-            return $ fmap extract $ moves piece board
-          available  move = move == (pos, pos')
-
+    
 board :: Board 
 board = Board { positions = M.fromList positions,
                 pastMoves = [],
@@ -407,7 +398,7 @@ instance Show Piece where
 --- ✓ d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
 --- ✓ e) Add position to pieces
 --- f) Replace list of moves with set of moves
---- g) Keep all moves on the board and disallow moves accordingly
+--- ✓ g) Keep all moves on the board and disallow moves accordingly
 --- h) Keep track of whose move it is and disallow moves accordingly
     
 ---- CHESS PIECES HAVE THEIR OWN UNICODE CHARACTERS!
