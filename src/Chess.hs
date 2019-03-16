@@ -25,11 +25,11 @@ data Piece =
     deriving (Eq, Ord)
 
 data Move =
-    Take Pos    |
-    Block Pos   |
-    Jump Pos    |
-    KCastle     |
-    QCastle
+    Take  (Pos, Pos)  |
+    Block (Pos, Pos)  |
+    Jump  (Pos, Pos)  |
+    CastleK (Pos, Pos) (Pos, Pos) |
+    CastleQ (Pos, Pos) (Pos, Pos)
     deriving (Show, Eq, Ord)
 
 data Board = Board {positions :: Map Pos Piece,
@@ -38,13 +38,6 @@ data Board = Board {positions :: Map Pos Piece,
 
 (>?=) :: Monad f => f a -> f b -> f b
 fa >?= fb = fa >>= (const fb)
-
-kingCastleRookS  = (8, 1)
-queenCastleRookS = (1, 1)
-kingCastleRookE  = (6, 1)
-queenCastleRookE = (4, 1)
-kingCastleKing   = (7, 1)
-queenCastleKing  = (3, 1)
 
 invert :: Colour -> Colour
 invert B = W
@@ -69,9 +62,9 @@ position (Bishop _ p) = p
 position (Knight _ p) = p
 
 mposition :: Move -> Pos
-mposition (Take p) = p
-mposition (Block p) = p
-mposition (Jump p) = p
+mposition (Take  (p, p')) = p'
+mposition (Block (p, p')) = p'
+mposition (Jump  (p, p')) = p
 
 king :: Piece -> Bool
 king (King _ _) = True
@@ -133,23 +126,69 @@ lookAt :: Pos -> Board -> Maybe Piece
 lookAt p (Board ps _ _) = M.lookup p ps
 
 takes :: Piece -> [Dir] -> Board -> Maybe Move
-takes piece dir = fmap (const (Take pos)) . mfilter (opposite $ colour piece) . lookAt pos
-    where pos = steer piece dir
+takes piece dir = fmap (const take) . mfilter (opposite $ colour piece) . lookAt pos'
+    where pos' = steer piece dir
+          pos  = position piece
+          take = Take (pos, pos')
 
 blocks :: Piece -> [Dir] -> Board -> Maybe Move
-blocks piece dir = fmap (const (Block pos)) . mfilter empty . lookAt pos
-    where pos = steer piece dir
+blocks piece dir = fmap (const block) . mfilter empty . lookAt pos'
+    where pos'  = steer piece dir
+          pos   = position piece
+          block = Block (pos, pos')
 
 jumps :: Piece -> [Dir] -> Board -> Maybe Move
-jumps piece dir = fmap (const (Jump pos)) . mfilter empty . lookAt pos
-    where pos = steer piece dir
+jumps piece dir = fmap (const jump) . mfilter empty . lookAt pos'
+    where pos' = steer piece dir
+          pos  = position piece
+          jump = Jump (pos, pos')
 
 attacks :: Piece -> [Dir] -> Board -> Maybe Move
-attacks piece dir board = lookAt pos board >>= attack
-    where pos = steer piece dir
-          attack piece' | opposite (colour piece) piece' = Just (Take pos)
-          attack piece' | empty piece' = Just (Block pos)
-          attack _ = Nothing 
+attacks piece dir board = lookAt pos' board >>= attack
+    where pos' = steer piece dir
+          pos  = position piece
+          attack piece' | opposite (colour piece) piece' = Just $ Take $ (pos, pos')
+          attack piece' | empty piece' = Just $ Block (pos, pos')
+          attack _ = Nothing
+
+
+attacksR :: Piece -> [Dir] -> Board -> [Move]
+attacksR piece dir board = keep $ unfoldr move piece
+    where move piece = fmap (\p -> ((piece, p), p)) $ lookAt (steer piece dir) board
+          keep ((p, p') : pieces) | empty piece = (Block (position p, position p')) : (keep pieces)
+          keep ((p, p') : pieces) | (opposite (colour piece) p') = (Take (position p, position p')) : (keep pieces)
+          keep _ = []
+
+-- Once the king or rooks move, you cannot castle anymore
+castlesK :: Piece -> Board -> Maybe Move
+castlesK king = fmap (const castle) . mfilter inPlace . lookAt rookPos
+    where inPlace rook = (rook == (Rook c rookPos)) && (king == (King c kingPos))
+          rookPos  = if (white king) then (8, 1) else (8, 8)
+          rookPos' = if (white king) then (6, 1) else (6, 8)
+          kingPos  = if (white king) then (5, 1) else (5, 8)
+          kingPos' = if (white king) then (7, 1) else (7, 8)
+          c = colour king
+          castle = CastleK (kingPos, kingPos') (rookPos, rookPos')
+    
+castlesQ :: Piece -> Board -> Maybe Move
+castlesQ king = fmap (const castle) . mfilter inPlace . lookAt rookPos
+    where inPlace rook = (rook == (Rook c rookPos)) && (king == (King c kingPos))
+          rookPos  = if (white king) then (1, 1) else (1, 8)
+          rookPos' = if (white king) then (4, 1) else (4, 8)
+          kingPos  = if (white king) then (5, 1) else (5, 8)
+          kingPos' = if (white king) then (3, 1) else (3, 8) 
+          c = colour king
+          castle = CastleQ (kingPos, kingPos') (rookPos, rookPos')
+
+streamLine :: [(Pos, Pos)] -> Board -> Board
+streamLine moves board = foldl transform board moves
+          where transform board move = maybe board id $ adapt board move
+                adapt (Board ps wk bk) (pos, pos') = do
+                    piece  <- M.lookup pos ps
+                    let positions = M.insert pos' piece $ M.insert pos Empty ps
+                    let whiteKing = if (white piece && king piece) then pos' else wk
+                    let blackKing = if (black piece && king piece) then pos' else bk
+                    return Board { positions = positions, whiteKing = whiteKing, blackKing = blackKing }
 
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [takes pawn  [L, U] board,
@@ -166,15 +205,8 @@ kingMoves king board = catMaybes [attacks king [L, U] board,
                                   attacks king [D] board,
                                   attacks king [D, L] board,
                                   attacks king [L] board,
-                                  Just QCastle,
-                                  Just KCastle]
-
-attacksR :: Piece -> [Dir] -> Board -> [Move]
-attacksR piece dir board = keep $ unfoldr move piece
-    where move piece = fmap (\p -> (p, p)) $ lookAt (steer piece dir) board
-          keep (piece' : pieces) | empty piece = (Block $ position piece') : (keep pieces)
-          keep (piece' : pieces) | (opposite (colour piece) piece') = (Take $ position piece') : (keep pieces)
-          keep _ = []
+                                  castlesK king board,
+                                  castlesQ king board]
 
 rookMoves :: Piece -> Board -> [Move]
 rookMoves piece board = (attacksR piece [U] board) ++ 
@@ -228,12 +260,12 @@ checkmate piece move board = if (not $ inCheckmate) then Just move else Nothing
           inCheckmate = inCheck && cannotMove && unblockable
           inCheck     = S.member (position king) threats
           cannotMove  = S.isSubsetOf kingMoves threats
-          unblockable = isNothing $ check piece move $ apply piece move board 
+          unblockable = isNothing $ check piece move $ apply move board 
           kingMoves   = S.fromList $ fmap mposition $ moves king board
           threats     = threatsFor piece board
 
 checked :: Piece -> Move -> Board -> Maybe Move
-checked piece m board = check piece m $ apply piece m board 
+checked piece move = check piece move . apply move 
 
 -- Stalemate check missing
 -- Chess total number of moves check missing
@@ -241,62 +273,48 @@ checks :: Piece -> Move -> Board -> Maybe Move -- maybe outcome
 checks piece move board = (check piece move board) <|> (checkmate piece move board)
 
 qcastle :: Piece -> Move -> Board -> Maybe Move
-qcastle piece m board = fmap (const m) $ mfilter (const $ not blocked) $ (pure (&&) <*> hasKing <*> hasRook)
-    where c = colour piece
-          king p = p == (King c queenCastleKing)
-          rook p = p == (Rook c queenCastleRookS)
-          hasKing = fmap (const True) $ mfilter king $ lookAt queenCastleKing board
-          hasRook = fmap (const True) $ mfilter rook $ lookAt queenCastleRookS board
-          blocked = S.isSubsetOf safetyPath threats
-          threats = threatsFor piece board
+qcastle piece m board = if free then Just m else Nothing
+    where free = S.null $ S.intersection safetyPath $ threatsFor piece board
           safetyPath = S.fromList files
           files = if (white piece) 
                   then [(2, 1), (3, 1), (4, 1)]
                   else [(2, 8), (3, 8), (4, 8)]
 
 kcastle :: Piece -> Move -> Board -> Maybe Move
-kcastle piece m board = fmap (const m) $ mfilter (const (not blocked)) $ (pure (&&) <*> hasKing <*> hasRook)
-    where c = colour piece
-          king p = p == (King c kingCastleKing)
-          rook p = p == (Rook c kingCastleRookS)
-          hasKing = fmap (const True) $ mfilter king $ lookAt kingCastleKing board
-          hasRook = fmap (const True) $ mfilter rook $ lookAt kingCastleRookS board
-          blocked = S.isSubsetOf safetyPath threats
-          threats = threatsFor piece board
+kcastle piece m board = if free then Just m else Nothing
+    where free = S.null $ S.intersection safetyPath $ threatsFor piece board
           safetyPath = S.fromList files
           files = if (white piece) 
                   then [(5, 1), (6, 1), (7, 1)]
                   else [(5, 8), (6, 8), (7, 8)]   
 
+apply :: Move -> Board -> Board
+apply (CastleK kingMove rookMove) = streamLine [kingMove,  rookMove]
+apply (CastleQ kingMove rookMove) = streamLine [kingMove,  rookMove]
+apply (Take  move)   = streamLine [move]
+apply (Block move)   = streamLine [move]
+apply (Jump  move)   = streamLine [move]
+
 legality :: Piece -> Move -> Board -> Maybe Move
-legality p m @ (Take  _) board  = (checks p m board) >?= (checked p m board)
-legality p m @ (Block _) board  = (checks p m board) >?= (checked p m board)
-legality p m @ (Jump  _) board  = (checks p m board) >?= (checked p m board)
-legality p m @ QCastle board    = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
-legality p m @ KCastle board    = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
+legality p m @ (Take  _) board    = (checks p m board) >?= (checked p m board)
+legality p m @ (Block _) board    = (checks p m board) >?= (checked p m board)
+legality p m @ (Jump  _) board    = (checks p m board) >?= (checked p m board)
+legality p m @ (CastleK _ _) board = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
+legality p m @ (CastleQ _ _) board = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
 
-streamLine :: [(Pos, Pos)] -> Board -> Board
-streamLine moves board = foldl transform board moves
-          where transform board move = maybe board id $ adapt board move
-                adapt (Board ps wk bk) (pos, pos') = do
-                    piece  <- M.lookup pos ps
-                    let positions = M.insert pos' piece $ M.insert pos Empty ps
-                    let whiteKing = if (white piece && king piece) then pos' else wk
-                    let blackKing = if (black piece && king piece) then pos' else bk
-                    return Board { positions = positions, whiteKing = whiteKing, blackKing = blackKing }
-
-apply :: Piece -> Move -> Board -> Board
-apply piece KCastle = streamLine [(position piece, kingCastleKing),  (kingCastleRookS, kingCastleRookE)]
-apply piece QCastle = streamLine [(position piece, queenCastleKing), (queenCastleRookS, queenCastleRookE)]
-apply piece move    = streamLine [(position piece, mposition move)]
-
-move :: Pos -> Move -> Board -> Board
-move pos m board = fromMaybe board newBoard
+-- moves should be derived from arbitrary (pos, pos)
+move :: Pos -> Pos -> Board -> Board
+move pos pos' board = fromMaybe board newBoard
     where newBoard = do
             piece <- lookAt pos board 
-            _     <- find (== m) $ moves piece board
-            _     <- legality piece m board
-            return (apply piece m board)
+            move  <- find ((== (pos, pos')) . transition) $ moves piece board
+            _     <- legality piece move board
+            return (apply move board)
+          transition (Take move) = move
+          transition (Block move) = move
+          transition (Jump move) = move
+          transition (CastleK move _) = move
+          transition (CastleQ move _)  = move
 
 board :: Board 
 board = Board { positions = M.fromList positions, 
@@ -335,11 +353,10 @@ instance Show Piece where
 --- ✓ a) Remove Attack
 --- ✓ b) Remove `pieces` field from board, replace with explicit king positions
 --- ✓ c) Replace directional functions with ADT
---- d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
+--- ✓ d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
 --- ✓ e) Add position to pieces
 --- f) Replace list of moves with set of moves
---- g) Keep latest 3 moves on the board and disallow moves accordingly
+--- g) Keep all moves on the board and disallow moves accordingly
 --- h) Keep track of whose move it is and disallow moves accordingly
---- i) Keep track of the number of moves made so far
     
 ---- CHESS PIECES HAVE THEIR OWN UNICODE CHARACTERS!
