@@ -115,10 +115,6 @@ piece (Jump p _)     = p
 piece (TakeEP p _ _) = p
 piece (Promote p _)  = p
 
-king :: Piece -> Bool
-king (King _ _) = True
-king _ = False
-
 currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
 currentKing (Board _ _ _ bk B) = bk
@@ -256,13 +252,6 @@ castlesQ p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ m
           moved piece = (piece == rookS) || (piece == kingS)
           castle (king, rook) = CastleQ (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
 
-add :: Piece -> Board -> Board
-add piece board = board { positions = M.insert (position piece) piece $ positions board }
-
-remove :: Piece -> Board -> Board
-remove piece board = board { positions = M.insert pos (Empty pos) $ positions board }
-            where pos = position piece
-
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
                                   promote pawn (Bishop c p) board,
@@ -378,6 +367,13 @@ adjustKings _ board = board
 
 accumulate :: Move -> Board -> Board
 accumulate move board = board { pastMoves = move : (pastMoves board) }
+
+add :: Piece -> Board -> Board
+add piece board = board { positions = M.insert (position piece) piece $ positions board }
+
+remove :: Piece -> Board -> Board
+remove piece board = board { positions = M.insert pos (Empty pos) $ positions board }
+            where pos = position piece
 
 apply :: Move -> Board -> Board
 apply move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = changeTurn . accumulate move . adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
