@@ -51,8 +51,8 @@ data Dir = U | D | L | R
 
 data Board = Board {positions :: Map Pos Piece,
                     pastMoves :: [Move],
-                    whiteKing :: Pos,
-                    blackKing :: Pos,
+                    whiteKing :: Piece,
+                    blackKing :: Piece,
                     player :: Colour}
 
 (>?=) :: Monad f => f a -> f b -> f b
@@ -102,20 +102,14 @@ commit ((Queen c _), p)  = Queen c $ position p
 commit ((Bishop c _), p) = Bishop c $ position p
 commit ((Knight c _), p) = Rook c $ position p
 
-extract :: Move -> (Piece, Piece)
-extract (Take p p')      = (p, p')
-extract (Block p p')     = (p, p')
-extract (Jump p p')      = (p, p')
-extract (TakeEP p p' _)  = (p, p')
-extract (CastleK move _) = extract move
-extract (CastleQ move _) = extract move
-
 perform :: Move -> Piece
 perform (Take p p')     = commit (p, p')
 perform (Block p p')    = commit (p, p')
 perform (Jump p p')     = commit (p, p')
 perform (TakeEP p p' _) = commit (p, p')
 perform (Promote p p')  = p'
+perform (CastleK m _)   = perform m
+perform (CastleQ m _)   = perform m
 
 piece :: Move -> Piece
 piece (Take p _)     = p
@@ -129,8 +123,8 @@ king (King _ _) = True
 king _ = False
 
 currentKing :: Board -> Piece
-currentKing (Board _ _ wk _ W) = King W wk
-currentKing (Board _ _ _ bk B) = King B bk
+currentKing (Board _ _ wk _ W) = wk
+currentKing (Board _ _ _ bk B) = bk
 
 left :: Colour -> Pos -> Pos
 left _ (x, y) = (x - 1, y)
@@ -199,12 +193,9 @@ enpassant piece dir board = fmap take $ mfilter passant $ fmap perform $ mfilter
           take = TakeEP piece (Empty pos)
 
 promote :: Piece -> Piece -> Board -> Maybe Move
-promote piece piece' board = case piece of
-                (Pawn W (_, 8)) | (not $ pawn piece') && (not $ king piece') -> Just (Promote piece piece')
-                (Pawn B (_, 1)) | (not $ pawn piece') && (not $ king piece') -> Just (Promote piece piece')
-                _ -> Nothing 
-        where pawn (Pawn _ _) = True
-              pawn _ = False
+promote piece @ (Pawn W (_, 8)) piece' board = Just (Promote piece piece') 
+promote piece @ (Pawn B (_, 1)) piece' board = Just (Promote piece piece')
+promote _ _ _ = Nothing
 
 takes :: Piece -> [Dir] -> Board -> Maybe Move
 takes piece dir = fmap take . mfilter (opposite clr) . lookAt pos'
@@ -268,20 +259,26 @@ castlesQ p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ m
           moved piece = (piece == rookS) || (piece == kingS)
           castle (king, rook) = CastleQ (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
 
-streamLine :: [(Piece, Piece)] -> Board -> Board
-streamLine changes board = foldl transform board changes
-          where transform board change = board { positions = perform board change }
-                perform board change @ (piece, piece') = M.insert (position piece') (commit change) $ 
-                                                         M.insert (position piece) (Empty (position piece)) $ 
-                                                         positions board
+add :: Piece -> Board -> Board
+add piece board = board { positions = M.insert (position piece) piece $ positions board }
+
+remove :: Piece -> Board -> Board
+remove piece board = board { positions = M.insert pos (Empty pos) $ positions board }
+            where pos = position piece
 
 pawnMoves :: Piece -> Board -> [Move]
-pawnMoves pawn board = catMaybes [enpassant pawn [R, D] board,
+pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
+                                  promote pawn (Bishop c p) board,
+                                  promote pawn (Knight c p) board,
+                                  promote pawn (Rook c p) board,
+                                  enpassant pawn [R, D] board,
                                   enpassant pawn [L, D] board,
                                   takes pawn  [L, U] board,
                                   takes pawn  [R, U] board,
                                   blocks pawn [U] board,
                                   jumps pawn  [U, U] board]
+        where c = colour pawn
+              p = position pawn
 
 kingMoves :: Piece -> Board -> [Move]
 kingMoves king board = catMaybes [attacks king [L, U] board,
@@ -328,7 +325,7 @@ moves piece @ (Empty _)    = const (S.empty)
 
 threatsFor :: Piece -> Board -> Set Pos
 threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ colour piece) $ positions board
-        where gatherThreats set piece = S.union set (S.map (position . commit . extract) $ S.filter threats $ moves piece board)
+        where gatherThreats set piece = S.union set (S.map (position . perform) $ S.filter threats $ moves piece board)
               threats (Take _ _) = True
               threats _ = False
 
@@ -377,26 +374,28 @@ kcastle piece m board = if free then Continue else Illegal
 changeTurn :: Board -> Board
 changeTurn board = board { player = invert $ player board }
 
-adjustKings :: (Piece, Piece) -> Board -> Board
-adjustKings ((King W _), p) board = board { whiteKing = position p }
-adjustKings ((King B _), p) board = board { blackKing = position p }
-adjustKings _ board = board
+adjustKings :: Piece -> Board -> Board
+adjustKings k @ (King W _) board = board { whiteKing = k }
+adjustKings k @ (King B _) board = board { blackKing = k }
+adjustKings _ board = board 
 
 accumulate :: Move -> Board -> Board
 accumulate move board = board { pastMoves = move : (pastMoves board) }
 
 apply :: Move -> Board -> Board
-apply move @ (CastleK (Block kingS kingE) (Block rookS rookE)) = changeTurn . accumulate move . adjustKings (kingS, kingE) . streamLine [(kingS, kingE), (rookS, rookE)]
-apply move @ (CastleQ (Block kingS kingE) (Block rookS rookE)) = changeTurn . accumulate move . adjustKings (kingS, kingE) . streamLine [(kingS, kingE), (rookS, rookE)]
-apply move @ (TakeEP piece piece' piece'') = changeTurn . accumulate move . streamLine [(piece, piece'), (piece'', piece'')]
-apply move @ (Jump   piece piece')   = changeTurn . accumulate move . streamLine [(piece, piece')]
-apply move @ (Take   piece piece')   = changeTurn . accumulate move . adjustKings (piece, piece') . streamLine [(piece, piece')]
-apply move @ (Block  piece piece')   = changeTurn . accumulate move . adjustKings (piece, piece') . streamLine [(piece, piece')]
+apply move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = changeTurn . accumulate move . adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
+apply move @ (CastleQ m1 @ (Block king _) m2 @ (Block rook _)) = changeTurn . accumulate move . adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
+apply move @ (TakeEP  piece piece' piece'') = changeTurn . accumulate move . add (perform move) . remove piece''
+apply move @ (Jump    piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
+apply move @ (Take    piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
+apply move @ (Block   piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
+apply move @ (Promote piece piece')   = changeTurn . accumulate move . add piece' . remove piece
 
 legality :: Move -> Board -> Outcome
-legality m @ (Take  p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (Block p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (Jump  p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Take  p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Block p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Jump  p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Promote p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
 legality m @ (CastleK (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (kcastle p m board)
 legality m @ (CastleQ (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (qcastle p m board)
 
@@ -408,8 +407,8 @@ move m board = case (legality m board) of
 board :: Board 
 board = Board { positions = M.fromList positions,
                 pastMoves = [],
-                whiteKing = (5, 1), 
-                blackKing = (5, 8),
+                whiteKing = (King W (5, 1)), 
+                blackKing = (King B (5, 8)),
                 player    = W }
     where row c y = zipWith (\x f -> ((x, y), f c (x, y))) [1..8]
           empties = [((x, y), (Empty (x, y))) | x <- [1..8], y <- [3..6]]
