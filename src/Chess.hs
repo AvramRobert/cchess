@@ -53,7 +53,7 @@ data Board = Board {positions :: Map Pos Piece,
                     pastMoves :: [Move],
                     whiteKing :: Piece,
                     blackKing :: Piece,
-                    player :: Colour}
+                    player    :: Colour}
 
 (~>) :: Outcome -> Outcome -> Outcome
 Check     ~> _         = Check
@@ -431,11 +431,3 @@ instance Show Piece where
     show (King W _)   = " ♔ "
     show (King B _)   = " ♚ "
     show (Empty _)    = "   "
-
-time :: IO a -> IO ()
-time comp = do
-    t0 <- getCPUTime
-    let a = unsafePerformIO comp
-    t1 <- getCPUTime
-    let duration = (fromIntegral (t1 - t0)) / 10^9
-    printf "Took: %0.5f msec\n" (duration :: Double)
