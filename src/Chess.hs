@@ -243,34 +243,30 @@ attacksR piece dir board = keep $ unfoldr move piece
           opponent = opposite (colour piece)
 
 castlesK :: Piece -> Board -> Maybe Move
-castlesK piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ lookAt rookPos board
-    where inPlace rook = (rook == eRook) && (piece == eKing)
-          rookPos  = if (white piece) then (8, 1) else (8, 8)
-          rookPos' = if (white piece) then (6, 1) else (6, 8)
-          kingPos  = if (white piece) then (5, 1) else (5, 8)
-          kingPos' = if (white piece) then (7, 1) else (7, 8)
-          eRook = Rook (colour piece) rookPos
-          eKing = King (colour piece) kingPos
-          firstMove = isNothing $ find (moved . extract) $ pastMoves board
-          moved ((King c p), _) = colour piece == c && p == kingPos
-          moved ((Rook c p), _) = colour piece == c && p == rookPos
-          moved _ = False
-          castle = CastleK (Block eKing (Empty kingPos')) (Block eRook (Empty rookPos'))
+castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
+    where inPlace (rook, king) = (rook == rookS) && (king == kingS)
+          rookPos  = if (white p) then (8, 1) else (8, 8)
+          rookPos' = if (white p) then (6, 1) else (6, 8)
+          kingPos  = if (white p) then (5, 1) else (5, 8)
+          kingPos' = if (white p) then (7, 1) else (7, 8)
+          rookS = Rook (colour p) rookPos
+          kingS = King (colour p) kingPos
+          firstMove = isNothing $ find (moved . piece) $ pastMoves board
+          moved piece = (piece == rookS) || (piece == kingS)
+          castle (king, rook) = CastleK (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
     
 castlesQ :: Piece -> Board -> Maybe Move
-castlesQ piece = fmap (const castle) . mfilter (const firstMove) . mfilter inPlace . lookAt rookPos
-    where inPlace rook = (rook == eRook) && (piece == eKing)
-          rookPos  = if (white piece) then (1, 1) else (1, 8)
-          rookPos' = if (white piece) then (4, 1) else (4, 8)
-          kingPos  = if (white piece) then (5, 1) else (5, 8)
-          kingPos' = if (white piece) then (3, 1) else (3, 8)
-          eRook = Rook (colour piece) rookPos
-          eKing = King (colour piece) kingPos
-          firstMove = isNothing $ find (moved . extract) $ pastMoves board
-          moved ((King c p), _) = colour piece == c && p == kingPos
-          moved ((Rook c p), _) = colour piece == c && p == rookPos
-          moved _ = False
-          castle = CastleQ (Block eKing (Empty kingPos')) (Block eRook (Empty rookPos'))
+castlesQ p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
+    where inPlace (rook, king) = (rook == rookS) && (king == kingS)
+          rookPos  = if (white p) then (1, 1) else (1, 8)
+          rookPos' = if (white p) then (4, 1) else (4, 8)
+          kingPos  = if (white p) then (5, 1) else (5, 8)
+          kingPos' = if (white p) then (3, 1) else (3, 8)
+          rookS = Rook (colour p) rookPos
+          kingS = King (colour p) kingPos
+          firstMove = isNothing $ find (moved . piece) $ pastMoves board
+          moved piece = (piece == rookS) || (piece == kingS)
+          castle (king, rook) = CastleQ (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
 
 streamLine :: [(Piece, Piece)] -> Board -> Board
 streamLine changes board = foldl transform board changes
@@ -342,7 +338,7 @@ check move board = if inCheck then Check else Continue
           inCheck = S.member (position king) $ threatsFor king board
 
 checkmate :: Move -> Board -> Outcome
-checkmate move board = if inCheckmate then Checkmate else Continue
+checkmate move board  = if inCheckmate then Checkmate else Continue
     where king        = currentKing board
           inCheckmate = inCheck && cannotMove && unblockable
           inCheck     = S.member (position king) threats
