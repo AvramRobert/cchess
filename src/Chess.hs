@@ -84,9 +84,6 @@ extract (TakeEP move _)  = move
 extract (CastleK move _) = move
 extract (CastleQ move _) = move
 
-strip :: Move -> (Pos, Pos)
-strip move = case (extract move) of (p, p') -> (position p, position p')
-
 king :: Piece -> Bool
 king (King _ _) = True
 king _ = False
@@ -190,7 +187,6 @@ attacksR piece dir board = keep $ unfoldr move piece
           clr  = colour piece
           opponent = opposite (colour piece)
 
--- Once the king or rooks move, you cannot castle anymore
 castlesK :: Piece -> Board -> Maybe Move
 castlesK piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ lookAt rookPos board
     where inPlace rook = (rook == eRook) && (piece == eKing)
@@ -270,19 +266,18 @@ knightMoves piece board = catMaybes [attacks piece [U, U, R] board,
                                      attacks piece [D, D, R] board,
                                      attacks piece [D, D, L] board]
 
-moves :: Piece -> Board -> [Move]
-moves piece @ (Pawn _ _)   = pawnMoves piece
-moves piece @ (Rook _ _)   = rookMoves piece
-moves piece @ (Bishop _ _) = bishopMoves piece
-moves piece @ (Knight _ _) = knightMoves piece 
-moves piece @ (Queen _ _)  = queenMoves piece
-moves piece @ (King _ _)   = kingMoves piece
-moves piece @ (Empty _)    = const []
+moves :: Piece -> Board -> Set Move
+moves piece @ (Pawn _ _)   = S.fromList . pawnMoves piece
+moves piece @ (Rook _ _)   = S.fromList . rookMoves piece
+moves piece @ (Bishop _ _) = S.fromList . bishopMoves piece
+moves piece @ (Knight _ _) = S.fromList . knightMoves piece 
+moves piece @ (Queen _ _)  = S.fromList . queenMoves piece
+moves piece @ (King _ _)   = S.fromList . kingMoves piece
+moves piece @ (Empty _)    = const (S.empty)
 
--- Thing is, if I take the moves, I have to commit them in order to see which squares are affacted, don't I?
 threatsFor :: Piece -> Board -> Set Pos
 threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ colour piece) $ positions board
-        where gatherThreats set piece = set <> (S.fromList $ fmap (position . commit . extract) $ filter threats $ moves piece board)
+        where gatherThreats set piece = S.union set (S.map (position . commit . extract) $ S.filter threats $ moves piece board)
               threats (Take _) = True
               threats _ = False
 
@@ -302,7 +297,7 @@ checkmate piece move board = if (not $ inCheckmate) then Just move else Nothing
           inCheck     = S.member (position king) threats
           cannotMove  = S.isSubsetOf kingMoves threats
           unblockable = isNothing $ check piece move $ apply move board 
-          kingMoves   = S.fromList $ fmap (position . commit . extract) $ moves king board
+          kingMoves   = S.map (position . commit . extract) $ moves king board
           threats     = threatsFor piece board
 
 checked :: Piece -> Move -> Board -> Maybe Move
@@ -358,11 +353,12 @@ legality p m @ (CastleQ _ _) board = (checks p m board) >?= (checked p m board) 
 move :: Pos -> Pos -> Board -> Board
 move pos pos' board = fromMaybe board newBoard
     where newBoard = do
-            piece <- lookAt pos board 
-            move  <- find (available . strip) $ moves piece board
+            piece <- mfilter allowed $ lookAt pos board
+            move  <- find (available . extract) $ moves piece board
             _     <- legality piece move board
             return (apply move board)
-          available  move = move == (pos, pos')
+          available (p, p') = (position p, position p') == (pos, pos')
+          allowed piece = (colour piece) == (player board)
     
 board :: Board 
 board = Board { positions = M.fromList positions,
@@ -405,8 +401,8 @@ instance Show Piece where
 --- ✓ c) Replace directional functions with ADT
 --- ✓ d) Replace QCastle and KCastle with a single instance `Castle kingpos rookpos`
 --- ✓ e) Add position to pieces
---- f) Replace list of moves with set of moves
+--- ✓ f) Replace list of moves with set of moves
 --- ✓ g) Keep all moves on the board and disallow moves accordingly
---- h) Keep track of whose move it is and disallow moves accordingly
+--- ✓ h) Keep track of whose move it is and disallow moves accordingly
     
 ---- CHESS PIECES HAVE THEIR OWN UNICODE CHARACTERS!
