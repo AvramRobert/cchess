@@ -55,9 +55,6 @@ data Board = Board {positions :: Map Pos Piece,
                     blackKing :: Piece,
                     player :: Colour}
 
-(>?=) :: Monad f => f a -> f b -> f b
-fa >?= fb = fa >>= (const fb)
-
 (~>) :: Outcome -> Outcome -> Outcome
 Check     ~> _         = Check
 Continue  ~> Check     = Check
@@ -107,9 +104,9 @@ perform (Take p p')     = commit (p, p')
 perform (Block p p')    = commit (p, p')
 perform (Jump p p')     = commit (p, p')
 perform (TakeEP p p' _) = commit (p, p')
-perform (Promote p p')  = p'
 perform (CastleK m _)   = perform m
 perform (CastleQ m _)   = perform m
+perform (Promote p p')  = p'
 
 piece :: Move -> Piece
 piece (Take p _)     = p
@@ -389,7 +386,7 @@ apply move @ (TakeEP  piece piece' piece'') = changeTurn . accumulate move . add
 apply move @ (Jump    piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
 apply move @ (Take    piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
 apply move @ (Block   piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
-apply move @ (Promote piece piece')   = changeTurn . accumulate move . add piece' . remove piece
+apply move @ (Promote piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
 
 legality :: Move -> Board -> Outcome
 legality m @ (Take  p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
