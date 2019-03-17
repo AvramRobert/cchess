@@ -38,6 +38,15 @@ data Move =
     CastleQ Move Move
     deriving (Show, Eq, Ord)
 
+data Outcome =
+    Check     |
+    Checkmate |
+    Stalemate |
+    Draw      |
+    Illegal   |
+    Continue 
+    deriving (Show, Eq, Ord)
+
 data Dir = U | D | L | R
 
 data Board = Board {positions :: Map Pos Piece,
@@ -48,6 +57,19 @@ data Board = Board {positions :: Map Pos Piece,
 
 (>?=) :: Monad f => f a -> f b -> f b
 fa >?= fb = fa >>= (const fb)
+
+(~>) :: Outcome -> Outcome -> Outcome
+Check     ~> _         = Check
+Continue  ~> Check     = Check
+Checkmate ~> _         = Checkmate
+Continue  ~> Checkmate = Checkmate
+Stalemate ~> _         = Stalemate
+Continue  ~> Stalemate = Stalemate
+Draw      ~> _         = Draw
+Continue  ~> Draw      = Draw
+Illegal   ~> _         = Illegal
+Continue  ~> Illegal   = Illegal
+outcome   ~> _ = outcome
 
 invert :: Colour -> Colour
 invert B = W
@@ -88,9 +110,27 @@ extract (TakeEP p p' _)  = (p, p')
 extract (CastleK move _) = extract move
 extract (CastleQ move _) = extract move
 
+perform :: Move -> Piece
+perform (Take p p')     = commit (p, p')
+perform (Block p p')    = commit (p, p')
+perform (Jump p p')     = commit (p, p')
+perform (TakeEP p p' _) = commit (p, p')
+perform (Promote p p')  = p'
+
+piece :: Move -> Piece
+piece (Take p _)     = p
+piece (Block p _)    = p
+piece (Jump p _)     = p
+piece (TakeEP p _ _) = p
+piece (Promote p _)  = p
+
 king :: Piece -> Bool
 king (King _ _) = True
 king _ = False
+
+currentKing :: Board -> Piece
+currentKing (Board _ _ wk _ W) = King W wk
+currentKing (Board _ _ _ bk B) = King B bk
 
 left :: Colour -> Pos -> Pos
 left _ (x, y) = (x - 1, y)
@@ -145,24 +185,26 @@ steer pos colour = foldl (shift colour) pos
 lookAt :: Pos -> Board -> Maybe Piece
 lookAt p (Board ps _ _ _ _) = M.lookup p ps
 
+isAt :: Pos -> (Piece -> Bool) -> Board -> Bool
+isAt pos p (Board ps _ _ _ _) = fromMaybe False $ fmap p $ M.lookup pos ps
+
 enpassant :: Piece -> [Dir] -> Board -> Maybe Move
-enpassant piece dir board = fmap take $ mfilter isPassant $ mzip (lookAt pos board) (lastPiece $ pastMoves board)
-        where lastPiece ((Jump piece piece') : _) = Just $ commit (piece, piece')    
-              lastPiece _  = Nothing
-              isPassant (piece, (Pawn c p)) = (c /= clr) && (p == passPos) && (empty piece)
-              take (piece', enpiece) = TakeEP piece piece' enpiece
-              clr = colour piece
-              pos = steer (position piece) clr dir 
-              passPos = steer pos clr [U]
+enpassant piece dir board = fmap take $ mfilter passant $ fmap perform $ mfilter jump $ maybeFirst $ pastMoves board
+    where maybeFirst (x : xs) = Just x
+          maybeFirst _ = Nothing
+          jump (Jump _ _) = True
+          jump _          = False
+          passant (Pawn c (x, y)) = (c /= (colour piece)) && (y == (snd $ position piece)) && isAt pos empty board
+          pos = steer (position piece) (colour piece) dir
+          take = TakeEP piece (Empty pos)
 
 promote :: Piece -> Piece -> Board -> Maybe Move
 promote piece piece' board = case piece of
-                (Pawn c (_, 8)) | white piece && otherPiece -> Just (Promote piece piece')
-                (Pawn c (_, 1)) | black piece && otherPiece -> Just (Promote piece piece')
+                (Pawn W (_, 8)) | (not $ pawn piece') && (not $ king piece') -> Just (Promote piece piece')
+                (Pawn B (_, 1)) | (not $ pawn piece') && (not $ king piece') -> Just (Promote piece piece')
                 _ -> Nothing 
-        where otherPiece = (not $ pawn piece') && (not $ king piece')
-              pawn (Pawn _ _) = True
-              pawn _ = False 
+        where pawn (Pawn _ _) = True
+              pawn _ = False
 
 takes :: Piece -> [Dir] -> Board -> Maybe Move
 takes piece dir = fmap take . mfilter (opposite clr) . lookAt pos'
@@ -294,43 +336,42 @@ threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ co
               threats (Take _ _) = True
               threats _ = False
 
-check :: Piece -> Move -> Board -> Maybe Move 
-check piece move board = if (not $ inCheck) then Just move else Nothing 
-    where kingPos = if (white piece)
-                    then whiteKing board
-                    else blackKing board
-          inCheck = S.member kingPos $ threatsFor piece board
+check :: Move -> Board -> Outcome 
+check move board = if inCheck then Check else Continue
+    where king = currentKing board
+          inCheck = S.member (position king) $ threatsFor king board
 
-checkmate :: Piece -> Move -> Board -> Maybe Move
-checkmate piece move board = if (not $ inCheckmate) then Just move else Nothing
-    where king = if (white piece) 
-                 then King W (whiteKing board)
-                 else King B (blackKing board)
+checkmate :: Move -> Board -> Outcome
+checkmate move board = if inCheckmate then Checkmate else Continue
+    where king        = currentKing board
           inCheckmate = inCheck && cannotMove && unblockable
           inCheck     = S.member (position king) threats
           cannotMove  = S.isSubsetOf kingMoves threats
-          unblockable = isNothing $ check piece move $ apply move board 
-          kingMoves   = S.map (position . commit . extract) $ moves king board
-          threats     = threatsFor piece board
+          unblockable = (check move $ apply move board) /= Check 
+          kingMoves   = S.map (position . perform) $ moves king board
+          threats     = threatsFor king board
 
-checked :: Piece -> Move -> Board -> Maybe Move
-checked piece move = check piece move . apply move 
+turn :: Move -> Board -> Outcome
+turn move board = if ((colour $ piece move) == player board)
+                  then Continue
+                  else Illegal
 
--- Stalemate check missing
--- Chess total number of moves check missing
-checks :: Piece -> Move -> Board -> Maybe Move -- maybe outcome
-checks piece move board = (check piece move board) <|> (checkmate piece move board)
+available :: Move -> Board -> Outcome
+available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move) $ moves (piece move) board
 
-qcastle :: Piece -> Move -> Board -> Maybe Move
-qcastle piece m board = if free then Just m else Nothing
+checked :: Piece -> Move -> Board -> Outcome
+checked piece move = check move . apply move 
+
+qcastle :: Piece -> Move -> Board -> Outcome
+qcastle piece m board = if free then Continue else Illegal
     where free = S.null $ S.intersection safetyPath $ threatsFor piece board
           safetyPath = S.fromList files
           files = if (white piece) 
                   then [(2, 1), (3, 1), (4, 1)]
                   else [(2, 8), (3, 8), (4, 8)]
 
-kcastle :: Piece -> Move -> Board -> Maybe Move
-kcastle piece m board = if free then Just m else Nothing
+kcastle :: Piece -> Move -> Board -> Outcome
+kcastle piece m board = if free then Continue else Illegal
     where free = S.null $ S.intersection safetyPath $ threatsFor piece board
           safetyPath = S.fromList files
           files = if (white piece) 
@@ -356,33 +397,17 @@ apply move @ (Jump   piece piece')   = changeTurn . accumulate move . streamLine
 apply move @ (Take   piece piece')   = changeTurn . accumulate move . adjustKings (piece, piece') . streamLine [(piece, piece')]
 apply move @ (Block  piece piece')   = changeTurn . accumulate move . adjustKings (piece, piece') . streamLine [(piece, piece')]
 
-legality :: Piece -> Move -> Board -> Maybe Move
-legality p m @ (Take  _ _) board    = (checks p m board) >?= (checked p m board)
-legality p m @ (Block _ _) board    = (checks p m board) >?= (checked p m board)
-legality p m @ (Jump  _ _) board    = (checks p m board) >?= (checked p m board)
-legality p m @ (CastleK _ _) board = (checks p m board) >?= (checked p m board) >?= (kcastle p m board)
-legality p m @ (CastleQ _ _) board = (checks p m board) >?= (checked p m board) >?= (qcastle p m board)
+legality :: Move -> Board -> Outcome
+legality m @ (Take  p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Block p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (Jump  p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
+legality m @ (CastleK (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (kcastle p m board)
+legality m @ (CastleQ (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (qcastle p m board)
 
-move :: Pos -> Pos -> Board -> Board
-move pos pos' board = fromMaybe board newBoard
-    where newBoard = do
-            piece <- mfilter allowed $ lookAt pos board
-            move  <- find (available . extract) $ moves piece board
-            _     <- legality piece move board
-            return (apply move board)
-          available (p, p') = (position p, position p') == (pos, pos')
-          allowed piece = (colour piece) == (player board)
-
-legal :: Move -> Board -> Bool
-legal move board = isJust $ legality (fst $ extract move) move board
-
---- Do everything over moves
---- A move describes what needs to happen with which pieces
---- The parser later on will have to take care of converting positions and actions to pieces and moves 
---- A move contains the piece that has to move, so I'll also simplify a lot of
-move' :: Move -> Board -> Board
-move' m board = fromMaybe board $ fmap (\m -> apply m board) $ mfilter (\x -> legal x board) $ find (== m) $ moves piece board
-        where piece = fst $ extract m
+move :: Move -> Board -> (Outcome, Board)
+move m board = case (legality m board) of 
+               Continue -> (Continue, apply m board)
+               outcome  -> (outcome, board)
         
 board :: Board 
 board = Board { positions = M.fromList positions,
