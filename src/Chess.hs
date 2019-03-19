@@ -28,6 +28,8 @@ data Piece =
     Empty Pos
     deriving (Eq, Ord)
 
+-- data Side = Q | K ? -> Castle Side ???
+
 data Move =
     Take    Piece Piece       |
     Block   Piece Piece       |
@@ -309,26 +311,28 @@ moves piece @ (Queen _ _)  = S.fromList . queenMoves piece
 moves piece @ (King _ _)   = S.fromList . kingMoves piece
 moves piece @ (Empty _)    = const (S.empty)
 
-threatsFor :: Piece -> Board -> Set Pos
-threatsFor piece board = M.foldl gatherThreats S.empty $ M.filter (opposite $ colour piece) $ positions board
-        where gatherThreats set piece = S.union set (S.map (position . perform) $ S.filter threats $ moves piece board)
-              threats (Take _ _) = True
-              threats _ = False
+threats :: Board -> Set Pos
+threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
+            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
+                  threat (Take _ _) = True
+                  threat (Block _ _) = True
+                  threat (TakeEP _ _ _) = True
+                  threat _ = False
 
 check :: Move -> Board -> Outcome 
 check move board = if inCheck then Check else Continue
     where king = currentKing board
-          inCheck = S.member (position king) $ threatsFor king board
+          inCheck = S.member (position king) $ threats board
 
 checkmate :: Move -> Board -> Outcome
 checkmate move board  = if inCheckmate then Checkmate else Continue
     where king        = currentKing board
           inCheckmate = inCheck && cannotMove && unblockable
-          inCheck     = S.member (position king) threats
-          cannotMove  = S.isSubsetOf kingMoves threats
+          inCheck     = S.member (position king) allThreats
+          cannotMove  = S.isSubsetOf kingMoves allThreats
           unblockable = (check move $ apply move board) /= Check 
           kingMoves   = S.map (position . perform) $ moves king board
-          threats     = threatsFor king board
+          allThreats  = threats board
 
 turn :: Move -> Board -> Outcome
 turn move board = if ((colour $ piece move) == player board)
@@ -343,7 +347,7 @@ checked piece move = check move . apply move
 
 qcastle :: Piece -> Move -> Board -> Outcome
 qcastle piece m board = if free then Continue else Illegal
-    where free = S.null $ S.intersection safetyPath $ threatsFor piece board
+    where free = S.null $ S.intersection safetyPath $ threats board
           safetyPath = S.fromList files
           files = if (white piece) 
                   then [(2, 1), (3, 1), (4, 1)]
@@ -351,7 +355,7 @@ qcastle piece m board = if free then Continue else Illegal
 
 kcastle :: Piece -> Move -> Board -> Outcome
 kcastle piece m board = if free then Continue else Illegal
-    where free = S.null $ S.intersection safetyPath $ threatsFor piece board
+    where free = S.null $ S.intersection safetyPath $ threats board
           safetyPath = S.fromList files
           files = if (white piece) 
                   then [(5, 1), (6, 1), (7, 1)]
