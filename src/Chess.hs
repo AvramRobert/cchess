@@ -4,8 +4,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.List (find, intersperse, unfoldr)
-import Data.Tuple (swap)
+import Data.List (find, intersperse, unfoldr, any)
 import Control.Monad (foldM, mfilter)
 import Control.Monad.Zip (mzip)
 import Control.Applicative ((<|>))
@@ -341,21 +340,102 @@ available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move
 checked :: Piece -> Move -> Board -> Outcome
 checked piece move = check move . apply move 
 
-qcastle :: Piece -> Move -> Board -> Outcome
-qcastle piece m board = if free then Continue else Illegal
+qcastle :: Move -> Board -> Outcome
+qcastle move board = if free then Continue else Illegal
     where free = S.null $ S.intersection safetyPath $ threats board
           safetyPath = S.fromList files
-          files = if (white piece) 
+          files = if (W == (player board))
                   then [(2, 1), (3, 1), (4, 1)]
                   else [(2, 8), (3, 8), (4, 8)]
 
-kcastle :: Piece -> Move -> Board -> Outcome
-kcastle piece m board = if free then Continue else Illegal
+kcastle :: Move -> Board -> Outcome
+kcastle move board = if free then Continue else Illegal
     where free = S.null $ S.intersection safetyPath $ threats board
           safetyPath = S.fromList files
-          files = if (white piece) 
+          files = if (W == (player board)) 
                   then [(5, 1), (6, 1), (7, 1)]
                   else [(5, 8), (6, 8), (7, 8)]   
+
+{- 
+Rules of drawing:
+            1. Stalemate: Not in check, but has no legal move
+            2. Threefold repetition of a position: 
+                    -> If it's the same player's turn to move, and there have been 3 positions throughout the game where he was in the exact same position,
+                       with exactly the same possible moves => he can claim a draw (not automatic)
+
+            3. 50 move rule (not automatic): No captures or pawns moved in the last 50 moves
+            4. Impossible checkmates:
+                    -> King vs King
+                    -> King Bishop vs King
+
+                    -> King Kinght vs King
+                    -> King Bishop vs King Bishop (where bishops have the same colour)
+            5. Mutual agreement. 
+
+-}
+
+stalemate :: Board -> Outcome
+stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate else Continue
+            where immovable = S.null $ moves king board 
+                  inCheck   = S.member (position king) allThreats
+                  movedBefore = any (movedKing . perform) $ pastMoves board
+                  king = currentKing board
+                  allThreats = threats board
+                  movedKing (King c _) = c == (colour king) 
+
+fiftyMove :: Board -> Outcome
+fiftyMove board = if (length $ pastMoves board) > 50 then illegality else Continue
+        where illegality = fromMaybe Illegal $ fmap (const Continue) $ find takeOrPawn $ take 50 $ pastMoves board
+              takeOrPawn (Take _ _) = True
+              takeOrPawn (TakeEP _ _ _) = True
+              takeOrPawn (Block (Pawn _ _) _) = True
+              takeOrPawn _ = False
+
+kingVsKing :: Board -> Outcome
+kingVsKing board = fromMaybe Continue $ fmap (const Illegal) $ mfilter onlyTwo $ mzip (lookAt whiteKingPos board) (lookAt blackKingPos board)
+            where onlyTwo _ = (M.size $ positions board) == 2
+                  whiteKingPos = position $ whiteKing board
+                  blackKingPos = position $ blackKing board
+
+kingBishopVsKing :: Board -> Outcome
+kingBishopVsKing board = if (justThree && wking && bking && bking) then Draw else Continue
+            where justThree = (M.size $ positions board) == 3
+                  pieces = M.elems $ positions board
+                  bishop = any (\x -> case x of (Bishop _ _) -> True
+                                                _            -> False) pieces
+                  wking  = any (== (whiteKing board)) pieces
+                  bking  = any (== (blackKing board)) pieces
+
+kingKnightVsKing :: Board -> Outcome
+kingKnightVsKing board = if (justThree && wking && bking && knight) then Draw else Continue
+            where justThree = (M.size $ positions board) == 3
+                  pieces = M.elems $ positions board
+                  knight = any (\x -> case x of (Knight _ _) -> True
+                                                _            -> False) pieces
+                  wking  = any (== (whiteKing board)) pieces
+                  bking  = any (== (blackKing board)) pieces
+
+-- How?
+threeFold :: Board -> Outcome
+threeFold _ = Continue
+
+kingBishopVsKingBishop :: Board -> Outcome
+kingBishopVsKingBishop board = if (justFour && wking && bking && sameBishops) then Draw else Continue
+            where justFour = (M.size $ positions board) == 4
+                  pieces = M.elems $ positions board
+                  bishops = filter (\x -> case x of (Bishop _ _) -> True
+                                                    _            -> False) pieces
+                  sameBishops = (length bishops) == 2 && (all whiteSquare bishops || all blackSquare bishops)                                   
+                  whiteSquare (Bishop _ (x, y)) = (odd x && even y) || (even x && odd y)
+                  blackSquare (Bishop _ (x, y)) = (odd x && odd y)  || (even x && even y)
+                  wking = any (== (whiteKing board)) pieces
+                  bking = any (== (blackKing board)) pieces
+
+checkmateless :: Board -> Outcome
+checkmateless board = kingVsKing board ~> kingBishopVsKing board ~> kingKnightVsKing board ~> kingBishopVsKingBishop board
+
+draw :: Board -> Outcome
+draw board = stalemate board ~> fiftyMove board ~> checkmateless board
 
 changeTurn :: Board -> Board
 changeTurn board = board { player = invert $ player board }
@@ -385,12 +465,12 @@ apply move @ (Block   piece piece')   = changeTurn . accumulate move . adjustKin
 apply move @ (Promote piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
 
 legality :: Move -> Board -> Outcome
-legality m @ (Take  p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (Block p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (Jump  p _)   board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (Promote p _) board    = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board)
-legality m @ (CastleK (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (kcastle p m board)
-legality m @ (CastleQ (Block p _) _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (qcastle p m board)
+legality m @ (Take  p _)   board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board) ~> (draw board)
+legality m @ (Block p _)   board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board) ~> (draw board)
+legality m @ (Jump  p _)   board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board) ~> (draw board)
+legality m @ (Promote p _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (checked p m board) ~> (draw board)
+legality m @ (CastleK _ _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (kcastle m board) ~> (draw board)
+legality m @ (CastleQ _ _) board = (turn m board) ~> (available m board) ~> (check m board) ~> (checkmate m board) ~> (qcastle m board) ~> (draw board)
 
 move :: Move -> Board -> (Outcome, Board)
 move m board = case (legality m board) of 
