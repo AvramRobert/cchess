@@ -28,8 +28,6 @@ data Piece =
     Empty Pos
     deriving (Eq, Ord)
 
--- data Side = Q | K ? -> Castle Side ???
-
 data Move =
     Take    Piece Piece       |
     Block   Piece Piece       |
@@ -177,6 +175,12 @@ lookAt p (Board ps _ _ _ _) = M.lookup p ps
 isAt :: Pos -> (Piece -> Bool) -> Board -> Bool
 isAt pos p (Board ps _ _ _ _) = fromMaybe False $ fmap p $ M.lookup pos ps
 
+at :: [Dir] -> Piece -> Board -> Maybe Piece
+at dir piece board = lookAt (steer pos clr dir) board
+    where pos = position piece
+          clr = case (colour piece) of T -> player board
+                                       _ -> colour piece
+
 enpassant :: Piece -> [Dir] -> Board -> Maybe Move
 enpassant piece dir board = fmap take $ mfilter passant $ fmap perform $ mfilter jump $ maybeFirst $ pastMoves board
     where maybeFirst (x : xs) = Just x
@@ -193,39 +197,31 @@ promote piece @ (Pawn B (_, 1)) piece' board = Just (Promote piece piece')
 promote _ _ _ = Nothing
 
 takes :: Piece -> [Dir] -> Board -> Maybe Move
-takes piece dir = fmap take . mfilter (opposite clr) . lookAt pos'
-    where pos'  = steer (position piece) clr dir
-          take  = Take piece
-          clr   = colour piece
+takes piece dir = fmap (Take piece) . mfilter (opposite (colour piece)) . at dir piece
 
 blocks :: Piece -> [Dir] -> Board -> Maybe Move
-blocks piece dir = fmap block . mfilter empty . lookAt pos'
-    where pos'   = steer (position piece) (colour piece) dir
-          block  = Block piece
+blocks piece dir = fmap (Block piece) . mfilter empty . at dir piece
 
 jumps :: Piece -> [Dir] -> Board -> Maybe Move
-jumps piece dir = fmap jump . mfilter empty . mfilter (const atStart) . lookAt pos'
-    where pos' = steer (position piece) (colour piece) dir
-          jump = Jump piece
-          atStart = case (position piece) of 
+jumps piece dir = fmap (Jump piece) . mfilter empty . mfilter (const atStart) . at dir piece
+    where atStart = case (position piece) of 
                          (x, 2) -> white piece
                          (x, 7) -> black piece
                          (_, _) -> False
 
 attacks :: Piece -> [Dir] -> Board -> Maybe Move
-attacks piece dir board = lookAt pos' board >>= attack
-    where pos' = steer (position piece) (colour piece) dir
-          attack piece' | opposite (colour piece) piece' = Just $ Take piece piece'
+attacks piece dir board = attack =<< at dir piece board 
+    where attack piece' | opponent piece' = Just $ Take piece piece'
           attack piece' | empty piece' = Just $ Block piece piece'
           attack _ = Nothing
+          opponent = opposite (colour piece)
 
 attacksR :: Piece -> [Dir] -> Board -> [Move]
-attacksR piece dir board = keep $ unfoldr move piece
-    where move p = fmap (\piece' -> ((piece, piece'), piece')) $ lookAt (steer (position p) clr dir) board
-          keep ((p, p') : pieces) | empty p'    = (Block p p') : (keep pieces)
-          keep ((p, p') : pieces) | opponent p' = (Take  p p') : (keep pieces)
-          keep _ = []
-          clr  = colour piece
+attacksR piece dir board = unfoldr move piece
+    where move p = keep =<< at dir p board
+          keep piece' | empty piece'    = Just (Block piece piece', piece')
+          keep piece' | opponent piece' = Just (Take  piece piece', piece')
+          keep _ = Nothing
           opponent = opposite (colour piece)
 
 castlesK :: Piece -> Board -> Maybe Move
@@ -435,3 +431,9 @@ instance Show Piece where
     show (King W _)   = " ♔ "
     show (King B _)   = " ♚ "
     show (Empty _)    = "   "
+
+--- Idea:
+--- a) Do transformations in just one coordinate orientation and define an `invert` function that just inverts the values at the end for the respective colour
+--- x b) Concretise moves: Take, Block, TakeEp -> Piece Pos. Make only one Castle case but with a different data Side = Q | K
+--- c) Use board colour, not piece colour
+--- d) Steer directions based on the board, not the piece
