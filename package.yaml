@@ -23,6 +23,8 @@ dependencies:
 - base >= 4.7 && < 5
 - containers
 - QuickCheck
+- megaparsec
+- text
 
 library:
   source-dirs: src
@@ -38,6 +40,8 @@ executables:
     dependencies:
     - cchess
     - containers
+    - megaparsec
+    - text
 
 tests:
   cchess-test:
@@ -50,3 +54,4 @@ tests:
     dependencies:
     - cchess
     - QuickCheck
+    - megaparsec

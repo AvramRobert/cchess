@@ -118,6 +118,9 @@ currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
 currentKing (Board _ _ _ bk B) = bk
 
+piecesWhere :: (Piece -> Bool) -> Board -> [Piece]
+piecesWhere p = M.elems . M.filter p . positions
+
 left :: Colour -> Pos -> Pos
 left _ (x, y) = (x - 1, y)
 
