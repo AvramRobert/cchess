@@ -18,9 +18,28 @@ data Result = Success | Failure deriving (Ord, Eq, Show, M.ShowErrorComponent)
 
 type Parser a = Parsec Result String a
 
+stripNewLines :: String -> String
+stripNewLines = filter (not . newLine) 
+    where newLine '\n' = True
+          newLine '\r' = True
+          newLine  _   = False
+
+extractGame :: [String] -> (String, [String])
+extractGame pgnLines = (game, remLines)
+    where game = stripNewLines $ unlines gameLines
+          gameLines = takeWhile (not . newLine) headless
+          headless  = drop 12 pgnLines
+          remLines  = drop ((length gameLines) + 1) headless
+          newLine "\n" = True
+          newLine "\r" = True
+          newLine _    = False
+
 games :: String -> IO [String]
-games filename = fmap moves $ readFile $ "../chess_games/" <> filename
-    where moves = map snd . filter (even . fst) . zip [0..] . lines
+games filename = fmap parseGames $ readFile $ "./chess_games/" <> filename
+    where parseGames = acc [] . lines
+          acc gms [] = reverse gms
+          acc gms lns = let (game, lns') = extractGame lns 
+                        in acc (game : gms) lns'
 
 index :: Parser Int
 index = do
@@ -254,9 +273,6 @@ queenCastle board = do
 castle :: Chess.Board -> Parser Chess.Move
 castle board = kingCastle board <|> queenCastle board
 
--- resignation / end can happen right after the last move, after white made its move
--- I should make outcomes more concrete:
-    -- Aside from checkmate, there is still resignation. 
 end :: Parser ()
 end = void $ string "1-0" <|> string "1/2-1/2" <|> string "0-1"
 
@@ -286,7 +302,6 @@ oneMove board = do
     _ <- end
     return (b, One m)
 
--- In order to merge the parser with my board's behaviour, the outcome of applying a move on my board should influence the result of the parser 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
     _  <- index
