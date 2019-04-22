@@ -96,7 +96,7 @@ commit ((King c _), p)   = King c $ position p
 commit ((Rook c _), p)   = Rook c $ position p
 commit ((Queen c _), p)  = Queen c $ position p 
 commit ((Bishop c _), p) = Bishop c $ position p
-commit ((Knight c _), p) = Rook c $ position p
+commit ((Knight c _), p) = Knight c $ position p
 
 perform :: Move -> Piece
 perform (Take p p')     = commit (p, p')
@@ -384,7 +384,8 @@ stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate 
                   movedBefore = any (movedKing . perform) $ pastMoves board
                   king = currentKing board
                   allThreats = threats board
-                  movedKing (King c _) = c == (colour king) 
+                  movedKing (King c _) = c == (colour king)
+                  movedKing _ = False 
 
 fiftyMove :: Board -> Outcome
 fiftyMove board = if (length $ pastMoves board) > 50 then illegality else Continue
