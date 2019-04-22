@@ -24,7 +24,6 @@ dependencies:
 - containers
 - QuickCheck
 - megaparsec
-- text
 
 library:
   source-dirs: src
@@ -41,7 +40,6 @@ executables:
     - cchess
     - containers
     - megaparsec
-    - text
 
 tests:
   cchess-test:

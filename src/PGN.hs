@@ -1,22 +1,20 @@
-{-# LANGUAGE DeriveAnyClass #-}
-
 module PGN where
 
 import qualified Chess as Chess
-import Data.Text (Text)
 import qualified Text.Megaparsec as M
-import Text.Megaparsec (Parsec, (<|>), runParser, try)
 import qualified Text.Megaparsec.Char as C
+import qualified Data.Set as S
+import Text.Megaparsec (Parsec, (<|>), runParser, try)
 import Text.Megaparsec.Char (char, string, spaceChar)
 import Data.Char (digitToInt)
 import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
-import qualified Data.Set as S
+import Data.Void (Void)
 
-data Result = Success | Failure deriving (Ord, Eq, Show, M.ShowErrorComponent)
+type Parser a = Parsec Void String a
 
-type Parser a = Parsec Result String a
+data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq) 
 
 stripNewLines :: String -> String
 stripNewLines = filter (not . newLine) 
@@ -283,8 +281,6 @@ move board = (try $ pawn board)   <|>
              (try $ bishop board) <|> 
              (try $ knight board) <|>
              (try $ queen  board)
-
-data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq) 
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case Chess.move move board of
