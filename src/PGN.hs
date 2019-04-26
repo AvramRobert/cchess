@@ -167,7 +167,7 @@ explicitBlock p board = do
     parsedReturn $ blocking (x, y) $ movesWhere (pieceAt (ox, oy)) board
 
 blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-blockPiece p board = (try $ unambigousBlock p board) <|> (try $ fileAmbigousBlock p board) <|> (try $ rankAmbigousTake p board) <|> (try $ explicitBlock p board)
+blockPiece p board = (try $ unambigousBlock p board) <|> (try $ fileAmbigousBlock p board) <|> (try $ rankAmbigousBlock p board) <|> (try $ explicitBlock p board)
 
 takePawn :: Chess.Board -> Parser Chess.Move
 takePawn board = do
