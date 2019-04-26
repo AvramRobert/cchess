@@ -102,7 +102,6 @@ unambigousTake p board = do
     _ <- char 'x'
     x <- file
     y <- rank
-    _ <- check <|> mate
     parsedReturn $ taking (x, y) $ movesWhere p board
 
 fileAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
@@ -111,7 +110,6 @@ fileAmbigousTake p board = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    _  <- check <|> mate
     let fileAt ox piece = p piece && (fst $ Chess.position piece) == ox
     parsedReturn $ taking (x, y) $ movesWhere (fileAt ox) board 
 
@@ -121,7 +119,6 @@ rankAmbigousTake p board = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    _  <- check <|> mate
     let rankAt oy piece = p piece && (snd $ Chess.position piece) == oy
     parsedReturn $ taking (x, y) $ movesWhere (rankAt oy) board
 
@@ -142,7 +139,6 @@ unambigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 unambigousBlock p board = do
     x <- file
     y <- rank
-    _ <- check <|> mate
     parsedReturn $ blocking (x, y) $ movesWhere p board
 
 fileAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
@@ -150,7 +146,6 @@ fileAmbigousBlock p board = do
     ox <- file
     x  <- file
     y  <- rank
-    _  <- check <|> mate
     let fileAt ox piece = p piece && (fst $ Chess.position piece) == ox
     parsedReturn $ blocking (x, y) $ movesWhere (fileAt ox) board
 
@@ -159,7 +154,6 @@ rankAmbigousBlock p board = do
     oy <- rank
     x  <- file
     y  <- rank
-    _  <- check <|> mate
     let rankAt oy piece = p piece && (snd $ Chess.position piece) == oy
     parsedReturn $ blocking (x, y) $ movesWhere (rankAt oy) board
 
@@ -169,7 +163,6 @@ explicitBlock p board = do
     oy <- rank
     x  <- file
     y  <- rank
-    _  <- check <|> mate
     let pieceAt pos piece = p piece && Chess.position piece == pos
     parsedReturn $ blocking (x, y) $ movesWhere (pieceAt (ox, oy)) board
 
@@ -182,7 +175,6 @@ takePawn board = do
         _  <- char 'x'
         x  <- file
         y  <- rank
-        _  <- check <|> mate
         let pawnAt x' (Chess.Pawn _ (x'', _)) = x' == x''
             pawnAt x' _ = False
         parsedReturn $ taking (x, y) $ movesWhere (pawnAt ox) board
@@ -191,7 +183,6 @@ blockPawn :: Chess.Board -> Parser Chess.Move
 blockPawn board = do
             x <- file
             y <- rank
-            _ <- check <|> mate
             let isPawn (Chess.Pawn _ _) = True
                 isPawn _ = False
             parsedReturn $ blocking (x, y) $ movesWhere isPawn board
@@ -202,7 +193,6 @@ promotePawn board = do
             y <- rank
             _ <- char '='
             p <- piece (x, y) board
-            _ <- check <|> mate
             let pawnAt epos (Chess.Pawn _ pos) = pos == epos
                 pawnAt _ _ = False
             parsedReturn $ promoting p $ movesWhere (pawnAt (x, y)) board 
@@ -238,7 +228,6 @@ king board = char 'K' >> (takePiece isKing board <|> blockPiece isKing board)
 kingCastle :: Chess.Board -> Parser Chess.Move
 kingCastle board = do
         _ <- string "O-O"
-        _ <- check <|> mate
         let colour = Chess.player board
             white  = colour == Chess.W
             king   = if white then Chess.King Chess.W (5, 1)
@@ -255,7 +244,6 @@ kingCastle board = do
 queenCastle :: Chess.Board -> Parser Chess.Move
 queenCastle board = do
         _ <- string "O-O-O"
-        _ <- check <|> mate
         let colour = Chess.player board
             white  = colour == Chess.W
             king   = if white then Chess.King colour (5, 1) 
