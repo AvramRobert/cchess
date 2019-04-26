@@ -69,10 +69,10 @@ rank :: Parser Int
 rank = fmap digitToInt $ C.numberChar
 
 check :: Parser ()
-check = void $ M.optional $ char '+'
+check = void $ M.takeWhileP Nothing (== '+')
 
 mate :: Parser ()
-mate = void $ M.optional $ char '#'
+mate = void $ M.takeWhileP Nothing (== '#')
 
 taking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
 taking square = find take
@@ -285,6 +285,8 @@ oneMove board = do
     _ <- index
     m <- move board
     b <- applied m board
+    _ <- check
+    _ <- mate
     _ <- spaceChar
     _ <- end
     return (b, One m)
@@ -294,21 +296,15 @@ twoMove board = do
     _  <- index
     m  <- move board
     b  <- applied m board
+    _  <- check
+    _  <- mate
     _  <- spaceChar
     m' <- move b
     b' <- applied m' b
+    _  <- check
+    _  <- mate
     _  <- spaceChar
     return (b', Two (m, m'))
-
-simpleOne :: Chess.Board -> Parser (Chess.Board, Turn)
-simpleOne board = do
-    _ <- index
-    m <- move board
-    b <- applied m board
-    _ <- spaceChar
-    m' <- move board
-    b' <- applied m' b
-    return (b, Two (m, m'))
 
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
 turn board = (try $ noMove board) <|> (try $ oneMove board) <|> (try $ twoMove board)
