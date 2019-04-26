@@ -11,6 +11,7 @@ import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import Data.Void (Void)
+import System.IO.Unsafe (unsafePerformIO)
 
 type Parser a = Parsec Void String a
 
@@ -240,10 +241,10 @@ kingCastle board = do
         _ <- check <|> mate
         let colour = Chess.player board
             white  = colour == Chess.W
-            king   = if white then Chess.King colour (5, 1)
-                              else Chess.King colour (5, 8)
-            rook   = if white then Chess.Rook colour (8, 1)
-                              else Chess.Rook colour (8, 8)
+            king   = if white then Chess.King Chess.W (5, 1)
+                              else Chess.King Chess.B (5, 8)
+            rook   = if white then Chess.Rook Chess.W (8, 1)
+                              else Chess.Rook Chess.B (8, 8)
             eKing  = if white then Chess.Empty (7, 1)
                               else Chess.Empty (7, 8)
             eRook  = if white then Chess.Empty (6, 1)
@@ -269,10 +270,7 @@ queenCastle board = do
         parsedReturn $ Just castle
 
 castle :: Chess.Board -> Parser Chess.Move
-castle board = kingCastle board <|> queenCastle board
-
-end :: Parser ()
-end = void $ string "1-0" <|> string "1/2-1/2" <|> string "0-1"
+castle board = (try $ queenCastle board) <|> (try $ kingCastle board)
 
 move :: Chess.Board -> Parser Chess.Move
 move board = (try $ pawn board)   <|>
@@ -280,12 +278,16 @@ move board = (try $ pawn board)   <|>
              (try $ rook board)   <|>
              (try $ bishop board) <|> 
              (try $ knight board) <|>
-             (try $ queen  board)
+             (try $ queen  board) <|>
+             (try $ castle board)
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case Chess.move move board of
-                          (Chess.Continue, board) -> pure board
-                          (_, _) -> parsedReturn Nothing
+                          (Chess.Continue, board) -> return board
+                          (outcome, _) -> parsedReturn Nothing
+
+end :: Parser ()
+end = void $ (try $ string "1-0") <|> (try $ string "1/2-1/2") <|> (try $ string "0-1")
 
 noMove :: Chess.Board -> Parser (Chess.Board, Turn)
 noMove board = end $> (board, End)
@@ -295,6 +297,7 @@ oneMove board = do
     _ <- index
     m <- move board
     b <- applied m board
+    _ <- spaceChar
     _ <- end
     return (b, One m)
 
@@ -304,10 +307,20 @@ twoMove board = do
     m  <- move board
     b  <- applied m board
     _  <- spaceChar
-    m' <- move board
+    m' <- move b
     b' <- applied m' b
     _  <- spaceChar
     return (b', Two (m, m'))
+
+simpleOne :: Chess.Board -> Parser (Chess.Board, Turn)
+simpleOne board = do
+    _ <- index
+    m <- move board
+    b <- applied m board
+    _ <- spaceChar
+    m' <- move board
+    b' <- applied m' b
+    return (b, Two (m, m'))
 
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
 turn board = (try $ noMove board) <|> (try $ oneMove board) <|> (try $ twoMove board)
@@ -316,7 +329,7 @@ gameParser :: Parser [Chess.Move]
 gameParser = turns [] Chess.board
         where turns moves board = turn board >>= (continue moves) 
               continue moves (board, Two (m, m')) = turns (m' : m : moves) board
-              continue moves (board, One m) = turns (m : moves) board
+              continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
@@ -334,3 +347,6 @@ runPrint p = printErr . run p
          -- 1. if the files are different, the originating file is inserted right after the piece letter
          -- 2. if the files are the same, but the ranks are different, the rank digit is inserted right after the piece letter
          -- 3. if 1. and 2. fail, the originating file and rank digit are inserted after the piece letter
+
+
+game1 = head $ unsafePerformIO $ games "batch0.pgn"

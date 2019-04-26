@@ -113,6 +113,8 @@ piece (Block p _)    = p
 piece (Jump p _)     = p
 piece (TakeEP p _ _) = p
 piece (Promote p _)  = p
+piece (CastleK m _) = piece m
+piece (CastleQ m _) = piece m
 
 currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
@@ -228,7 +230,7 @@ attacksR piece dir board = unfoldr move piece
 
 castlesK :: Piece -> Board -> Maybe Move
 castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
-    where inPlace (rook, king) = (rook == rookS) && (king == kingS)
+    where inPlace (king, rook) = (rook == rookS) && (king == kingS)
           rookPos  = if (white p) then (8, 1) else (8, 8)
           rookPos' = if (white p) then (6, 1) else (6, 8)
           kingPos  = if (white p) then (5, 1) else (5, 8)
@@ -238,10 +240,10 @@ castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ m
           firstMove = isNothing $ find (moved . piece) $ pastMoves board
           moved piece = (piece == rookS) || (piece == kingS)
           castle (king, rook) = CastleK (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
-    
+
 castlesQ :: Piece -> Board -> Maybe Move
 castlesQ p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
-    where inPlace (rook, king) = (rook == rookS) && (king == kingS)
+    where inPlace (king, rook) = (rook == rookS) && (king == kingS)
           rookPos  = if (white p) then (1, 1) else (1, 8)
           rookPos' = if (white p) then (4, 1) else (4, 8)
           kingPos  = if (white p) then (5, 1) else (5, 8)
