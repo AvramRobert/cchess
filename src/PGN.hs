@@ -175,7 +175,8 @@ takePawn board = do
         _  <- char 'x'
         x  <- file
         y  <- rank
-        let pawnAt x' (Chess.Pawn _ (x'', _)) = x' == x''
+        let colour = Chess.player board
+            pawnAt x' (Chess.Pawn c (x'', _)) = (x' == x'') && (c == colour)
             pawnAt x' _ = False
         parsedReturn $ taking (x, y) $ movesWhere (pawnAt ox) board
 
@@ -183,7 +184,8 @@ blockPawn :: Chess.Board -> Parser Chess.Move
 blockPawn board = do
             x <- file
             y <- rank
-            let isPawn (Chess.Pawn _ _) = True
+            let colour = Chess.player board
+                isPawn (Chess.Pawn c _) = c == colour
                 isPawn _ = False
             parsedReturn $ blocking (x, y) $ movesWhere isPawn board
 
@@ -193,7 +195,8 @@ promotePawn board = do
             y <- rank
             _ <- char '='
             p <- piece (x, y) board
-            let pawnAt epos (Chess.Pawn _ pos) = pos == epos
+            let colour = Chess.player board
+                pawnAt epos (Chess.Pawn c pos) = (pos == epos) && c == colour
                 pawnAt _ _ = False
             parsedReturn $ promoting p $ movesWhere (pawnAt (x, y)) board 
 
@@ -212,11 +215,6 @@ bishop board = char 'B' >> (takePiece isBishop board <|> blockPiece isBishop boa
 
 knight :: Chess.Board -> Parser Chess.Move
 knight board = char 'N' >> ((try $ takePiece isKnight board) <|> (try $ blockPiece isKnight board))
-    where isKnight (Chess.Knight _ _) = True
-          isKnight _ = False
-
-knight' :: Chess.Board -> Parser Chess.Move
-knight' board = (try $ char 'N' >> takePiece isKnight board) <|> (try $ char 'N' >> blockPiece isKnight board)
     where isKnight (Chess.Knight _ _) = True
           isKnight _ = False
 
@@ -300,12 +298,12 @@ twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
     _  <- index
     m  <- move board
-    b  <- applied m board
+    b  <- unsafePerformIO $ fmap (const $ applied m board) $ putStrLn $ show m
     _  <- check
     _  <- mate
     _  <- spaceChar
     m' <- move b
-    b' <- applied m' b
+    b' <- unsafePerformIO $ fmap (const $ applied m' b) $ putStrLn $ show m'
     _  <- check
     _  <- mate
     _  <- spaceChar

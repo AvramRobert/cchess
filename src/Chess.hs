@@ -300,7 +300,11 @@ knightMoves :: Piece -> Board -> [Move]
 knightMoves piece board = catMaybes [attacks piece [U, U, R] board,
                                      attacks piece [U, U, L] board,
                                      attacks piece [D, D, R] board,
-                                     attacks piece [D, D, L] board]
+                                     attacks piece [D, D, L] board,
+                                     attacks piece [U, L, L] board,
+                                     attacks piece [U, R, R] board,
+                                     attacks piece [D, L, L] board,
+                                     attacks piece [D, R, R] board]
 
 moves :: Piece -> Board -> Set Move
 moves piece @ (Pawn _ _)   = S.fromList . pawnMoves piece
@@ -483,11 +487,15 @@ move m board = case (legality m board) of
                Continue -> (Continue, apply m board)
                outcome  -> (outcome, board)
 
-availableMoves :: Board -> [Move]
-availableMoves board = extract =<< (M.elems $ M.filter currentPlayer $ positions board)
-    where extract p = S.toList $ moves p board
+availableMoves :: Board -> Set Move
+availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
+    where gather set piece = set <> (moves piece board)
           currentPlayer p = (colour p) == (player board)
-               
+           
+movesFor :: (Piece -> Bool) -> Board -> Set Move
+movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
+    where gather set piece = set <> (moves piece board)
+
 board :: Board 
 board = Board { positions = M.fromList positions,
                 pastMoves = [],
@@ -508,21 +516,25 @@ instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
 
-instance Show Piece where
-    show (Pawn W _)   = " ♙ "
-    show (Pawn B _)   = " ♟ "
-    show (Rook W _)   = " ♖ "
-    show (Rook B _)   = " ♜ "
-    show (Bishop W _) = " ♗ "
-    show (Bishop B _) = " ♝ "
-    show (Knight W _) = " ♘ "
-    show (Knight B _) = " ♞ "
-    show (Queen W _)  = " ♕ "
-    show (Queen B _)  = " ♛ "
-    show (King W _)   = " ♔ "
-    show (King B _)   = " ♚ "
-    show (Empty _)    = "   "
+figure :: Piece -> String 
+figure (Pawn W p)   = "♙"
+figure (Pawn B _)   = "♟"
+figure (Rook W _)   = "♖"
+figure (Rook B _)   = "♜"
+figure (Bishop W _) = "♗"
+figure (Bishop B _) = "♝"
+figure (Knight W _) = "♘"
+figure (Knight B _) = "♞"
+figure (Queen W _)  = "♕"
+figure (Queen B _)  = "♛"
+figure (King W _)   = "♔"
+figure (King B _)   = "♚"
+figure (Empty _)    = " "
 
+
+instance Show Piece where
+    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
+    
 --- Idea:
 --- a) Do transformations in just one coordinate orientation and define an `invert` function that just inverts the values at the end for the respective colour
 --- x b) Concretise moves: Take, Block, TakeEp -> Piece Pos. Make only one Castle case but with a different data Side = Q | K
