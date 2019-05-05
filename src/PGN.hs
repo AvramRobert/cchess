@@ -40,11 +40,11 @@ games filename = fmap parseGames $ readFile $ "./chess_games/" <> filename
           acc gms lns = let (game, lns') = extractGame lns 
                         in acc (game : gms) lns'
 
-index :: Parser Int
-index = do
-    i <- C.digitChar
-    _ <- C.char '.'
-    return $ digitToInt i
+index :: Parser ()
+index = do 
+    _ <- M.takeWhileP Nothing (/= '.')
+    _ <- char '.'
+    return ()
 
 file :: Parser Int
 file = (char 'a' $> 1) <|>
@@ -211,7 +211,12 @@ bishop board = char 'B' >> (takePiece isBishop board <|> blockPiece isBishop boa
           isBishop _ = False
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char 'N' >> (takePiece isKnight board <|> blockPiece isKnight board)
+knight board = char 'N' >> ((try $ takePiece isKnight board) <|> (try $ blockPiece isKnight board))
+    where isKnight (Chess.Knight _ _) = True
+          isKnight _ = False
+
+knight' :: Chess.Board -> Parser Chess.Move
+knight' board = (try $ char 'N' >> takePiece isKnight board) <|> (try $ char 'N' >> blockPiece isKnight board)
     where isKnight (Chess.Knight _ _) = True
           isKnight _ = False
 
@@ -334,3 +339,8 @@ runPrint p = printErr . run p
 
 
 game1 = head $ unsafePerformIO $ games "batch0.pgn"
+
+compute :: String -> Chess.Board
+compute = foldl (\b m -> snd $ Chess.move m b) Chess.board . unwrap . run gameParser
+    where unwrap (Right m) = m
+          unwrap (Left _ ) = []

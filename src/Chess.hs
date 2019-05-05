@@ -221,12 +221,12 @@ attacks piece dir board = attack =<< at dir piece board
           opponent = opposite (colour piece)
 
 attacksR :: Piece -> [Dir] -> Board -> [Move]
-attacksR piece dir board = unfoldr move piece
-    where move p = keep =<< at dir p board
-          keep piece' | empty piece'    = Just (Block piece piece', piece')
-          keep piece' | opponent piece' = Just (Take  piece piece', piece')
-          keep _ = Nothing
-          opponent = opposite (colour piece)
+attacksR piece dir board = capture $ at dir piece board
+        where capture (Just piece') | empty piece' = (Block piece piece') : (capture $ at dir piece' board)
+              capture (Just piece') | opponent piece' = (Take piece piece') : []
+              capture _ = []
+              opponent = opposite (colour piece)
+
 
 castlesK :: Piece -> Board -> Maybe Move
 castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
@@ -281,10 +281,10 @@ kingMoves king board = catMaybes [attacks king [L, U] board,
                                   castlesQ king board]
 
 rookMoves :: Piece -> Board -> [Move]
-rookMoves piece board = (attacksR piece [U] board) ++ 
-                        (attacksR piece [L] board) ++ 
-                        (attacksR piece [R] board) ++
-                        (attacksR piece [D] board)
+rookMoves piece board = (attacksR piece [U] board)-- ++ 
+                        -- (attacksR piece [L] board) ++ 
+                        -- (attacksR piece [R] board) ++
+                        -- (attacksR piece [D] board)
 
                     
 bishopMoves :: Piece -> Board -> [Move]
@@ -482,7 +482,12 @@ move :: Move -> Board -> (Outcome, Board)
 move m board = case (legality m board) of 
                Continue -> (Continue, apply m board)
                outcome  -> (outcome, board)
-        
+
+availableMoves :: Board -> [Move]
+availableMoves board = extract =<< (M.elems $ M.filter currentPlayer $ positions board)
+    where extract p = S.toList $ moves p board
+          currentPlayer p = (colour p) == (player board)
+               
 board :: Board 
 board = Board { positions = M.fromList positions,
                 pastMoves = [],
