@@ -4,7 +4,7 @@ import qualified Chess as Chess
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char as C
 import qualified Data.Set as S
-import Text.Megaparsec (Parsec, (<|>), runParser, try)
+import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar)
 import Data.Char (digitToInt)
 import Control.Monad (void)
@@ -17,21 +17,19 @@ type Parser a = Parsec Void String a
 
 data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq) 
 
-stripNewLines :: String -> String
-stripNewLines = filter (not . newLine) 
-    where newLine '\n' = True
-          newLine '\r' = True
-          newLine  _   = False
+mergeLines :: [String] -> String
+mergeLines [] = ""
+mergeLines (l : ls) = (fmap toSpace l) <> mergeLines ls
+    where toSpace '\n' = ' '
+          toSpace '\r' = ' '
+          toSpace char = char
 
 extractGame :: [String] -> (String, [String])
-extractGame pgnLines = (game, remLines)
-    where game = stripNewLines $ unlines gameLines
+extractGame pgnLines = (mergeLines gameLines, remLines)
+    where headless  = drop 12 pgnLines
           gameLines = takeWhile (not . newLine) headless
-          headless  = drop 12 pgnLines
           remLines  = drop ((length gameLines) + 1) headless
-          newLine "\n" = True
-          newLine "\r" = True
-          newLine _    = False
+          newLine s = (s == "\n") || (s == "\r")
 
 games :: String -> IO [String]
 games filename = fmap parseGames $ readFile $ "./chess_games/" <> filename
@@ -39,6 +37,9 @@ games filename = fmap parseGames $ readFile $ "./chess_games/" <> filename
           acc gms [] = reverse gms
           acc gms lns = let (game, lns') = extractGame lns 
                         in acc (game : gms) lns'
+
+delimitation :: Parser ()
+delimitation = void $ many spaceChar
 
 index :: Parser ()
 index = do 
@@ -205,27 +206,32 @@ pawn board = (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blo
 
 rook :: Chess.Board -> Parser Chess.Move
 rook board = char 'R' >> (takePiece isRook board <|> blockPiece isRook board)
-    where isRook (Chess.Rook _ _) = True
+    where colour = Chess.player board
+          isRook (Chess.Rook c _) = c == colour
           isRook _ = False
 
 bishop :: Chess.Board -> Parser Chess.Move
 bishop board = char 'B' >> (takePiece isBishop board <|> blockPiece isBishop board)
-    where isBishop (Chess.Bishop _ _) = True
+    where colour = Chess.player board
+          isBishop (Chess.Bishop c _) = c == colour  
           isBishop _ = False
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char 'N' >> ((try $ takePiece isKnight board) <|> (try $ blockPiece isKnight board))
-    where isKnight (Chess.Knight _ _) = True
+knight board = char 'N' >> (takePiece isKnight board <|> blockPiece isKnight board)
+    where colour = Chess.player board
+          isKnight (Chess.Knight c _) = c == colour
           isKnight _ = False
 
 queen :: Chess.Board -> Parser Chess.Move
 queen board = char 'Q' >> (takePiece isQueen board <|> blockPiece isQueen board)
-    where isQueen (Chess.Queen _ _) = True
+    where colour = Chess.player board
+          isQueen (Chess.Queen c _) = c == colour 
           isQueen _ = False
 
 king :: Chess.Board -> Parser Chess.Move
 king board = char 'K' >> (takePiece isKing board <|> blockPiece isKing board)
-    where isKing (Chess.King _ _) = True
+    where colour = Chess.player board
+          isKing (Chess.King c _) = c == colour
           isKing _ = False
 
 kingCastle :: Chess.Board -> Parser Chess.Move
@@ -290,7 +296,7 @@ oneMove board = do
     b <- applied m board
     _ <- check
     _ <- mate
-    _ <- spaceChar
+    _ <- delimitation
     _ <- end
     return (b, One m)
 
@@ -298,15 +304,15 @@ twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
     _  <- index
     m  <- move board
-    b  <- unsafePerformIO $ fmap (const $ applied m board) $ putStrLn $ show m
+    b  <- applied m board
     _  <- check
     _  <- mate
-    _  <- spaceChar
+    _  <- delimitation
     m' <- move b
-    b' <- unsafePerformIO $ fmap (const $ applied m' b) $ putStrLn $ show m'
+    b' <- applied m' b
     _  <- check
     _  <- mate
-    _  <- spaceChar
+    _  <- delimitation
     return (b', Two (m, m'))
 
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
@@ -329,12 +335,6 @@ printErr (Right _) = putStrLn "No ERROR!"
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
 
--- These things have a lot of implicit knowledge in them. It's annoying
--- disambiguation strategies: 
-         -- 1. if the files are different, the originating file is inserted right after the piece letter
-         -- 2. if the files are the same, but the ranks are different, the rank digit is inserted right after the piece letter
-         -- 3. if 1. and 2. fail, the originating file and rank digit are inserted after the piece letter
-
 
 game1 = head $ unsafePerformIO $ games "batch0.pgn"
 
@@ -342,3 +342,10 @@ compute :: String -> Chess.Board
 compute = foldl (\b m -> snd $ Chess.move m b) Chess.board . unwrap . run gameParser
     where unwrap (Right m) = m
           unwrap (Left _ ) = []
+
+-- These things have a lot of implicit knowledge in them. It's annoying
+-- disambiguation strategies: 
+         -- 1. if the files are different, the originating file is inserted right after the piece letter
+         -- 2. if the files are the same, but the ranks are different, the rank digit is inserted right after the piece letter
+         -- 3. if 1. and 2. fail, the originating file and rank digit are inserted after the piece letter
+        
