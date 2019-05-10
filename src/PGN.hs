@@ -11,6 +11,7 @@ import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import Data.Void (Void)
+import System.IO.Unsafe (unsafePerformIO)
 
 type Parser a = Parsec Void String a
 
@@ -291,6 +292,7 @@ noMove board = end $> (board, End)
 oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
 oneMove board = do
     _ <- index
+    _ <- delimitation
     m <- move board
     b <- applied m board
     _ <- check
@@ -302,6 +304,7 @@ oneMove board = do
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
     _  <- index
+    _  <- delimitation
     m  <- move board
     b  <- applied m board
     _  <- check
@@ -341,3 +344,6 @@ printErr (Right _) = putStrLn "No ERROR!"
 
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
+
+game :: Int -> String
+game n = (unsafePerformIO $ games "batch0.pgn") !! n
