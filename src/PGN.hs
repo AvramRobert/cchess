@@ -324,10 +324,13 @@ gameParser = turns [] Chess.board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
 
-parseGame :: String -> Chess.Board
-parseGame = foldl (\b m -> snd $ Chess.move m b) Chess.board . unwrap . run gameParser
-    where unwrap (Right m) = m
-          unwrap (Left _ ) = []
+parseGame :: String -> [Chess.Move]
+parseGame = unwrap . run gameParser
+    where unwrap (Right ms) = ms
+          unwrap (Left _)   = []
+
+computeGame :: String -> Chess.Board
+computeGame = foldl (\b m -> snd $ Chess.move m b) Chess.board . parseGame
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
