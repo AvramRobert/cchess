@@ -4,12 +4,10 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.List (find, intersperse, unfoldr, any)
-import Control.Monad (foldM, mfilter)
+import Data.List (find, intersperse, any)
+import Control.Monad (mfilter)
 import Control.Monad.Zip (mzip)
-import Control.Applicative ((<|>))
-import Data.Maybe (maybe, catMaybes, fromMaybe, isNothing, isJust)
-import System.IO.Unsafe (unsafePerformIO)
+import Data.Maybe (catMaybes, fromMaybe, isNothing)
 
 type Pos = (Int, Int)
 
@@ -360,24 +358,6 @@ kcastle move board = if free then Continue else Illegal
                   then [(5, 1), (6, 1), (7, 1)]
                   else [(5, 8), (6, 8), (7, 8)]   
 
-{- 
-Rules of drawing:
-            1. Stalemate: Not in check, but has no legal move
-            2. Threefold repetition of a position: 
-                    -> If it's the same player's turn to move, and there have been 3 positions throughout the game where he was in the exact same position,
-                       with exactly the same possible moves => he can claim a draw (not automatic)
-
-            3. 50 move rule (not automatic): No captures or pawns moved in the last 50 moves
-            4. Impossible checkmates:
-                    -> King vs King
-                    -> King Bishop vs King
-
-                    -> King Kinght vs King
-                    -> King Bishop vs King Bishop (where bishops have the same colour)
-            5. Mutual agreement. 
-
--}
-
 stalemate :: Board -> Outcome
 stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate else Continue
             where immovable = S.null $ moves king board 
@@ -530,8 +510,20 @@ figure (Empty _)    = " "
 instance Show Piece where
     show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
     
---- Idea:
---- a) Do transformations in just one coordinate orientation and define an `invert` function that just inverts the values at the end for the respective colour
---- x b) Concretise moves: Take, Block, TakeEp -> Piece Pos. Make only one Castle case but with a different data Side = Q | K
---- c) Use board colour, not piece colour
---- d) Steer directions based on the board, not the piece
+{- 
+Rules of drawing:
+            1. Stalemate: Not in check, but has no legal move
+            2. Threefold repetition of a position: 
+                    -> If it's the same player's turn to move, and there have been 3 positions throughout the game where he was in the exact same position,
+                       with exactly the same possible moves => he can claim a draw (not automatic)
+
+            3. 50 move rule (not automatic): No captures or pawns moved in the last 50 moves
+            4. Impossible checkmates:
+                    -> King vs King
+                    -> King Bishop vs King
+
+                    -> King Kinght vs King
+                    -> King Bishop vs King Bishop (where bishops have the same colour)
+            5. Mutual agreement. 
+
+-}

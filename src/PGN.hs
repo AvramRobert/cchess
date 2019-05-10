@@ -11,7 +11,6 @@ import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import Data.Void (Void)
-import System.IO.Unsafe (unsafePerformIO)
 
 type Parser a = Parsec Void String a
 
@@ -325,6 +324,11 @@ gameParser = turns [] Chess.board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
 
+parseGame :: String -> Chess.Board
+parseGame = foldl (\b m -> snd $ Chess.move m b) Chess.board . unwrap . run gameParser
+    where unwrap (Right m) = m
+          unwrap (Left _ ) = []
+
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
 
@@ -334,18 +338,3 @@ printErr (Right _) = putStrLn "No ERROR!"
 
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
-
-
-game1 = head $ unsafePerformIO $ games "batch0.pgn"
-
-compute :: String -> Chess.Board
-compute = foldl (\b m -> snd $ Chess.move m b) Chess.board . unwrap . run gameParser
-    where unwrap (Right m) = m
-          unwrap (Left _ ) = []
-
--- These things have a lot of implicit knowledge in them. It's annoying
--- disambiguation strategies: 
-         -- 1. if the files are different, the originating file is inserted right after the piece letter
-         -- 2. if the files are the same, but the ranks are different, the rank digit is inserted right after the piece letter
-         -- 3. if 1. and 2. fail, the originating file and rank digit are inserted after the piece letter
-        
