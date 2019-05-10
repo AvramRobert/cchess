@@ -78,7 +78,7 @@ mate = void $ M.takeWhileP Nothing (== '#')
 taking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
 taking square = find take
     where take (Chess.Take piece piece')     = (Chess.colour piece /= Chess.colour piece') && (Chess.position piece' == square)
-          take (Chess.TakeEP piece piece' _) = (Chess.colour piece /= Chess.colour piece') && (Chess.position piece' == square)
+          take (Chess.TakeEP piece piece' piece'') = (Chess.colour piece /= Chess.colour piece'') && (Chess.position piece' == square)
           take _ = False
 
 blocking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move

@@ -9,6 +9,11 @@ import Control.Monad (mfilter)
 import Control.Monad.Zip (mzip)
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 
+-- This is all over the fucking place
+-- Firstly: The current player colour should be global in the board
+-- Secondly: There is a separate scenario where I fictively reposition a piece at various points squares on the board. This repositioning should NOT alter the global colour
+-- This fictive repositioning forces me to manually alter a piece's colour for example just to keep the rest of the logic working. I don't like this
+
 type Pos = (Int, Int)
 
 data Colour = B | W | T deriving (Eq, Show, Ord)
@@ -223,7 +228,6 @@ attacksR piece dir board = capture $ at dir piece board
               capture _ = []
               opponent = opposite (colour piece)
 
-
 castlesK :: Piece -> Board -> Maybe Move
 castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
     where inPlace (king, rook) = (rook == rookS) && (king == kingS)
@@ -255,8 +259,8 @@ pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
                                   promote pawn (Bishop c p) board,
                                   promote pawn (Knight c p) board,
                                   promote pawn (Rook c p) board,
-                                  enpassant pawn [R, D] board,
-                                  enpassant pawn [L, D] board,
+                                  enpassant pawn [R, U] board,
+                                  enpassant pawn [L, U] board,
                                   takes pawn  [L, U] board,
                                   takes pawn  [R, U] board,
                                   blocks pawn [U] board,
@@ -311,17 +315,23 @@ moves piece @ (Queen _ _)  = S.fromList . queenMoves piece
 moves piece @ (King _ _)   = S.fromList . kingMoves piece
 moves piece @ (Empty _)    = const (S.empty)
 
+-- Here I have to fictively remap the board 
 threats :: Board -> Set Pos
 threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
-            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
+            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board')
+                  board' = changeTurn board
                   threat (Take _ _) = True
                   threat (Block _ _) = True
                   threat (TakeEP _ _ _) = True
                   threat _ = False
 
+checked :: Board -> Bool
+checked board = S.member (position king) $ threats board
+        where king = currentKing board
+
 isCheck :: Move -> Board -> Bool 
 isCheck move board  = S.member (position king) $ threats board'
-    where board'  = (apply move board) { player = player board }
+    where board'  = attempt move board
           king    = currentKing board'
 
 isCheckmate :: Board -> Bool
@@ -440,22 +450,26 @@ remove :: Piece -> Board -> Board
 remove piece board = board { positions = M.insert pos (Empty pos) $ positions board }
             where pos = position piece
 
+attempt :: Move -> Board -> Board
+attempt move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
+attempt move @ (CastleQ m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
+attempt move @ (TakeEP  piece piece' piece'') = add (perform move) . remove piece'' . remove piece
+attempt move @ (Jump    piece piece')   = add (perform move) . remove piece
+attempt move @ (Take    piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
+attempt move @ (Block   piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
+attempt move @ (Promote piece piece')   = add (perform move) . remove piece
+
 apply :: Move -> Board -> Board
-apply move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = changeTurn . accumulate move . adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
-apply move @ (CastleQ m1 @ (Block king _) m2 @ (Block rook _)) = changeTurn . accumulate move . adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
-apply move @ (TakeEP  piece piece' piece'') = changeTurn . accumulate move . add (perform move) . remove piece''
-apply move @ (Jump    piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
-apply move @ (Take    piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
-apply move @ (Block   piece piece')   = changeTurn . accumulate move . adjustKings (perform move) . add (perform move) . remove piece
-apply move @ (Promote piece piece')   = changeTurn . accumulate move . add (perform move) . remove piece
+apply move = changeTurn . accumulate move . attempt move
 
 legality :: Move -> Board -> Outcome
-legality m @ (Take  p _)   board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Block p _)   board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Jump  p _)   board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Promote p _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (CastleK _ _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (kcastle m board) ~> (draw board)
-legality m @ (CastleQ _ _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (qcastle m board) ~> (draw board)
+legality m @ (Take _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
+legality m @ (TakeEP _ _ _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
+legality m @ (Block _ _)    board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
+legality m @ (Jump _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
+legality m @ (Promote _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
+legality m @ (CastleK _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (kcastle m board) ~> (draw board)
+legality m @ (CastleQ _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (qcastle m board) ~> (draw board)
 
 move :: Move -> Board -> (Outcome, Board)
 move m board = case (legality m board) of 
