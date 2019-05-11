@@ -24,6 +24,7 @@ dependencies:
 - containers
 - QuickCheck
 - megaparsec
+- bytestring
 
 library:
   source-dirs: src
@@ -40,6 +41,7 @@ executables:
     - cchess
     - containers
     - megaparsec
+    - bytestring
 
 tests:
   cchess-test:
@@ -53,3 +55,4 @@ tests:
     - cchess
     - QuickCheck
     - megaparsec
+    - bytestring

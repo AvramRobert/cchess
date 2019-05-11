@@ -2,10 +2,12 @@ module PGN where
 
 import qualified Chess as Chess
 import qualified Text.Megaparsec as M
-import qualified Text.Megaparsec.Char as C
 import qualified Data.Set as S
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C
+import Data.ByteString (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
-import Text.Megaparsec.Char (char, string, spaceChar)
+import Text.Megaparsec.Char (char, string, spaceChar, numberChar)
 import Data.Char (digitToInt)
 import Control.Monad (void)
 import Data.Functor (($>))
@@ -15,37 +17,37 @@ import System.IO.Unsafe (unsafePerformIO)
 
 type Parser a = Parsec Void String a
 
+type Game = String
+
 data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq) 
 
-mergeLines :: [String] -> String
-mergeLines [] = ""
-mergeLines (l : ls) = (fmap toSpace l) <> mergeLines ls
-    where toSpace '\n' = ' '
+merge :: [ByteString] -> String
+merge [] = []
+merge (l : ls) = (C.unpack $ spaced l) <> merge ls
+    where spaced = C.map toSpace
+          toSpace '\n' = ' '
           toSpace '\r' = ' '
-          toSpace char = char
+          toSpace char = char        
 
-extractGame :: [String] -> (String, [String])
-extractGame pgnLines = (mergeLines gameLines, remLines)
-    where headless  = drop 12 pgnLines
-          gameLines = takeWhile (not . newLine) headless
-          remLines  = drop ((length gameLines) + 1) headless
-          newLine s = (s == "\n") || (s == "\r")
+extractGame :: [ByteString] -> (String, [ByteString])
+extractGame lines = (merge gameLines, lines')
+        where headless  = dropWhile headline lines
+              gameLines = takeWhile (not . headline) headless
+              lines'    = dropWhile (not . headline) headless
+              headline string = C.head string == '['
 
-games :: String -> IO [String]
-games filename = fmap parseGames $ readFile $ "./chess_games/" <> filename
-    where parseGames = acc [] . lines
-          acc gms [] = reverse gms
-          acc gms lns = let (game, lns') = extractGame lns 
-                        in acc (game : gms) lns'
+fromPGN :: String -> IO [Game]
+fromPGN filename = fmap parseGames $ B.readFile $ "./chess_games/" <> filename
+    where parseGames = acc . (C.split '\n')
+          acc []     = []
+          acc lines  = let (game, lines') = extractGame lines
+                       in game : (acc lines')
 
 delimitation :: Parser ()
 delimitation = void $ many spaceChar
 
 index :: Parser ()
-index = do 
-    _ <- M.takeWhileP Nothing (/= '.')
-    _ <- char '.'
-    return ()
+index = void $ M.takeWhileP Nothing (/= '.') >> (char '.')
 
 file :: Parser Int
 file = (char 'a' $> 1) <|>
@@ -67,7 +69,7 @@ piece pos board = (char 'Q' >> (convert Chess.Queen))  <|>
         convert f = parsedReturn $ fmap (promote f) $ Chess.lookAt pos board
 
 rank :: Parser Int
-rank = fmap digitToInt $ C.numberChar
+rank = fmap digitToInt $ numberChar
 
 check :: Parser ()
 check = void $ M.takeWhileP Nothing (== '+')
@@ -77,14 +79,14 @@ mate = void $ M.takeWhileP Nothing (== '#')
 
 taking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
 taking square = find take
-    where take (Chess.Take piece piece')     = (Chess.colour piece /= Chess.colour piece') && (Chess.position piece' == square)
+    where take (Chess.Take piece piece')           = (Chess.colour piece /= Chess.colour piece') && (Chess.position piece' == square)
           take (Chess.TakeEP piece piece' piece'') = (Chess.colour piece /= Chess.colour piece'') && (Chess.position piece' == square)
           take _ = False
 
 blocking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
 blocking square = find move
     where move (Chess.Block piece (Chess.Empty square')) = square == square'
-          move (Chess.Jump piece (Chess.Empty square')) = square == square'
+          move (Chess.Jump piece (Chess.Empty square'))  = square == square'
           move _ = False
 
 promoting :: Chess.Piece -> [Chess.Move] -> Maybe Chess.Move
@@ -291,6 +293,7 @@ noMove board = end $> (board, End)
 
 oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
 oneMove board = do
+    _ <- delimitation
     _ <- index
     _ <- delimitation
     m <- move board
@@ -303,6 +306,7 @@ oneMove board = do
 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
+    _  <- delimitation
     _  <- index
     _  <- delimitation
     m  <- move board
@@ -345,5 +349,5 @@ printErr (Right _) = putStrLn "No ERROR!"
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
 
-game :: Int -> String
-game n = (unsafePerformIO $ games "batch0.pgn") !! n
+game :: Int -> Game
+game n = (unsafePerformIO $ fromPGN "batch1.pgn") !! n
