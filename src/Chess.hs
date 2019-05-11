@@ -55,6 +55,30 @@ data Board = Board {positions :: Map Pos Piece,
                     blackKing :: Piece,
                     player    :: Colour}
 
+
+instance Show Board where
+    show board = unlines $ fmap row [1..8]
+        where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
+
+figure :: Piece -> String 
+figure (Pawn W p)   = "♙"
+figure (Pawn B _)   = "♟"
+figure (Rook W _)   = "♖"
+figure (Rook B _)   = "♜"
+figure (Bishop W _) = "♗"
+figure (Bishop B _) = "♝"
+figure (Knight W _) = "♘"
+figure (Knight B _) = "♞"
+figure (Queen W _)  = "♕"
+figure (Queen B _)  = "♛"
+figure (King W _)   = "♔"
+figure (King B _)   = "♚"
+figure (Empty _)    = " "
+
+instance Show Piece where
+    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
+    
+    
 (~>) :: Outcome -> Outcome -> Outcome
 Check     ~> _         = Check
 Continue  ~> Check     = Check
@@ -476,15 +500,6 @@ move m board = case (legality m board) of
                Continue -> (Continue, apply m board)
                outcome  -> (outcome, board)
 
-availableMoves :: Board -> Set Move
-availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
-    where gather set piece = set <> (moves piece board)
-          currentPlayer p = (colour p) == (player board)
-           
-movesFor :: (Piece -> Bool) -> Board -> Set Move
-movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
-    where gather set piece = set <> (moves piece board)
-
 board :: Board 
 board = Board { positions = M.fromList positions,
                 pastMoves = [],
@@ -501,29 +516,17 @@ board = Board { positions = M.fromList positions,
                        (row W 2 pawns) ++ 
                        (row W 1 pieces)
 
-instance Show Board where
-    show board = unlines $ fmap row [1..8]
-        where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
+---- API ----
 
-figure :: Piece -> String 
-figure (Pawn W p)   = "♙"
-figure (Pawn B _)   = "♟"
-figure (Rook W _)   = "♖"
-figure (Rook B _)   = "♜"
-figure (Bishop W _) = "♗"
-figure (Bishop B _) = "♝"
-figure (Knight W _) = "♘"
-figure (Knight B _) = "♞"
-figure (Queen W _)  = "♕"
-figure (Queen B _)  = "♛"
-figure (King W _)   = "♔"
-figure (King B _)   = "♚"
-figure (Empty _)    = " "
+availableMoves :: Board -> Set Move
+availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
+    where gather set piece = set <> (moves piece board)
+          currentPlayer p = (colour p) == (player board)
+           
+movesFor :: (Piece -> Bool) -> Board -> Set Move
+movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
+    where gather set piece = set <> (moves piece board)
 
-
-instance Show Piece where
-    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
-    
 {- 
 Rules of drawing:
             1. Stalemate: Not in check, but has no legal move

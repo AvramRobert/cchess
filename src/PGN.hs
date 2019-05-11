@@ -351,3 +351,12 @@ runPrint p = printErr . run p
 
 game :: Int -> Game
 game n = (unsafePerformIO $ fromPGN "batch1.pgn") !! n
+
+
+-- Improvements --
+
+-- 1. Improve errors of the reader. Make parsing errors and illegality errors explicit when manually failing
+-- 2. Write an explicit test somewhere, that reads games form a PGN file: game0, game1, game 4, game 10 from batch1 are good samples
+-- 3. Make this into a proper API
+-- 4. Reuse the functions from Chess. (or better, perhaps write a different module that just exposes something like a Chess API)
+-- 5. Write a function that reads a PGN file and outputs chess moves
