@@ -358,3 +358,4 @@ game n = (unsafePerformIO $ fromPGN "batch1.pgn") !! n
 -- 3. Make this into a proper API
 -- 4. Reuse the functions from Chess. (or better, perhaps write a different module that just exposes something like a Chess API)
 -- 5. Write a function that reads a PGN file and outputs chess moves
+-- 6. PGN has implicit knowledge about which colour is doing which move. The first move after the index is always white. Second one is black. -> I could use this

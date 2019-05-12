@@ -7,6 +7,7 @@ import qualified Data.Set as S
 import Data.List (find, intersperse, any)
 import Control.Monad (mfilter)
 import Control.Monad.Zip (mzip)
+import Control.Applicative ((<|>))
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 
 -- This is all over the fucking place
@@ -60,6 +61,10 @@ instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
 
+kingCastle :: Colour -> Move
+kingCastle W = CastleK (Block (King W (5, 1)) (Empty (7, 1))) (Block (Rook W (8, 1)) (Empty (6, 1)))
+kingCastle B = CastleK (Block (King B (5, 8)) (Empty (7, 8))) (Block (Rook B (8, 8)) (Empty (6, 8)))
+
 figure :: Piece -> String 
 figure (Pawn W p)   = "♙"
 figure (Pawn B _)   = "♟"
@@ -77,7 +82,6 @@ figure (Empty _)    = " "
 
 instance Show Piece where
     show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
-    
     
 (~>) :: Outcome -> Outcome -> Outcome
 Check     ~> _         = Check
@@ -145,9 +149,6 @@ currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
 currentKing (Board _ _ _ bk B) = bk
 
-piecesWhere :: (Piece -> Bool) -> Board -> [Piece]
-piecesWhere p = M.elems . M.filter p . positions
-
 left :: Colour -> Pos -> Pos
 left _ (x, y) = (x - 1, y)
 
@@ -204,14 +205,13 @@ lookAt p (Board ps _ _ _ _) = M.lookup p ps
 isAt :: Pos -> (Piece -> Bool) -> Board -> Bool
 isAt pos p (Board ps _ _ _ _) = fromMaybe False $ fmap p $ M.lookup pos ps
 
-at :: [Dir] -> Piece -> Board -> Maybe Piece
-at dir piece board = lookAt (steer pos clr dir) board
+lookInto :: [Dir] -> Piece -> Board -> Maybe Piece
+lookInto dir piece = lookAt (steer pos clr dir)
     where pos = position piece
-          clr = case (colour piece) of T -> player board
-                                       _ -> colour piece
+          clr = colour piece
 
-enpassant :: Piece -> [Dir] -> Board -> Maybe Move
-enpassant piece dir board = fmap take $ mfilter passant $ fmap perform $ mfilter jump $ maybeFirst $ pastMoves board
+enpassant :: [Dir] -> Piece -> Board -> Maybe Move
+enpassant dir piece board = fmap take $ mfilter passant $ fmap perform $ mfilter jump $ maybeFirst $ pastMoves board
     where maybeFirst (x : xs) = Just x
           maybeFirst _ = Nothing
           jump (Jump _ _) = True
@@ -225,32 +225,27 @@ promote piece @ (Pawn W (_, 8)) piece' board = Just (Promote piece piece')
 promote piece @ (Pawn B (_, 1)) piece' board = Just (Promote piece piece')
 promote _ _ _ = Nothing
 
-takes :: Piece -> [Dir] -> Board -> Maybe Move
-takes piece dir = fmap (Take piece) . mfilter (opposite (colour piece)) . at dir piece
+capture :: [Dir] -> Piece -> Board -> Maybe Move
+capture dir piece = fmap (Take piece) . mfilter (opposite $ colour piece) . lookInto dir piece
 
-blocks :: Piece -> [Dir] -> Board -> Maybe Move
-blocks piece dir = fmap (Block piece) . mfilter empty . at dir piece
+block :: [Dir] -> Piece -> Board -> Maybe Move
+block dir piece = fmap (Block piece) . mfilter empty . lookInto dir piece
 
-jumps :: Piece -> [Dir] -> Board -> Maybe Move
-jumps piece dir = fmap (Jump piece) . mfilter empty . mfilter (const atStart) . at dir piece
+jump :: [Dir] -> Piece -> Board -> Maybe Move
+jump dir piece = fmap (Jump piece) . mfilter empty . mfilter (const atStart) . lookInto dir piece
     where atStart = case (position piece) of 
                          (x, 2) -> white piece
                          (x, 7) -> black piece
                          (_, _) -> False
 
-attacks :: Piece -> [Dir] -> Board -> Maybe Move
-attacks piece dir board = attack =<< at dir piece board 
-    where attack piece' | opponent piece' = Just $ Take piece piece'
-          attack piece' | empty piece' = Just $ Block piece piece'
-          attack _ = Nothing
-          opponent = opposite (colour piece)
+attack :: [Dir] -> Piece -> Board -> Maybe Move
+attack dir piece board = (block dir piece board) <|> (capture dir piece board) 
 
-attacksR :: Piece -> [Dir] -> Board -> [Move]
-attacksR piece dir board = capture $ at dir piece board
-        where capture (Just piece') | empty piece' = (Block piece piece') : (capture $ at dir piece' board)
-              capture (Just piece') | opponent piece' = (Take piece piece') : []
-              capture _ = []
-              opponent = opposite (colour piece)
+attacking :: [Dir] -> Piece  -> Board -> [Move]
+attacking dir piece board = gather $ attack dir piece board
+        where gather (Just m @ (Block _ piece')) = (Block piece piece') : (gather $ attack dir (perform m) board)
+              gather (Just m @ (Take  _ piece')) = (Take piece piece') : (gather Nothing)
+              gather (Nothing)                   = []
 
 castlesK :: Piece -> Board -> Maybe Move
 castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
@@ -283,52 +278,52 @@ pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
                                   promote pawn (Bishop c p) board,
                                   promote pawn (Knight c p) board,
                                   promote pawn (Rook c p) board,
-                                  enpassant pawn [R, U] board,
-                                  enpassant pawn [L, U] board,
-                                  takes pawn  [L, U] board,
-                                  takes pawn  [R, U] board,
-                                  blocks pawn [U] board,
-                                  jumps pawn  [U, U] board]
+                                  block [U] pawn board,
+                                  enpassant [R, U] pawn board,
+                                  enpassant [L, U] pawn board,
+                                  capture [L, U] pawn board,
+                                  capture [R, U] pawn board,
+                                  jump [U, U] pawn board]
         where c = colour pawn
               p = position pawn
 
 kingMoves :: Piece -> Board -> [Move]
-kingMoves king board = catMaybes [attacks king [L, U] board,
-                                  attacks king [U] board,
-                                  attacks king [U, R] board,
-                                  attacks king [R] board,
-                                  attacks king [D, R] board,
-                                  attacks king [D] board,
-                                  attacks king [D, L] board,
-                                  attacks king [L] board,
+kingMoves king board = catMaybes [attack [L, U] king board, 
+                                  attack [U, R] king board,
+                                  attack [D, R] king board,
+                                  attack [D, L] king board,
+                                  attack [U] king board,
+                                  attack [R] king board,
+                                  attack [D] king board,
+                                  attack [L] king board,
                                   castlesK king board,
                                   castlesQ king board]
 
 rookMoves :: Piece -> Board -> [Move]
-rookMoves piece board = (attacksR piece [U] board) ++ 
-                        (attacksR piece [L] board) ++ 
-                        (attacksR piece [R] board) ++
-                        (attacksR piece [D] board)
+rookMoves rook board = (attacking [U] rook board) ++ 
+                       (attacking [L] rook board) ++ 
+                       (attacking [R] rook board) ++
+                       (attacking [D] rook board)
 
                     
 bishopMoves :: Piece -> Board -> [Move]
-bishopMoves piece board = (attacksR piece [L, U] board) ++
-                          (attacksR piece [R, U] board) ++
-                          (attacksR piece [L, D] board) ++
-                          (attacksR piece [R, D] board)
+bishopMoves bishop board = (attacking [L, U] bishop board) ++
+                           (attacking [R, U] bishop board) ++
+                           (attacking [L, D] bishop board) ++
+                           (attacking [R, D] bishop board)
 
 queenMoves :: Piece -> Board -> [Move]
-queenMoves piece board = (rookMoves piece board) ++ (bishopMoves piece board)
+queenMoves queen board = (rookMoves queen board) ++ (bishopMoves queen board)
 
 knightMoves :: Piece -> Board -> [Move]
-knightMoves piece board = catMaybes [attacks piece [U, U, R] board,
-                                     attacks piece [U, U, L] board,
-                                     attacks piece [D, D, R] board,
-                                     attacks piece [D, D, L] board,
-                                     attacks piece [U, L, L] board,
-                                     attacks piece [U, R, R] board,
-                                     attacks piece [D, L, L] board,
-                                     attacks piece [D, R, R] board]
+knightMoves knight board = catMaybes [attack [U, U, R] knight board,
+                                      attack [U, U, L] knight board,
+                                      attack [D, D, R] knight board,
+                                      attack [D, D, L] knight board,
+                                      attack [U, L, L] knight board,
+                                      attack [U, R, R] knight board,
+                                      attack [D, L, L] knight board,
+                                      attack [D, R, R] knight board]
 
 moves :: Piece -> Board -> Set Move
 moves piece @ (Pawn _ _)   = S.fromList . pawnMoves piece
@@ -526,6 +521,10 @@ availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $
 movesFor :: (Piece -> Bool) -> Board -> Set Move
 movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
     where gather set piece = set <> (moves piece board)
+
+-- Change `at` to use the piece colour, not the board colour` (alawys move the piece on the board and recur. That should keep the colour)
+-- Move the path castles check to the castles move generator
+-- Rethink the castles algebraic case. It needn't be CastleK Move Move. It can be Castle King
 
 {- 
 Rules of drawing:
