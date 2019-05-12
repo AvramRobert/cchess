@@ -235,36 +235,12 @@ king board = char 'K' >> (takePiece isKing board <|> blockPiece isKing board)
           isKing _ = False
 
 kingCastle :: Chess.Board -> Parser Chess.Move
-kingCastle board = do
-        _ <- string "O-O"
-        let colour = Chess.player board
-            white  = colour == Chess.W
-            king   = if white then Chess.King Chess.W (5, 1)
-                              else Chess.King Chess.B (5, 8)
-            rook   = if white then Chess.Rook Chess.W (8, 1)
-                              else Chess.Rook Chess.B (8, 8)
-            eKing  = if white then Chess.Empty (7, 1)
-                              else Chess.Empty (7, 8)
-            eRook  = if white then Chess.Empty (6, 1)
-                              else Chess.Empty (6, 8)
-            castle = Chess.CastleK (Chess.Block king eKing) (Chess.Block rook eRook)
-        parsedReturn $ Just castle
+kingCastle board = string "O-O" $> (Chess.kingSideCastle colour)
+    where colour = Chess.player board
 
 queenCastle :: Chess.Board -> Parser Chess.Move
-queenCastle board = do
-        _ <- string "O-O-O"
-        let colour = Chess.player board
-            white  = colour == Chess.W
-            king   = if white then Chess.King colour (5, 1) 
-                              else Chess.King colour (5, 8)
-            rook   = if white then Chess.Rook colour (1, 1)
-                              else Chess.Rook colour (1, 8)
-            eKing  = if white then Chess.Empty (3, 1) 
-                              else Chess.Empty (3, 8)
-            eRook  = if white then Chess.Empty (4, 1) 
-                              else Chess.Empty (4, 8)
-            castle = Chess.CastleQ (Chess.Block king eKing) (Chess.Block rook eRook)
-        parsedReturn $ Just castle
+queenCastle board = string "O-O-O" $> (Chess.queenSideCastle colour)
+    where colour = Chess.player board
 
 castle :: Chess.Board -> Parser Chess.Move
 castle board = (try $ queenCastle board) <|> (try $ kingCastle board)
@@ -275,7 +251,7 @@ move board = (try $ pawn board)   <|>
              (try $ rook board)   <|>
              (try $ bishop board) <|> 
              (try $ knight board) <|>
-             (try $ queen  board) <|>
+             (try $ queen board)  <|>
              (try $ castle board)
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
@@ -358,4 +334,3 @@ game n = (unsafePerformIO $ fromPGN "batch1.pgn") !! n
 -- 3. Make this into a proper API
 -- 4. Reuse the functions from Chess. (or better, perhaps write a different module that just exposes something like a Chess API)
 -- 5. Write a function that reads a PGN file and outputs chess moves
--- 6. PGN has implicit knowledge about which colour is doing which move. The first move after the index is always white. Second one is black. -> I could use this

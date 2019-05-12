@@ -494,10 +494,6 @@ movesFor :: (Piece -> Bool) -> Board -> Set Move
 movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
     where gather set piece = set <> (moves piece board)
 
--- Change `at` to use the piece colour, not the board colour` (alawys move the piece on the board and recur. That should keep the colour)
--- Move the path castles check to the castles move generator
--- Rethink the castles algebraic case. It needn't be CastleK Move Move. It can be Castle King
-
 {- 
 Rules of drawing:
             1. Stalemate: Not in check, but has no legal move
