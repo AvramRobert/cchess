@@ -56,25 +56,33 @@ instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
 
-kingCastleRook :: Colour -> Piece
-kingCastleRook W = Rook W (8, 1)
-kingCastleRook B = Rook B (8, 8)
+rookKing :: Colour -> Piece
+rookKing W = Rook W (8, 1)
+rookKing B = Rook B (8, 8)
 
-queenCastleRook :: Colour -> Piece
-queenCastleRook W = Rook W (1, 1)
-queenCastleRook B = Rook W (1, 8)
+rookQueen :: Colour -> Piece
+rookQueen W = Rook W (1, 1)
+rookQueen B = Rook B (1, 8)
 
-kingCastle :: Colour -> Piece
-kingCastle W = King W (5, 1)
-kingCastle B = King B (5, 8)
+king :: Colour -> Piece
+king W = King W (5, 1)
+king B = King B (5, 8)
 
 kingSideCastle :: Colour -> Move
-kingSideCastle W = CastleK (Block (kingCastle W) (Empty (7, 1))) (Block (kingCastleRook W) (Empty (6, 1)))
-kingSideCastle B = CastleK (Block (kingCastle B) (Empty (7, 8))) (Block (kingCastleRook B) (Empty (6, 8)))
+kingSideCastle W = CastleK (Block (king W) (Empty (7, 1))) (Block (rookKing W) (Empty (6, 1)))
+kingSideCastle B = CastleK (Block (king B) (Empty (7, 8))) (Block (rookKing B) (Empty (6, 8)))
 
 queenSideCastle :: Colour -> Move
-queenSideCastle W = CastleQ (Block (kingCastle W) (Empty (3, 1))) (Block (queenCastleRook W) (Empty (4, 1)))
-queenSideCastle B = CastleQ (Block (kingCastle B) (Empty (3, 8))) (Block (queenCastleRook B) (Empty (4, 8)))
+queenSideCastle W = CastleQ (Block (king W) (Empty (3, 1))) (Block (rookQueen W) (Empty (4, 1)))
+queenSideCastle B = CastleQ (Block (king B) (Empty (3, 8))) (Block (rookQueen B) (Empty (4, 8)))
+
+kingSideFiles :: Colour -> Set Pos
+kingSideFiles W = S.fromList $ [(5, 1), (6, 1), (7, 1)]
+kingSideFiles B = S.fromList $ [(5, 8), (6, 8), (7, 8)]
+
+queenSideFiles :: Colour -> Set Pos
+queenSideFiles W = S.fromList $ [(2, 1), (3, 1), (4, 1)]
+queenSideFiles B = S.fromList $ [(2, 8), (3, 8), (4, 8)]
 
 figure :: Piece -> String 
 figure (Pawn W p)   = "♙"
@@ -233,29 +241,21 @@ attacking dir piece board = gather $ attack dir piece board
               gather (Just m @ (Take  _ piece')) = (Take piece piece') : (gather Nothing)
               gather (Nothing)                   = []
 
-castlesK :: Piece -> Board -> Maybe Move
-castlesK piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook
+castle :: Piece -> Piece -> Move -> Board -> Maybe Move
+castle king rook move board = fmap (const move) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook 
         where boardKing        = lookAt (position king) board
               boardRook        = lookAt (position rook) board
-              king             = kingCastle player
-              rook             = kingCastleRook player
-              player           = colour piece
               inPlace (bk, br) = bk == king && br == rook
               firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
               rookOrKing p     = (p == rook) || (p == king)
-              castle           = kingSideCastle player 
-
-castlesQ :: Piece -> Board -> Maybe Move
-castlesQ piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook
-        where boardKing        = lookAt (position king) board
-              boardRook        = lookAt (position rook) board
-              king             = kingCastle player
-              rook             = queenCastleRook player
-              player           = colour piece
-              inPlace (bk, br) = bk == king && br == rook
-              firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
-              rookOrKing p     = (p == rook) || (p == king)
-              castle           = queenSideCastle player 
+    
+castleKingSide :: Piece -> Board -> Maybe Move
+castleKingSide piece = castle (king player) (rookKing player) (kingSideCastle player)
+        where player = colour piece
+              
+castleQueenSide :: Piece -> Board -> Maybe Move
+castleQueenSide piece = castle (king player) (rookQueen player) (queenSideCastle player)
+        where player  = colour piece
 
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
@@ -280,8 +280,8 @@ kingMoves king board = catMaybes [attack [L, U] king board,
                                   attack [R] king board,
                                   attack [D] king board,
                                   attack [L] king board,
-                                  castlesK king board,
-                                  castlesQ king board]
+                                  castleKingSide king board,
+                                  castleQueenSide king board]
 
 rookMoves :: Piece -> Board -> [Move]
 rookMoves rook board = (attacking [U] rook board) ++ 
@@ -318,11 +318,9 @@ moves piece @ (Queen _ _)  = S.fromList . queenMoves piece
 moves piece @ (King _ _)   = S.fromList . kingMoves piece
 moves piece @ (Empty _)    = const (S.empty)
 
--- Here I have to fictively remap the board 
 threats :: Board -> Set Pos
 threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
-            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board')
-                  board' = changeTurn board
+            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
                   threat (Take _ _) = True
                   threat (Block _ _) = True
                   threat (TakeEP _ _ _) = True
@@ -355,21 +353,13 @@ turn move board = if ((colour $ pieceFrom move) == player board)
 available :: Move -> Board -> Outcome
 available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move) $ moves (pieceFrom move) board
 
-qcastle :: Move -> Board -> Outcome
-qcastle move board = if free then Continue else Illegal
-    where free = S.null $ S.intersection safetyPath $ threats board
-          safetyPath = S.fromList files
-          files = if (W == (player board))
-                  then [(2, 1), (3, 1), (4, 1)]
-                  else [(2, 8), (3, 8), (4, 8)]
+castleFiles :: Set Pos -> Board -> Outcome
+castleFiles path board = if free then Continue else Illegal
+    where free = S.null $ S.intersection path $ threats board 
 
-kcastle :: Move -> Board -> Outcome
-kcastle move board = if free then Continue else Illegal
-    where free = S.null $ S.intersection safetyPath $ threats board
-          safetyPath = S.fromList files
-          files = if (W == (player board)) 
-                  then [(5, 1), (6, 1), (7, 1)]
-                  else [(5, 8), (6, 8), (7, 8)]   
+castles :: Move -> Board -> Outcome
+castles (CastleK move _) = castleFiles (kingSideFiles $ colour $ pieceFrom move)
+castles (CastleQ move _) = castleFiles (queenSideFiles $ colour $ pieceFrom move)
 
 stalemate :: Board -> Outcome
 stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate else Continue
@@ -462,21 +452,19 @@ attempt move @ (Take    piece piece')   = adjustKings (perform move) . add (perf
 attempt move @ (Block   piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
 attempt move @ (Promote piece piece')   = add (perform move) . remove piece
 
-apply :: Move -> Board -> Board
-apply move = changeTurn . accumulate move . attempt move
-
 legality :: Move -> Board -> Outcome
 legality m @ (Take _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
 legality m @ (TakeEP _ _ _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
 legality m @ (Block _ _)    board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
 legality m @ (Jump _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
 legality m @ (Promote _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (CastleK _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (kcastle m board) ~> (draw board)
-legality m @ (CastleQ _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (qcastle m board) ~> (draw board)
+legality m @ (CastleK _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (castles m board) ~> (draw board)
+legality m @ (CastleQ _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (castles m board) ~> (draw board)
 
+-- use Either -> Right Outcome, Left Board
 move :: Move -> Board -> (Outcome, Board)
-move m board = case (legality m board) of 
-               Continue -> (Continue, apply m board)
+move m board =  case (legality m board) of 
+               Continue -> (Continue, changeTurn $ accumulate m $ attempt m board)
                outcome  -> (outcome, board)
 
 board :: Board 
