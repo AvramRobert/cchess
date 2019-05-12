@@ -97,15 +97,12 @@ parsedReturn :: Maybe a -> Parser a
 parsedReturn (Just a) = return a
 parsedReturn (Nothing)   = M.failure Nothing S.empty
 
-movesWhere :: (Chess.Piece -> Bool) -> Chess.Board -> [Chess.Move]
-movesWhere p board = Chess.piecesWhere p board >>= (\p -> S.toList $ Chess.moves p board) -- I think this should stay a Set
-
 unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 unambigousTake p board = do 
     _ <- char 'x'
     x <- file
     y <- rank
-    parsedReturn $ taking (x, y) $ movesWhere p board
+    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor p board
 
 fileAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 fileAmbigousTake p board = do
@@ -113,8 +110,8 @@ fileAmbigousTake p board = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    let fileAt ox piece = p piece && (fst $ Chess.position piece) == ox
-    parsedReturn $ taking (x, y) $ movesWhere (fileAt ox) board 
+    let fileIs x piece = p piece && (fst $ Chess.position piece) == x
+    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board 
 
 rankAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 rankAmbigousTake p board = do
@@ -122,8 +119,8 @@ rankAmbigousTake p board = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    let rankAt oy piece = p piece && (snd $ Chess.position piece) == oy
-    parsedReturn $ taking (x, y) $ movesWhere (rankAt oy) board
+    let rankIs y piece = p piece && (snd $ Chess.position piece) == y
+    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
 
 explicitTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 explicitTake p board = do
@@ -133,7 +130,7 @@ explicitTake p board = do
     x  <- file
     y  <- rank
     let pieceAt pos piece = p piece && Chess.position piece == pos
-    parsedReturn $ taking (x, y) $ movesWhere (pieceAt (ox, oy)) board
+    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
 takePiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 takePiece p board = (try $ unambigousTake p board) <|> (try $ fileAmbigousTake p board) <|> (try $ rankAmbigousTake p board) <|> (try $ explicitTake p board)
@@ -142,23 +139,23 @@ unambigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 unambigousBlock p board = do
     x <- file
     y <- rank
-    parsedReturn $ blocking (x, y) $ movesWhere p board
+    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor p board
 
 fileAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 fileAmbigousBlock p board = do
     ox <- file
     x  <- file
     y  <- rank
-    let fileAt ox piece = p piece && (fst $ Chess.position piece) == ox
-    parsedReturn $ blocking (x, y) $ movesWhere (fileAt ox) board
+    let fileIs x piece = p piece && (fst $ Chess.position piece) == x
+    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board
 
 rankAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 rankAmbigousBlock p board = do
     oy <- rank
     x  <- file
     y  <- rank
-    let rankAt oy piece = p piece && (snd $ Chess.position piece) == oy
-    parsedReturn $ blocking (x, y) $ movesWhere (rankAt oy) board
+    let rankIs y piece = p piece && (snd $ Chess.position piece) == y
+    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
 
 explicitBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 explicitBlock p board = do
@@ -167,7 +164,7 @@ explicitBlock p board = do
     x  <- file
     y  <- rank
     let pieceAt pos piece = p piece && Chess.position piece == pos
-    parsedReturn $ blocking (x, y) $ movesWhere (pieceAt (ox, oy)) board
+    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
 blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 blockPiece p board = (try $ unambigousBlock p board) <|> (try $ fileAmbigousBlock p board) <|> (try $ rankAmbigousBlock p board) <|> (try $ explicitBlock p board)
@@ -181,7 +178,7 @@ takePawn board = do
         let colour = Chess.player board
             pawnAt x' (Chess.Pawn c (x'', _)) = (x' == x'') && (c == colour)
             pawnAt x' _ = False
-        parsedReturn $ taking (x, y) $ movesWhere (pawnAt ox) board
+        parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (pawnAt ox) board
 
 blockPawn :: Chess.Board -> Parser Chess.Move
 blockPawn board = do
@@ -190,7 +187,7 @@ blockPawn board = do
             let colour = Chess.player board
                 isPawn (Chess.Pawn c _) = c == colour
                 isPawn _ = False
-            parsedReturn $ blocking (x, y) $ movesWhere isPawn board
+            parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
 
 promotePawn :: Chess.Board -> Parser Chess.Move
 promotePawn board = do
@@ -201,7 +198,7 @@ promotePawn board = do
             let colour = Chess.player board
                 pawnAt epos (Chess.Pawn c pos) = (pos == epos) && c == colour
                 pawnAt _ _ = False
-            parsedReturn $ promoting p $ movesWhere (pawnAt (x, y)) board 
+            parsedReturn $ promoting p $ S.toList $ Chess.movesFor (pawnAt (x, y)) board 
 
 pawn :: Chess.Board -> Parser Chess.Move
 pawn board = (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board) 
