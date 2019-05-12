@@ -149,32 +149,6 @@ currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
 currentKing (Board _ _ _ bk B) = bk
 
-left :: Colour -> Pos -> Pos
-left _ (x, y) = (x - 1, y)
-
-right :: Colour -> Pos -> Pos
-right _ (x, y) = (x + 1, y)
-
-up :: Colour -> Pos -> Pos
-up W (x, y) = (x, y + 1)
-up B (x, y) = (x, y - 1)
-
-down :: Colour -> Pos -> Pos
-down W (x, y) = (x, y - 1)
-down B (x, y) = (x, y + 1)
-
-leftUp :: Colour -> Pos -> Pos
-leftUp c = (left c) . (up c)
-
-leftDown :: Colour -> Pos -> Pos
-leftDown c = (left c) . (down c)
-
-rightUp :: Colour -> Pos -> Pos
-rightUp c = (right c) . (up c)
-
-rightDown :: Colour -> Pos -> Pos
-rightDown c = (right c) . (down c)
-
 black :: Piece -> Bool
 black = (== B) . colour
 
@@ -202,23 +176,24 @@ steer pos colour = foldl (shift colour) pos
 lookAt :: Pos -> Board -> Maybe Piece
 lookAt p (Board ps _ _ _ _) = M.lookup p ps
 
-isAt :: Pos -> (Piece -> Bool) -> Board -> Bool
-isAt pos p (Board ps _ _ _ _) = fromMaybe False $ fmap p $ M.lookup pos ps
-
 lookInto :: [Dir] -> Piece -> Board -> Maybe Piece
 lookInto dir piece = lookAt (steer pos clr dir)
     where pos = position piece
           clr = colour piece
 
 enpassant :: [Dir] -> Piece -> Board -> Maybe Move
-enpassant dir piece board = fmap take $ mfilter passant $ fmap perform $ mfilter jump $ maybeFirst $ pastMoves board
-    where maybeFirst (x : xs) = Just x
-          maybeFirst _ = Nothing
-          jump (Jump _ _) = True
-          jump _          = False
-          passant (Pawn c (x, y)) = (c /= (colour piece)) && (y == (snd $ position piece)) && isAt pos empty board
-          pos = steer (position piece) (colour piece) dir
-          take = TakeEP piece (Empty pos)
+enpassant dir piece board = fmap take $ mfilter movable $ mzip newSquare $ mfilter isPassant $ fmap perform $ mfilter isJump $ first $ pastMoves board
+    where (x, y)                     = position piece
+          player                     = colour piece
+          newSquare                  = lookInto dir piece board
+          first (x : xs)             = Just x
+          first _                    = Nothing
+          isJump (Jump _ _)          = True
+          isJump _                   = False
+          isPassant (Pawn c (_, y')) = c /= player && (y == y')
+          movable (Empty pos, piece) = True
+          movable _                  = False 
+          take (e, p)                = TakeEP piece e p
 
 promote :: Piece -> Piece -> Board -> Maybe Move
 promote piece @ (Pawn W (_, 8)) piece' board = Just (Promote piece piece') 
