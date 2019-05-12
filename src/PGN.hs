@@ -5,6 +5,7 @@ import qualified Text.Megaparsec as M
 import qualified Data.Set as S
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
+import Data.Set (Set)
 import Data.ByteString (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar, numberChar)
@@ -19,7 +20,7 @@ type Parser a = Parsec Void String a
 
 type Game = String
 
-data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq) 
+data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)  
 
 merge :: [ByteString] -> String
 merge [] = []
@@ -27,7 +28,7 @@ merge (l : ls) = (C.unpack $ spaced l) <> merge ls
     where spaced = C.map toSpace
           toSpace '\n' = ' '
           toSpace '\r' = ' '
-          toSpace char = char        
+          toSpace char = char
 
 extractGame :: [ByteString] -> (String, [ByteString])
 extractGame lines = (merge gameLines, lines')
@@ -59,8 +60,8 @@ file = (char 'a' $> 1) <|>
        (char 'g' $> 7) <|>
        (char 'h' $> 8) 
 
-piece :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
-piece pos board = (char 'Q' >> (convert Chess.Queen))  <|> 
+promotedPiece :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
+promotedPiece pos board = (char 'Q' >> (convert Chess.Queen))  <|> 
                   (char 'R' >> (convert Chess.Rook))   <|>
                   (char 'N' >> (convert Chess.Knight)) <|>
                   (char 'B' >> (convert Chess.Bishop))
@@ -194,7 +195,7 @@ promotePawn board = do
             x <- file
             y <- rank
             _ <- char '='
-            p <- piece (x, y) board
+            p <- promotedPiece (x, y) board
             let colour = Chess.player board
                 pawnAt epos (Chess.Pawn c pos) = (pos == epos) && c == colour
                 pawnAt _ _ = False
