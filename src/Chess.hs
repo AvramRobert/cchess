@@ -10,11 +10,6 @@ import Control.Monad.Zip (mzip)
 import Control.Applicative ((<|>))
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 
--- This is all over the fucking place
--- Firstly: The current player colour should be global in the board
--- Secondly: There is a separate scenario where I fictively reposition a piece at various points squares on the board. This repositioning should NOT alter the global colour
--- This fictive repositioning forces me to manually alter a piece's colour for example just to keep the rest of the logic working. I don't like this
-
 type Pos = (Int, Int)
 
 data Colour = B | W | T deriving (Eq, Show, Ord)
@@ -61,9 +56,25 @@ instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
 
-kingCastle :: Colour -> Move
-kingCastle W = CastleK (Block (King W (5, 1)) (Empty (7, 1))) (Block (Rook W (8, 1)) (Empty (6, 1)))
-kingCastle B = CastleK (Block (King B (5, 8)) (Empty (7, 8))) (Block (Rook B (8, 8)) (Empty (6, 8)))
+kingCastleRook :: Colour -> Piece
+kingCastleRook W = Rook W (8, 1)
+kingCastleRook B = Rook B (8, 8)
+
+queenCastleRook :: Colour -> Piece
+queenCastleRook W = Rook W (1, 1)
+queenCastleRook B = Rook W (1, 8)
+
+kingCastle :: Colour -> Piece
+kingCastle W = King W (5, 1)
+kingCastle B = King B (5, 8)
+
+kingSideCastle :: Colour -> Move
+kingSideCastle W = CastleK (Block (kingCastle W) (Empty (7, 1))) (Block (kingCastleRook W) (Empty (6, 1)))
+kingSideCastle B = CastleK (Block (kingCastle B) (Empty (7, 8))) (Block (kingCastleRook B) (Empty (6, 8)))
+
+queenSideCastle :: Colour -> Move
+queenSideCastle W = CastleQ (Block (kingCastle W) (Empty (3, 1))) (Block (queenCastleRook W) (Empty (4, 1)))
+queenSideCastle B = CastleQ (Block (kingCastle B) (Empty (3, 8))) (Block (queenCastleRook B) (Empty (4, 8)))
 
 figure :: Piece -> String 
 figure (Pawn W p)   = "♙"
@@ -119,31 +130,31 @@ position (Bishop _ p) = p
 position (Knight _ p) = p
 position (Empty p)    = p
 
-commit :: (Piece, Piece) -> Piece
-commit ((Pawn c _), p)   = Pawn c $ position p
-commit ((King c _), p)   = King c $ position p
-commit ((Rook c _), p)   = Rook c $ position p
-commit ((Queen c _), p)  = Queen c $ position p 
-commit ((Bishop c _), p) = Bishop c $ position p
-commit ((Knight c _), p) = Knight c $ position p
+commit :: Piece -> Piece -> Piece
+commit (Pawn c _)   = Pawn c . position
+commit (King c _)   = King c . position
+commit (Rook c _)   = Rook c . position
+commit (Queen c _)  = Queen c . position 
+commit (Bishop c _) = Bishop c . position
+commit (Knight c _) = Knight c . position
 
 perform :: Move -> Piece
-perform (Take p p')     = commit (p, p')
-perform (Block p p')    = commit (p, p')
-perform (Jump p p')     = commit (p, p')
-perform (TakeEP p p' _) = commit (p, p')
+perform (Take p p')     = commit p p'
+perform (Block p p')    = commit p p'
+perform (Jump p p')     = commit p p'
+perform (TakeEP p p' _) = commit p p'
 perform (CastleK m _)   = perform m
 perform (CastleQ m _)   = perform m
 perform (Promote p p')  = p'
 
-piece :: Move -> Piece
-piece (Take p _)     = p
-piece (Block p _)    = p
-piece (Jump p _)     = p
-piece (TakeEP p _ _) = p
-piece (Promote p _)  = p
-piece (CastleK m _) = piece m
-piece (CastleQ m _) = piece m
+pieceFrom :: Move -> Piece
+pieceFrom (Take p _)     = p
+pieceFrom (Block p _)    = p
+pieceFrom (Jump p _)     = p
+pieceFrom (TakeEP p _ _) = p
+pieceFrom (Promote p _)  = p
+pieceFrom (CastleK m _)  = pieceFrom m
+pieceFrom (CastleQ m _)  = pieceFrom m
 
 currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
@@ -157,7 +168,7 @@ white = (== W) . colour
 
 empty :: Piece -> Bool
 empty (Empty _) = True
-empty _ = False
+empty _         = False
 
 opposite :: Colour -> Piece -> Bool
 opposite B = white
@@ -223,30 +234,28 @@ attacking dir piece board = gather $ attack dir piece board
               gather (Nothing)                   = []
 
 castlesK :: Piece -> Board -> Maybe Move
-castlesK p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
-    where inPlace (king, rook) = (rook == rookS) && (king == kingS)
-          rookPos  = if (white p) then (8, 1) else (8, 8)
-          rookPos' = if (white p) then (6, 1) else (6, 8)
-          kingPos  = if (white p) then (5, 1) else (5, 8)
-          kingPos' = if (white p) then (7, 1) else (7, 8)
-          rookS = Rook (colour p) rookPos
-          kingS = King (colour p) kingPos
-          firstMove = isNothing $ find (moved . piece) $ pastMoves board
-          moved piece = (piece == rookS) || (piece == kingS)
-          castle (king, rook) = CastleK (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
+castlesK piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook
+        where boardKing        = lookAt (position king) board
+              boardRook        = lookAt (position rook) board
+              king             = kingCastle player
+              rook             = kingCastleRook player
+              player           = colour piece
+              inPlace (bk, br) = bk == king && br == rook
+              firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
+              rookOrKing p     = (p == rook) || (p == king)
+              castle           = kingSideCastle player 
 
 castlesQ :: Piece -> Board -> Maybe Move
-castlesQ p board = fmap castle $ mfilter (const firstMove) $ mfilter inPlace $ mzip (lookAt kingPos board) (lookAt rookPos board)
-    where inPlace (king, rook) = (rook == rookS) && (king == kingS)
-          rookPos  = if (white p) then (1, 1) else (1, 8)
-          rookPos' = if (white p) then (4, 1) else (4, 8)
-          kingPos  = if (white p) then (5, 1) else (5, 8)
-          kingPos' = if (white p) then (3, 1) else (3, 8)
-          rookS = Rook (colour p) rookPos
-          kingS = King (colour p) kingPos
-          firstMove = isNothing $ find (moved . piece) $ pastMoves board
-          moved piece = (piece == rookS) || (piece == kingS)
-          castle (king, rook) = CastleQ (Block king (Empty kingPos')) (Block rook (Empty rookPos'))
+castlesQ piece board = fmap (const castle) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook
+        where boardKing        = lookAt (position king) board
+              boardRook        = lookAt (position rook) board
+              king             = kingCastle player
+              rook             = queenCastleRook player
+              player           = colour piece
+              inPlace (bk, br) = bk == king && br == rook
+              firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
+              rookOrKing p     = (p == rook) || (p == king)
+              castle           = queenSideCastle player 
 
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
@@ -339,12 +348,12 @@ checks move board = case (isCheck move board) of
             _    -> Continue 
 
 turn :: Move -> Board -> Outcome
-turn move board = if ((colour $ piece move) == player board)
+turn move board = if ((colour $ pieceFrom move) == player board)
                   then Continue
                   else Illegal
 
 available :: Move -> Board -> Outcome
-available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move) $ moves (piece move) board
+available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move) $ moves (pieceFrom move) board
 
 qcastle :: Move -> Board -> Outcome
 qcastle move board = if free then Continue else Illegal
