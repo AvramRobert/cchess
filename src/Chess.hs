@@ -2,6 +2,7 @@ module Chess where
 
 import Data.Map (Map)
 import Data.Set (Set)
+import Data.Either (Either)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.List (find, intersperse, any)
@@ -39,8 +40,7 @@ data Outcome =
     Checkmate |
     Stalemate |
     Draw      |
-    Illegal   |
-    Continue 
+    Illegal   
     deriving (Show, Eq, Ord)
 
 data Dir = U | D | L | R
@@ -102,19 +102,6 @@ figure (Empty _)    = " "
 instance Show Piece where
     show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
     
-(~>) :: Outcome -> Outcome -> Outcome
-Check     ~> _         = Check
-Continue  ~> Check     = Check
-Checkmate ~> _         = Checkmate
-Continue  ~> Checkmate = Checkmate
-Stalemate ~> _         = Stalemate
-Continue  ~> Stalemate = Stalemate
-Draw      ~> _         = Draw
-Continue  ~> Draw      = Draw
-Illegal   ~> _         = Illegal
-Continue  ~> Illegal   = Illegal
-outcome   ~> _ = outcome
-
 invert :: Colour -> Colour
 invert B = W
 invert W = B
@@ -339,30 +326,30 @@ isCheckmate :: Board -> Bool
 isCheckmate board = all inCheck $ availableMoves board
         where inCheck m = isCheck m board
 
-checks :: Move -> Board -> Outcome
+checks :: Move -> Board -> Either Outcome Board
 checks move board = case (isCheck move board) of
-            True | isCheckmate board -> Checkmate
-            True -> Check
-            _    -> Continue 
+            True | isCheckmate board -> Left Checkmate
+            True -> Left Check
+            _    -> Right board 
 
-turn :: Move -> Board -> Outcome
+turn :: Move -> Board -> Either Outcome Board
 turn move board = if ((colour $ pieceFrom move) == player board)
-                  then Continue
-                  else Illegal
+                  then Right board
+                  else Left Illegal
 
-available :: Move -> Board -> Outcome
-available move board = fromMaybe Illegal $ fmap (const Continue) $ find (== move) $ moves (pieceFrom move) board
+available :: Move -> Board -> Either Outcome Board
+available move board = fromMaybe (Left Illegal) $ fmap (const (Right board)) $ find (== move) $ moves (pieceFrom move) board
 
-castleFiles :: Set Pos -> Board -> Outcome
-castleFiles path board = if free then Continue else Illegal
+castleFiles :: Set Pos -> Board -> Either Outcome Board
+castleFiles path board = if free then (Right board) else (Left Illegal)
     where free = S.null $ S.intersection path $ threats board 
 
-castles :: Move -> Board -> Outcome
+castles :: Move -> Board -> Either Outcome Board
 castles (CastleK move _) = castleFiles (kingSideFiles $ colour $ pieceFrom move)
 castles (CastleQ move _) = castleFiles (queenSideFiles $ colour $ pieceFrom move)
 
-stalemate :: Board -> Outcome
-stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate else Continue
+stalemate :: Board -> Either Outcome Board
+stalemate board = if (immovable && (not inCheck) && movedBefore) then (Left Stalemate) else (Right board)
             where immovable = S.null $ moves king board 
                   inCheck   = S.member (position king) allThreats
                   movedBefore = any (movedKing . perform) $ pastMoves board
@@ -371,59 +358,57 @@ stalemate board = if (immovable && (not inCheck) && movedBefore) then Stalemate 
                   movedKing (King c _) = c == (colour king)
                   movedKing _ = False 
 
-fiftyMove :: Board -> Outcome
-fiftyMove board = if (length $ pastMoves board) > 50 then illegality else Continue
-        where illegality = fromMaybe Illegal $ fmap (const Continue) $ find takeOrPawn $ take 50 $ pastMoves board
+fiftyMove :: Board -> Either Outcome Board
+fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
+        where illegal = fromMaybe (Left Illegal) $ fmap (const legal) $ find takeOrPawn $ take 50 $ pastMoves board
+              legal      = Right board
               takeOrPawn (Take _ _) = True
               takeOrPawn (TakeEP _ _ _) = True
               takeOrPawn (Block (Pawn _ _) _) = True
               takeOrPawn _ = False
 
-kingVsKing :: Board -> Outcome
-kingVsKing board = fromMaybe Continue $ fmap (const Illegal) $ mfilter onlyTwo $ mzip (lookAt whiteKingPos board) (lookAt blackKingPos board)
+kingVsKing :: Board -> Either Outcome Board
+kingVsKing board = fromMaybe (Right board) $ fmap (const (Left Illegal)) $ mfilter onlyTwo $ mzip (lookAt whiteKingPos board) (lookAt blackKingPos board)
             where onlyTwo _ = (M.size $ positions board) == 2
                   whiteKingPos = position $ whiteKing board
                   blackKingPos = position $ blackKing board
 
-kingBishopVsKing :: Board -> Outcome
-kingBishopVsKing board = if (justThree && wking && bking && bking) then Draw else Continue
+kingBishopVsKing :: Board -> Either Outcome Board
+kingBishopVsKing board = if (justThree && wking && bking && bking) then (Left Draw) else (Right board)
             where justThree = (M.size $ positions board) == 3
                   pieces = M.elems $ positions board
-                  bishop = any (\x -> case x of (Bishop _ _) -> True
-                                                _            -> False) pieces
+                  bishop = any (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
                   wking  = any (== (whiteKing board)) pieces
                   bking  = any (== (blackKing board)) pieces
 
-kingKnightVsKing :: Board -> Outcome
-kingKnightVsKing board = if (justThree && wking && bking && knight) then Draw else Continue
+kingKnightVsKing :: Board -> Either Outcome Board
+kingKnightVsKing board = if (justThree && wking && bking && knight) then (Left Draw) else (Right board)
             where justThree = (M.size $ positions board) == 3
-                  pieces = M.elems $ positions board
-                  knight = any (\x -> case x of (Knight _ _) -> True
-                                                _            -> False) pieces
-                  wking  = any (== (whiteKing board)) pieces
-                  bking  = any (== (blackKing board)) pieces
+                  pieces    = M.elems $ positions board
+                  knight    = any (\x -> case x of (Knight _ _) -> True; _ -> False) pieces
+                  wking     = any (== (whiteKing board)) pieces
+                  bking     = any (== (blackKing board)) pieces
 
--- How?
-threeFold :: Board -> Outcome
-threeFold _ = Continue
-
-kingBishopVsKingBishop :: Board -> Outcome
-kingBishopVsKingBishop board = if (justFour && wking && bking && sameBishops) then Draw else Continue
+kingBishopVsKingBishop :: Board -> Either Outcome Board
+kingBishopVsKingBishop board = if (justFour && wking && bking && sameBishops) then (Left Draw) else (Right board)
             where justFour = (M.size $ positions board) == 4
-                  pieces = M.elems $ positions board
-                  bishops = filter (\x -> case x of (Bishop _ _) -> True
-                                                    _            -> False) pieces
+                  pieces   = M.elems $ positions board
+                  bishops  = filter (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
                   sameBishops = (length bishops) == 2 && (all whiteSquare bishops || all blackSquare bishops)                                   
                   whiteSquare (Bishop _ (x, y)) = (odd x && even y) || (even x && odd y)
                   blackSquare (Bishop _ (x, y)) = (odd x && odd y)  || (even x && even y)
                   wking = any (== (whiteKing board)) pieces
                   bking = any (== (blackKing board)) pieces
 
-checkmateless :: Board -> Outcome
-checkmateless board = kingVsKing board ~> kingBishopVsKing board ~> kingKnightVsKing board ~> kingBishopVsKingBishop board
+checkmateless :: Board -> Either Outcome Board
+checkmateless board = kingVsKing board >> kingBishopVsKing board >> kingKnightVsKing board >> kingBishopVsKingBishop board
 
-draw :: Board -> Outcome
-draw board = stalemate board ~> fiftyMove board ~> checkmateless board
+draw :: Board -> Either Outcome Board
+draw board = stalemate board >> fiftyMove board >> checkmateless board
+
+-- How?
+threeFold :: Board -> Either Outcome Board
+threeFold = Right
 
 changeTurn :: Board -> Board
 changeTurn board = board { player = invert $ player board }
@@ -452,20 +437,17 @@ attempt move @ (Take    piece piece')   = adjustKings (perform move) . add (perf
 attempt move @ (Block   piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
 attempt move @ (Promote piece piece')   = add (perform move) . remove piece
 
-legality :: Move -> Board -> Outcome
-legality m @ (Take _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (TakeEP _ _ _) board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Block _ _)    board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Jump _ _)     board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (Promote _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (draw board)
-legality m @ (CastleK _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (castles m board) ~> (draw board)
-legality m @ (CastleQ _ _)  board = (turn m board) ~> (available m board) ~> (checks m board) ~> (castles m board) ~> (draw board)
+legality :: Move -> Board -> Either Outcome Board
+legality m @ (Take _ _)     board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (TakeEP _ _ _) board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Block _ _)    board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Jump _ _)     board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Promote _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (CastleK _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (castles m board) >> (draw board)
+legality m @ (CastleQ _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (castles m board) >> (draw board)
 
--- use Either -> Right Outcome, Left Board
-move :: Move -> Board -> (Outcome, Board)
-move m board =  case (legality m board) of 
-               Continue -> (Continue, changeTurn $ accumulate m $ attempt m board)
-               outcome  -> (outcome, board)
+move :: Move -> Board -> Either Outcome Board
+move m = fmap (changeTurn . accumulate m . attempt m) . legality m
 
 board :: Board 
 board = Board { positions = M.fromList positions,

@@ -95,8 +95,8 @@ promoting piece = find promotion
     where promotion (Chess.Promote _ piece') = piece == piece' 
 
 parsedReturn :: Maybe a -> Parser a
-parsedReturn (Just a) = return a
-parsedReturn (Nothing)   = M.failure Nothing S.empty
+parsedReturn (Just a)  = return a
+parsedReturn (Nothing) = M.failure Nothing S.empty
 
 unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 unambigousTake p board = do 
@@ -255,9 +255,7 @@ move board = (try $ pawn board)   <|>
              (try $ castle board)
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move board = case Chess.move move board of
-                          (Chess.Continue, board) -> return board
-                          (outcome, _) -> parsedReturn Nothing
+applied move = either (const $ parsedReturn Nothing) return . Chess.move move
 
 end :: Parser ()
 end = void $ (try $ string "1-0") <|> (try $ string "1/2-1/2") <|> (try $ string "0-1")
@@ -310,8 +308,8 @@ parseGame = unwrap . run gameParser
     where unwrap (Right ms) = ms
           unwrap (Left _)   = []
 
-computeGame :: String -> Chess.Board
-computeGame = foldl (\b m -> snd $ Chess.move m b) Chess.board . parseGame
+computeGame :: String -> Either Chess.Outcome Chess.Board
+computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGame
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
