@@ -52,9 +52,33 @@ data Board = Board {positions :: Map Pos Piece,
                     player    :: Colour}
 
 
+instance Show Piece where
+    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
+
 instance Show Board where
     show board = unlines $ fmap row [1..8]
         where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
+
+figure :: Piece -> String 
+figure (Pawn W p)   = "♙"
+figure (Pawn B _)   = "♟"
+figure (Rook W _)   = "♖"
+figure (Rook B _)   = "♜"
+figure (Bishop W _) = "♗"
+figure (Bishop B _) = "♝"
+figure (Knight W _) = "♘"
+figure (Knight B _) = "♞"
+figure (Queen W _)  = "♕"
+figure (Queen B _)  = "♛"
+figure (King W _)   = "♔"
+figure (King B _)   = "♚"
+figure (Empty _)    = " "        
+        
+whiteSquare :: Pos -> Bool
+whiteSquare (x, y) = (odd x && even y) || (even x && odd y)
+
+blackSquare :: Pos -> Bool
+blackSquare (x, y) = (odd x && odd y)  || (even x && even y) 
 
 rookKing :: Colour -> Piece
 rookKing W = Rook W (8, 1)
@@ -84,24 +108,6 @@ queenSideFiles :: Colour -> Set Pos
 queenSideFiles W = S.fromList $ [(2, 1), (3, 1), (4, 1)]
 queenSideFiles B = S.fromList $ [(2, 8), (3, 8), (4, 8)]
 
-figure :: Piece -> String 
-figure (Pawn W p)   = "♙"
-figure (Pawn B _)   = "♟"
-figure (Rook W _)   = "♖"
-figure (Rook B _)   = "♜"
-figure (Bishop W _) = "♗"
-figure (Bishop B _) = "♝"
-figure (Knight W _) = "♘"
-figure (Knight B _) = "♞"
-figure (Queen W _)  = "♕"
-figure (Queen B _)  = "♛"
-figure (King W _)   = "♔"
-figure (King B _)   = "♚"
-figure (Empty _)    = " "
-
-instance Show Piece where
-    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
-    
 invert :: Colour -> Colour
 invert B = W
 invert W = B
@@ -367,41 +373,38 @@ fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
               takeOrPawn (Block (Pawn _ _) _) = True
               takeOrPawn _ = False
 
-kingVsKing :: Board -> Either Outcome Board
-kingVsKing board = fromMaybe (Right board) $ fmap (const (Left Illegal)) $ mfilter onlyTwo $ mzip (lookAt whiteKingPos board) (lookAt blackKingPos board)
-            where onlyTwo _ = (M.size $ positions board) == 2
-                  whiteKingPos = position $ whiteKing board
-                  blackKingPos = position $ blackKing board
+drawingRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
+drawingRules ps board = if anyRule then Left Draw else Right board
+        where pieces = M.elems $ positions board
+              anyRule = any (\p -> p board pieces) ps
 
-kingBishopVsKing :: Board -> Either Outcome Board
-kingBishopVsKing board = if (justThree && wking && bking && bking) then (Left Draw) else (Right board)
-            where justThree = (M.size $ positions board) == 3
-                  pieces = M.elems $ positions board
-                  bishop = any (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
-                  wking  = any (== (whiteKing board)) pieces
-                  bking  = any (== (blackKing board)) pieces
+kingBishopVsKingBishop :: Board -> [Piece] -> Bool
+kingBishopVsKingBishop board pieces = fourPieces && bothKings && twoBishops && sameBishops
+        where bishops     = filter (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
+              fourPieces  = length pieces == 4
+              twoBishops  = length bishops == 2
+              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
+              sameBishops = all (whiteSquare . position) bishops || all (blackSquare . position) bishops
 
-kingKnightVsKing :: Board -> Either Outcome Board
-kingKnightVsKing board = if (justThree && wking && bking && knight) then (Left Draw) else (Right board)
-            where justThree = (M.size $ positions board) == 3
-                  pieces    = M.elems $ positions board
-                  knight    = any (\x -> case x of (Knight _ _) -> True; _ -> False) pieces
-                  wking     = any (== (whiteKing board)) pieces
-                  bking     = any (== (blackKing board)) pieces
+kingKnightVsKing :: Board -> [Piece] -> Bool
+kingKnightVsKing board pieces = threePieces && bothKings && anyKnight
+        where threePieces = length pieces == 3
+              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
+              anyKnight   = any (\x -> case x of (Knight _ _) -> True; _ -> False) pieces
 
-kingBishopVsKingBishop :: Board -> Either Outcome Board
-kingBishopVsKingBishop board = if (justFour && wking && bking && sameBishops) then (Left Draw) else (Right board)
-            where justFour = (M.size $ positions board) == 4
-                  pieces   = M.elems $ positions board
-                  bishops  = filter (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
-                  sameBishops = (length bishops) == 2 && (all whiteSquare bishops || all blackSquare bishops)                                   
-                  whiteSquare (Bishop _ (x, y)) = (odd x && even y) || (even x && odd y)
-                  blackSquare (Bishop _ (x, y)) = (odd x && odd y)  || (even x && even y)
-                  wking = any (== (whiteKing board)) pieces
-                  bking = any (== (blackKing board)) pieces
+kingBishopVsKing :: Board -> [Piece] -> Bool
+kingBishopVsKing board pieces = threePieces && bothKings && anyBishop
+        where threePieces = length pieces == 3
+              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
+              anyBishop   = any (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
+
+kingVsKing :: Board -> [Piece] -> Bool
+kingVsKing board pieces = twoPieces && bothKings
+        where twoPieces = length pieces == 2
+              bothKings = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
 
 checkmateless :: Board -> Either Outcome Board
-checkmateless board = kingVsKing board >> kingBishopVsKing board >> kingKnightVsKing board >> kingBishopVsKingBishop board
+checkmateless = drawingRules [kingVsKing, kingBishopVsKingBishop, kingKnightVsKing, kingBishopVsKing]
 
 draw :: Board -> Either Outcome Board
 draw board = stalemate board >> fiftyMove board >> checkmateless board
