@@ -343,6 +343,17 @@ turn move board = if ((colour $ pieceFrom move) == player board)
                   then Right board
                   else Left Illegal
 
+ruleCheck :: Outcome -> [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
+ruleCheck outcome ps board = if anyRule then Left outcome else Right board
+    where pieces = M.elems $ positions board
+          anyRule = any (\p -> p board pieces) ps
+
+illegalRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
+illegalRules = ruleCheck Illegal
+
+drawingRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
+drawingRules = ruleCheck Draw 
+
 available :: Move -> Board -> Either Outcome Board
 available move board = fromMaybe (Left Illegal) $ fmap (const (Right board)) $ find (== move) $ moves (pieceFrom move) board
 
@@ -367,16 +378,11 @@ stalemate board = if (immovable && (not inCheck) && movedBefore) then (Left Stal
 fiftyMove :: Board -> Either Outcome Board
 fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
         where illegal = fromMaybe (Left Illegal) $ fmap (const legal) $ find takeOrPawn $ take 50 $ pastMoves board
-              legal      = Right board
-              takeOrPawn (Take _ _) = True
-              takeOrPawn (TakeEP _ _ _) = True
+              legal                           = Right board
+              takeOrPawn (Take _ _)           = True
+              takeOrPawn (TakeEP _ _ _)       = True
               takeOrPawn (Block (Pawn _ _) _) = True
-              takeOrPawn _ = False
-
-drawingRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
-drawingRules ps board = if anyRule then Left Draw else Right board
-        where pieces = M.elems $ positions board
-              anyRule = any (\p -> p board pieces) ps
+              takeOrPawn _                    = False
 
 kingBishopVsKingBishop :: Board -> [Piece] -> Bool
 kingBishopVsKingBishop board pieces = fourPieces && bothKings && twoBishops && sameBishops
@@ -446,8 +452,8 @@ legality m @ (TakeEP _ _ _) board = (turn m board) >> (available m board) >> (ch
 legality m @ (Block _ _)    board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
 legality m @ (Jump _ _)     board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
 legality m @ (Promote _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (CastleK _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (castles m board) >> (draw board)
-legality m @ (CastleQ _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (castles m board) >> (draw board)
+legality m @ (CastleK _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board) 
+legality m @ (CastleQ _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board)
 
 move :: Move -> Board -> Either Outcome Board
 move m = fmap (changeTurn . accumulate m . attempt m) . legality m
