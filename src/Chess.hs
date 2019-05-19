@@ -314,19 +314,17 @@ moves piece @ (Empty _)    = const (S.empty)
 threats :: Board -> Set Pos
 threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
             where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
-                  threat (Take _ _) = True
-                  threat (Block _ _) = True
+                  threat (Take _ _)     = True
+                  threat (Block _ _)    = True
                   threat (TakeEP _ _ _) = True
-                  threat _ = False
+                  threat _              = False
 
 checked :: Board -> Bool
 checked board = S.member (position king) $ threats board
         where king = currentKing board
 
 isCheck :: Move -> Board -> Bool 
-isCheck move board  = S.member (position king) $ threats board'
-    where board'  = attempt move board
-          king    = currentKing board'
+isCheck move = checked . attempt move
 
 isCheckmate :: Board -> Bool
 isCheckmate board = all inCheck $ availableMoves board
@@ -335,8 +333,8 @@ isCheckmate board = all inCheck $ availableMoves board
 checks :: Move -> Board -> Either Outcome Board
 checks move board = case (isCheck move board) of
             True | isCheckmate board -> Left Checkmate
-            True -> Left Check
-            _    -> Right board 
+            True                     -> Left Check
+            _                        -> Right board 
 
 turn :: Move -> Board -> Either Outcome Board
 turn move board = if ((colour $ pieceFrom move) == player board)
@@ -345,14 +343,8 @@ turn move board = if ((colour $ pieceFrom move) == player board)
 
 ruleCheck :: Outcome -> [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
 ruleCheck outcome ps board = if anyRule then Left outcome else Right board
-    where pieces = M.elems $ positions board
+    where pieces  = M.elems $ positions board
           anyRule = any (\p -> p board pieces) ps
-
-illegalRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
-illegalRules = ruleCheck Illegal
-
-drawingRules :: [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
-drawingRules = ruleCheck Draw 
 
 available :: Move -> Board -> Either Outcome Board
 available move board = fromMaybe (Left Illegal) $ fmap (const (Right board)) $ find (== move) $ moves (pieceFrom move) board
@@ -366,14 +358,9 @@ castles (CastleK move _) = castleFiles (kingSideFiles $ colour $ pieceFrom move)
 castles (CastleQ move _) = castleFiles (queenSideFiles $ colour $ pieceFrom move)
 
 stalemate :: Board -> Either Outcome Board
-stalemate board = if (immovable && (not inCheck) && movedBefore) then (Left Stalemate) else (Right board)
-            where immovable = S.null $ moves king board 
-                  inCheck   = S.member (position king) allThreats
-                  movedBefore = any (movedKing . perform) $ pastMoves board
-                  king = currentKing board
-                  allThreats = threats board
-                  movedKing (King c _) = c == (colour king)
-                  movedKing _ = False 
+stalemate board = if (noLegalMoves && notInCheck) then Left Stalemate else Right board
+            where notInCheck   = not $ checked board
+                  noLegalMoves = S.null $ availableMoves board
 
 fiftyMove :: Board -> Either Outcome Board
 fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
@@ -410,7 +397,7 @@ kingVsKing board pieces = twoPieces && bothKings
               bothKings = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
 
 checkmateless :: Board -> Either Outcome Board
-checkmateless = drawingRules [kingVsKing, kingBishopVsKingBishop, kingKnightVsKing, kingBishopVsKing]
+checkmateless = ruleCheck Draw [kingVsKing, kingBishopVsKingBishop, kingKnightVsKing, kingBishopVsKing]
 
 draw :: Board -> Either Outcome Board
 draw board = stalemate board >> fiftyMove board >> checkmateless board
@@ -479,7 +466,7 @@ board = Board { positions = M.fromList positions,
 availableMoves :: Board -> Set Move
 availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
     where gather set piece = set <> (moves piece board)
-          currentPlayer p = (colour p) == (player board)
+          currentPlayer p  = (colour p) == (player board)
            
 movesFor :: (Piece -> Bool) -> Board -> Set Move
 movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
