@@ -50,6 +50,7 @@ delimitation = void $ many spaceChar
 index :: Parser ()
 index = void $ M.takeWhileP Nothing (/= '.') >> (char '.')
 
+-- rewrite this using Megaparsec.choice
 file :: Parser Int
 file = (char 'a' $> 1) <|>
        (char 'b' $> 2) <|> 
@@ -60,6 +61,7 @@ file = (char 'a' $> 1) <|>
        (char 'g' $> 7) <|>
        (char 'h' $> 8) 
 
+-- rewrite this using Megaparsec.choice
 promotedPiece :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
 promotedPiece pos board = (char 'Q' >> (convert Chess.Queen))  <|> 
                   (char 'R' >> (convert Chess.Rook))   <|>
@@ -133,6 +135,7 @@ explicitTake p board = do
     let pieceAt pos piece = p piece && Chess.position piece == pos
     parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
+-- rewrite this using Megaparsec.choice
 takePiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 takePiece p board = (try $ unambigousTake p board) <|> (try $ fileAmbigousTake p board) <|> (try $ rankAmbigousTake p board) <|> (try $ explicitTake p board)
 
@@ -167,6 +170,7 @@ explicitBlock p board = do
     let pieceAt pos piece = p piece && Chess.position piece == pos
     parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
+-- rewrite this using Megaparsec.choice
 blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 blockPiece p board = (try $ unambigousBlock p board) <|> (try $ fileAmbigousBlock p board) <|> (try $ rankAmbigousBlock p board) <|> (try $ explicitBlock p board)
 
