@@ -1,4 +1,4 @@
-module PGN where
+module PGN (parseGame, computeGame, fromPGN) where
 
 import qualified Chess as Chess
 import qualified Text.Megaparsec as M
@@ -36,13 +36,6 @@ extractGame lines = (merge gameLines, lines')
               gameLines = takeWhile (not . headline) headless
               lines'    = dropWhile (not . headline) headless
               headline string = C.head string == '['
-
-fromPGN :: String -> IO [Game]
-fromPGN filename = fmap parseGames $ B.readFile $ "./chess_games/" <> filename
-    where parseGames = acc . (C.split '\n')
-          acc []     = []
-          acc lines  = let (game, lines') = extractGame lines
-                       in game : (acc lines')
 
 delimitation :: Parser ()
 delimitation = void $ many spaceChar
@@ -307,14 +300,6 @@ gameParser = turns [] Chess.board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
 
-parseGame :: String -> [Chess.Move]
-parseGame = unwrap . run gameParser
-    where unwrap (Right ms) = ms
-          unwrap (Left _)   = []
-
-computeGame :: String -> Either Chess.Outcome Chess.Board
-computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGame
-
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
 
@@ -325,8 +310,24 @@ printErr (Right _) = putStrLn "No ERROR!"
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
 
-game :: Int -> Game
-game n = (unsafePerformIO $ fromPGN "batch1.pgn") !! n
+localGame :: Int -> Game
+localGame n = (unsafePerformIO $ fromPGN "./chess_games/batch1.pgn") !! n
+
+fromPGN :: String -> IO [Game]
+fromPGN filename = fmap parseGames $ B.readFile $ filename
+    where parseGames = acc . (C.split '\n')
+          acc []     = []
+          acc lines  = let (game, lines') = extractGame lines
+                       in game : (acc lines')
+
+
+parseGame :: Game -> [Chess.Move]
+parseGame = unwrap . run gameParser
+    where unwrap (Right ms) = ms
+          unwrap (Left _)   = []
+
+computeGame :: Game -> Either Chess.Outcome Chess.Board
+computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGame
 
 
 -- Improvements --
