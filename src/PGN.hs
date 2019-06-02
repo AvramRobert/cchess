@@ -93,6 +93,9 @@ parsedReturn :: Maybe a -> Parser a
 parsedReturn (Just a)  = return a
 parsedReturn (Nothing) = M.failure Nothing S.empty
 
+failOutcome :: Chess.Move -> Chess.Outcome -> Parser Chess.Board
+failOutcome move outcome = fail $ show outcome <> ". " <> (show move) <> " disallowed"  
+
 unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
 unambigousTake p board = do 
     _ <- char 'x'
@@ -252,7 +255,7 @@ move board = (try $ pawn board)   <|>
              (try $ castle board)
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move = either (const $ parsedReturn Nothing) return . Chess.move move
+applied move = either (failOutcome move) return . Chess.move move
 
 end :: Parser ()
 end = void $ (try $ string "1-0") <|> (try $ string "1/2-1/2") <|> (try $ string "0-1")
