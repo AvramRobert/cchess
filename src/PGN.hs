@@ -1,4 +1,4 @@
-module PGN (parseGame, computeGame, fromPGN) where
+module PGN (parseGame, computeGame, fromPGNFile) where
 
 import qualified Chess as Chess
 import qualified Text.Megaparsec as M
@@ -13,10 +13,26 @@ import Data.Char (digitToInt)
 import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
-import Data.Void (Void)
 import System.IO.Unsafe (unsafePerformIO)
 
-type Parser a = Parsec Void String a
+data ChessError = TakeError ChessPiece    |
+                  BlockError ChessPiece   |
+                  PromoteError ChessPiece |
+                  MoveError Chess.Move    |
+                  GameError Chess.Outcome
+                  deriving (Eq, Show, Ord)
+
+data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
+
+instance M.ShowErrorComponent ChessError where
+    showErrorComponent (TakeError p)       = "Could not take with: " <> (show p)
+    showErrorComponent (BlockError p)      = "Could not block with: " <> (show p)
+    showErrorComponent (MoveError m)       = "Illegal move: " <> (show m)
+    showErrorComponent (GameError o)       = "Game is in: " <> (show o)
+    showErrorComponent (PromoteError Pawn) = "Could not promote pawn"
+    showErrorComponent (PromoteError p)    = "Could not promote to: " <> (show p)
+
+type Parser a = Parsec ChessError String a
 
 type Game = String
 
@@ -43,26 +59,24 @@ delimitation = void $ many spaceChar
 index :: Parser ()
 index = void $ M.takeWhileP Nothing (/= '.') >> (char '.')
 
--- rewrite this using Megaparsec.choice
 file :: Parser Int
-file = (char 'a' $> 1) <|>
-       (char 'b' $> 2) <|> 
-       (char 'c' $> 3) <|>
-       (char 'd' $> 4) <|>
-       (char 'e' $> 5) <|>
-       (char 'f' $> 6) <|>
-       (char 'g' $> 7) <|>
-       (char 'h' $> 8) 
+file = M.choice [(char 'a' $> 1),
+                 (char 'b' $> 2), 
+                 (char 'c' $> 3),
+                 (char 'd' $> 4),
+                 (char 'e' $> 5),
+                 (char 'f' $> 6),
+                 (char 'g' $> 7),
+                 (char 'h' $> 8)]
 
--- rewrite this using Megaparsec.choice
 promotedPiece :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
-promotedPiece pos board = (char 'Q' >> (convert Chess.Queen))  <|> 
-                  (char 'R' >> (convert Chess.Rook))   <|>
-                  (char 'N' >> (convert Chess.Knight)) <|>
-                  (char 'B' >> (convert Chess.Bishop))
+promotedPiece pos board = M.choice [(char 'Q' >> (convert Queen  Chess.Queen)),
+                                    (char 'R' >> (convert Rook   Chess.Rook)),
+                                    (char 'N' >> (convert Knight Chess.Knight)),
+                                    (char 'B' >> (convert Bishop Chess.Bishop))]
     where 
         promote f piece = f (Chess.colour piece) (Chess.position piece) 
-        convert f = parsedReturn $ fmap (promote f) $ Chess.lookAt pos board
+        convert piece f = failWith (PromoteError piece) $ fmap (promote f) $ Chess.lookAt pos board
 
 rank :: Parser Int
 rank = fmap digitToInt $ numberChar
@@ -89,86 +103,90 @@ promoting :: Chess.Piece -> [Chess.Move] -> Maybe Chess.Move
 promoting piece = find promotion
     where promotion (Chess.Promote _ piece') = piece == piece' 
 
-parsedReturn :: Maybe a -> Parser a
-parsedReturn (Just a)  = return a
-parsedReturn (Nothing) = M.failure Nothing S.empty
+failWith :: ChessError -> Maybe a -> Parser a
+failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
+failWith error (Just a)  = return a
 
-failOutcome :: Chess.Move -> Chess.Outcome -> Parser Chess.Board
-failOutcome move outcome = fail $ show outcome <> ". " <> (show move) <> " disallowed"  
-
-unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-unambigousTake p board = do 
+unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+unambigousTake p board error = do 
     _ <- char 'x'
     x <- file
     y <- rank
-    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor p board
+    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor p board
 
-fileAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-fileAmbigousTake p board = do
+fileAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+fileAmbigousTake p board error = do
     ox <- file
     _  <- char 'x'
     x  <- file
     y  <- rank
     let fileIs x piece = p piece && (fst $ Chess.position piece) == x
-    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board 
+    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board 
 
-rankAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-rankAmbigousTake p board = do
+rankAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+rankAmbigousTake p board error = do
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
     let rankIs y piece = p piece && (snd $ Chess.position piece) == y
-    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
+    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
 
-explicitTake :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-explicitTake p board = do
+explicitTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+explicitTake p board error = do
     ox <- file
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
     let pieceAt pos piece = p piece && Chess.position piece == pos
-    parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
+    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
--- rewrite this using Megaparsec.choice
-takePiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-takePiece p board = (try $ unambigousTake p board) <|> (try $ fileAmbigousTake p board) <|> (try $ rankAmbigousTake p board) <|> (try $ explicitTake p board)
+takePiece :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+takePiece p board error = M.choice [(try $ unambigousTake p board error),
+                                    (try $ fileAmbigousTake p board error),
+                                    (try $ rankAmbigousTake p board error),
+                                    (try $ explicitTake p board error)]
 
-unambigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-unambigousBlock p board = do
+unambigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+unambigousBlock p board error = do
     x <- file
     y <- rank
-    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor p board
+    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor p board
 
-fileAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-fileAmbigousBlock p board = do
+fileAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+fileAmbigousBlock p board error = do
     ox <- file
     x  <- file
     y  <- rank
     let fileIs x piece = p piece && (fst $ Chess.position piece) == x
-    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board
+    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board
 
-rankAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-rankAmbigousBlock p board = do
+rankAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+rankAmbigousBlock p board error = do
     oy <- rank
     x  <- file
     y  <- rank
     let rankIs y piece = p piece && (snd $ Chess.position piece) == y
-    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
+    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
 
-explicitBlock :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-explicitBlock p board = do
+explicitBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+explicitBlock p board error = do
     ox <- file
     oy <- rank
     x  <- file
     y  <- rank
     let pieceAt pos piece = p piece && Chess.position piece == pos
-    parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
+    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
 
--- rewrite this using Megaparsec.choice
-blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> Parser Chess.Move
-blockPiece p board = (try $ unambigousBlock p board) <|> (try $ fileAmbigousBlock p board) <|> (try $ rankAmbigousBlock p board) <|> (try $ explicitBlock p board)
+blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
+blockPiece p board error = M.choice [(try $ unambigousBlock p board error),
+                                     (try $ fileAmbigousBlock p board error),
+                                     (try $ rankAmbigousBlock p board error),
+                                     (try $ explicitBlock p board error)] 
+
+takeOrBlock :: ChessPiece -> Chess.Board -> (Chess.Piece -> Bool) -> Parser Chess.Move
+takeOrBlock piece board isPiece = takePiece isPiece board (TakeError piece) <|> blockPiece isPiece board (BlockError piece)
 
 takePawn :: Chess.Board -> Parser Chess.Move
 takePawn board = do
@@ -178,8 +196,8 @@ takePawn board = do
         y  <- rank
         let colour = Chess.player board
             pawnAt x' (Chess.Pawn c (x'', _)) = (x' == x'') && (c == colour)
-            pawnAt x' _ = False
-        parsedReturn $ taking (x, y) $ S.toList $ Chess.movesFor (pawnAt ox) board
+            pawnAt x' _                       = False
+        failWith (TakeError Pawn) $ taking (x, y) $ S.toList $ Chess.movesFor (pawnAt ox) board
 
 blockPawn :: Chess.Board -> Parser Chess.Move
 blockPawn board = do
@@ -187,8 +205,8 @@ blockPawn board = do
             y <- rank
             let colour = Chess.player board
                 isPawn (Chess.Pawn c _) = c == colour
-                isPawn _ = False
-            parsedReturn $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
+                isPawn _                = False
+            failWith (BlockError Pawn) $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
 
 promotePawn :: Chess.Board -> Parser Chess.Move
 promotePawn board = do
@@ -198,41 +216,36 @@ promotePawn board = do
             p <- promotedPiece (x, y) board
             let colour = Chess.player board
                 pawnAt epos (Chess.Pawn c pos) = (pos == epos) && c == colour
-                pawnAt _ _ = False
-            parsedReturn $ promoting p $ S.toList $ Chess.movesFor (pawnAt (x, y)) board 
+                pawnAt _ _                     = False
+            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor (pawnAt (x, y)) board 
 
 pawn :: Chess.Board -> Parser Chess.Move
 pawn board = (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board) 
 
 rook :: Chess.Board -> Parser Chess.Move
-rook board = char 'R' >> (takePiece isRook board <|> blockPiece isRook board)
-    where colour = Chess.player board
-          isRook (Chess.Rook c _) = c == colour
-          isRook _ = False
+rook board = char 'R' >> takeOrBlock Rook board isRook
+    where isRook (Chess.Rook player _) = player == Chess.player board
+          isRook _                     = False
 
 bishop :: Chess.Board -> Parser Chess.Move
-bishop board = char 'B' >> (takePiece isBishop board <|> blockPiece isBishop board)
-    where colour = Chess.player board
-          isBishop (Chess.Bishop c _) = c == colour  
-          isBishop _ = False
+bishop board = char 'B' >> takeOrBlock Bishop board isBishop
+    where isBishop (Chess.Bishop player _) = player == Chess.player board  
+          isBishop _                       = False
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char 'N' >> (takePiece isKnight board <|> blockPiece isKnight board)
-    where colour = Chess.player board
-          isKnight (Chess.Knight c _) = c == colour
-          isKnight _ = False
+knight board = char 'N' >> takeOrBlock Knight board isKnight
+    where isKnight (Chess.Knight player _) = player == Chess.player board
+          isKnight _                       = False
 
 queen :: Chess.Board -> Parser Chess.Move
-queen board = char 'Q' >> (takePiece isQueen board <|> blockPiece isQueen board)
-    where colour = Chess.player board
-          isQueen (Chess.Queen c _) = c == colour 
-          isQueen _ = False
+queen board = char 'Q' >> takeOrBlock Queen board isQueen
+    where isQueen (Chess.Queen player _) = player == Chess.player board 
+          isQueen _                      = False
 
 king :: Chess.Board -> Parser Chess.Move
-king board = char 'K' >> (takePiece isKing board <|> blockPiece isKing board)
-    where colour = Chess.player board
-          isKing (Chess.King c _) = c == colour
-          isKing _ = False
+king board = char 'K' >> takeOrBlock King board isKing
+    where isKing (Chess.King player _) = player == Chess.player board
+          isKing _                     = False
 
 kingCastle :: Chess.Board -> Parser Chess.Move
 kingCastle board = string "O-O" $> (Chess.kingSideCastle colour)
@@ -255,7 +268,9 @@ move board = (try $ pawn board)   <|>
              (try $ castle board)
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move = either (failOutcome move) return . Chess.move move
+applied move = either fail return . Chess.move move
+    where fail Chess.Illegal = failWith (MoveError move) Nothing
+          fail outcome       = failWith (GameError outcome) Nothing
 
 end :: Parser ()
 end = void $ (try $ string "1-0") <|> (try $ string "1/2-1/2") <|> (try $ string "0-1")
@@ -308,35 +323,31 @@ run p = runParser p ""
 
 printErr :: (M.Stream s, M.ShowErrorComponent e) => Either (M.ParseErrorBundle s e) a -> IO ()
 printErr (Left bundle) = putStrLn $ M.errorBundlePretty bundle
-printErr (Right _) = putStrLn "No ERROR!"
+printErr (Right _)     = putStrLn "No ERROR!"
 
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
 runPrint p = printErr . run p
 
 localGame :: Int -> Game
-localGame n = (unsafePerformIO $ fromPGN "./chess_games/batch1.pgn") !! n
+localGame n = (unsafePerformIO $ fromPGNFile "./chess_games/batch1.pgn") !! n
 
-fromPGN :: String -> IO [Game]
-fromPGN filename = fmap parseGames $ B.readFile $ filename
+
+------ API -------
+
+fromPGNFile :: String -> IO [Game]
+fromPGNFile filename = fmap parseGames $ B.readFile $ filename
     where parseGames = acc . (C.split '\n')
           acc []     = []
           acc lines  = let (game, lines') = extractGame lines
                        in game : (acc lines')
 
-
 parseGame :: Game -> [Chess.Move]
-parseGame = unwrap . run gameParser
-    where unwrap (Right ms) = ms
-          unwrap (Left _)   = []
+parseGame = either (const []) id . run gameParser
 
 computeGame :: Game -> Either Chess.Outcome Chess.Board
 computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGame
 
-
 -- Improvements --
 
--- 1. Improve errors of the reader. Make parsing errors and illegality errors explicit when manually failing
--- 2. Write an explicit test somewhere, that reads games form a PGN file: game0, game1, game 4, game 10 from batch1 are good samples
--- 3. Make this into a proper API
--- 4. Reuse the functions from Chess. (or better, perhaps write a different module that just exposes something like a Chess API)
--- 5. Write a function that reads a PGN file and outputs chess moves
+-- 1. Divide this into two modules. PGN.Interal and PGN. PGN.Internal has the guts of it and PGN simply has the API
+-- 2. Do the same for Chess what you did at 3. for PGN
