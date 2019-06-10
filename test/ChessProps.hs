@@ -7,6 +7,6 @@ import System.IO.Unsafe (unsafePerformIO)
 
 gameConsistency :: Property
 gameConsistency = forAll games (successful . P.compute)
-    where games = G.elements $ unsafePerformIO $ P.fromFile "./chess_games/batch0.pgn"
+    where games = G.elements $ unsafePerformIO $ P.fromFileString "./chess_games/batch0.pgn"
           successful (Right _) = succeeded
           successful (Left  _) = failed

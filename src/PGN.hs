@@ -1,20 +1,23 @@
-module PGN (fromFile, parse, compute) where
+module PGN (fromFile, parse, compute, fromFileString) where
 
 import qualified Text.Megaparsec as M
 import qualified Chess as Chess
 import qualified PGN.Internal as PGN
 
--- TODO: 
--- 1. Write a proper record to keep additional details of PGN games (year, location, players etc)
-
 type StringError = String
 
-fromFile :: String -> IO [PGN.Game]
-fromFile = PGN.fromPGNFile
+stringifyError :: Either PGN.ParseError a -> Either StringError a
+stringifyError = either (Left . M.errorBundlePretty) return 
+
+fromFileString :: String -> IO [String]
+fromFileString = PGN.fromPGNFileString 
+
+fromFile :: String -> IO (Either StringError [PGN.Game])
+fromFile = fmap stringifyError . PGN.fromPGNFile
 
 parse :: String -> Either StringError [Chess.Move]
-parse = either (Left . M.errorBundlePretty) (Right) . PGN.parseGame
+parse = stringifyError . PGN.parseGame
 
 compute :: String -> Either StringError Chess.Board
-compute game = (either (Left . M.errorBundlePretty) (Right) $ PGN.parseGame game) >>= (either (Left . show) (Right) . computeGame)
+compute game = (parse game) >>= (either (Left . show) (Right) . computeGame)
     where computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board)

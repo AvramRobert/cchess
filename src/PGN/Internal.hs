@@ -3,10 +3,10 @@ module PGN.Internal where
 import qualified Chess as Chess
 import qualified Text.Megaparsec as M
 import qualified Data.Set as S
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.Char8 as C
 import Data.Set (Set)
-import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
 import Text.Read (readMaybe)
@@ -18,7 +18,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 data ChessResult = WhiteWin | BlackWin | Draw deriving (Show)
 
-data Game' = Game' {
+data Game = Game {
                   event       :: String, 
                   site        :: String, 
                   date        :: String,
@@ -42,6 +42,8 @@ data ChessError = TakeError ChessPiece    |
 
 data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
 
+type ParseError = M.ParseErrorBundle String ChessError
+
 instance M.ShowErrorComponent ChessError where
     showErrorComponent (TakeError p)       = "Could not take with: " <> (show p)
     showErrorComponent (BlockError p)      = "Could not block with: " <> (show p)
@@ -53,38 +55,33 @@ instance M.ShowErrorComponent ChessError where
 
 type Parser a = Parsec ChessError String a
 
-type Game = String
-
 data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)  
 
 merge :: [ByteString] -> String
-merge [] = []
-merge (l : ls) = (C.unpack $ spaced l) <> merge ls
-    where spaced = C.map toSpace
-          toSpace '\n' = ' '
-          toSpace '\r' = ' '
-          toSpace char = char
+merge = foldl combine ""
+    where combine s bs = s <> C.unpack bs
 
+-- TODO: Stream this properly
 extractGame :: [ByteString] -> (String, [ByteString])
-extractGame lines = (merge gameLines, lines')
-        where headless  = dropWhile headline lines
+extractGame lines = (merge (header <> gameLines), remaining)
+        where header    = takeWhile headline lines
+              headless  = dropWhile headline lines
               gameLines = takeWhile (not . headline) headless
-              lines'    = dropWhile (not . headline) headless
+              remaining = dropWhile (not . headline) headless
               headline string = C.head string == '['
 
 headline :: String -> (String -> Parser a) -> Parser a
 headline header f = do
-        _ <- delimitation
+        _ <- lineDelimitation
         _ <- char '['
         _ <- string header
-        _ <- delimitation
+        _ <- lineDelimitation
         _ <- char '"'
         x <- M.manyTill asciiChar (char '"')
         _ <- char ']'
-        _ <- newline
         (f x)
 
-headerParser :: Parser Game'
+headerParser :: Parser Game
 headerParser = do
     event  <- headline "Event" return
     site   <- headline "Site" return
@@ -97,7 +94,7 @@ headerParser = do
     blacke <- headline "BlackElo" eloError
     eco    <- headline "ECO" return
     eventd <- headline "EventDate" return
-    return $ Game' {event       = event,
+    return $ Game  {event       = event,
                     site        = site,
                     date        = date,
                     gameRound   = ground,
@@ -117,6 +114,13 @@ headerParser = do
 
 delimitation :: Parser ()
 delimitation = void $ many spaceChar
+
+lineDelimitation :: Parser ()
+lineDelimitation = do 
+        _ <- M.optional newline
+        _ <- delimitation
+        _ <- M.optional newline
+        return ()
 
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
@@ -342,32 +346,32 @@ noMove board = end $> (board, End)
 
 oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
 oneMove board = do
-    _ <- delimitation
+    _ <- lineDelimitation
     _ <- index
     _ <- delimitation
     m <- move board
     b <- applied m board
     _ <- check
     _ <- mate
-    _ <- delimitation
+    _ <- lineDelimitation
     _ <- end
     return (b, One m)
 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
-    _  <- delimitation
+    _  <- lineDelimitation
     _  <- index
-    _  <- delimitation
+    _  <- lineDelimitation
     m  <- move board
     b  <- applied m board
     _  <- check
     _  <- mate
-    _  <- delimitation
+    _  <- lineDelimitation
     m' <- move b
     b' <- applied m' b
     _  <- check
     _  <- mate
-    _  <- delimitation
+    _  <- lineDelimitation
     return (b', Two (m, m'))
 
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
@@ -380,39 +384,42 @@ moveParser = turns [] Chess.board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
 
-gameParser :: Parser Game'
-gameParser = (try newline <|> try (delimitation >> newline)) >> game
-    where game = do 
-            meta   <- headerParser
-            _      <- newline
-            gmoves <- moveParser
-            return meta { moves = gmoves }
+gameParser :: Parser Game
+gameParser = do
+        _      <- lineDelimitation 
+        meta   <- headerParser
+        _      <- lineDelimitation
+        gmoves <- moveParser
+        return meta { moves = gmoves }
+
+localStringGame :: Int -> String
+localStringGame n = (unsafePerformIO $ fromPGNFileString "./chess_games/batch1.pgn") !! n
+
+fromPGNFileString :: String -> IO [String]
+fromPGNFileString = fmap extract . B.readFile
+    where extract = acc . (C.split '\n')
+          acc []    = []
+          acc lines = let (game, remaining) = extractGame lines
+                      in game : (acc remaining)
+
+fromPGNFile :: String -> IO (Either ParseError [Game])
+fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFileString
+
+parseGame :: String -> Either ParseError [Chess.Move]
+parseGame = fmap moves . run gameParser
+
+parseGameIgnore :: String -> [Chess.Move]
+parseGameIgnore = either (const []) moves . run gameParser
+
+computeGameIgnore :: String -> Either Chess.Outcome Chess.Board
+computeGameIgnore = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGameIgnore
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
 
-printErr :: (M.Stream s, M.ShowErrorComponent e) => Either (M.ParseErrorBundle s e) a -> IO ()
-printErr (Left bundle) = putStrLn $ M.errorBundlePretty bundle
-printErr (Right _)     = putStrLn "No ERROR!"
+printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
+printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle
+printResult (Right result) = putStrLn $ show result
 
 runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
-runPrint p = printErr . run p
-
-localGame :: Int -> Game
-localGame n = (unsafePerformIO $ fromPGNFile "./chess_games/batch1.pgn") !! n
-
-fromPGNFile :: String -> IO [Game]
-fromPGNFile filename = fmap parseGames $ B.readFile $ filename
-    where parseGames = acc . (C.split '\n')
-          acc []     = []
-          acc lines  = let (game, lines') = extractGame lines
-                       in game : (acc lines')
-
-parseGame :: Game -> Either (M.ParseErrorBundle String ChessError) [Chess.Move]
-parseGame = fmap moves . run gameParser
-
-parseGameIgnore :: Game -> [Chess.Move]
-parseGameIgnore = either (const []) moves . run gameParser
-
-computeGameIgnore :: Game -> Either Chess.Outcome Chess.Board
-computeGameIgnore = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGameIgnore
+runPrint p = printResult . run p
