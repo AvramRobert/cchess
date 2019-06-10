@@ -5,7 +5,6 @@ import qualified Text.Megaparsec as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
-import Data.Set (Set)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
@@ -392,9 +391,6 @@ gameParser = do
         gmoves <- moveParser
         return meta { moves = gmoves }
 
-localStringGame :: Int -> String
-localStringGame n = (unsafePerformIO $ fromPGNFileString "./chess_games/batch1.pgn") !! n
-
 fromPGNFileString :: String -> IO [String]
 fromPGNFileString = fmap extract . B.readFile
     where extract = acc . (C.split '\n')
@@ -416,6 +412,11 @@ computeGameIgnore = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . p
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
+
+--- DEBUG ---
+
+localStringGame :: Int -> String
+localStringGame n = (unsafePerformIO $ fromPGNFileString "./chess_games/batch1.pgn") !! n
 
 printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
 printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle
