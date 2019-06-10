@@ -8,18 +8,36 @@ import qualified Data.ByteString.Char8 as C
 import Data.Set (Set)
 import Data.ByteString (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
-import Text.Megaparsec.Char (char, string, spaceChar, numberChar)
+import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
+import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import System.IO.Unsafe (unsafePerformIO)
 
+data ChessResult = WhiteWin | BlackWin | Draw deriving (Show)
+
+data Game' = Game' {
+                  event       :: String, 
+                  site        :: String, 
+                  date        :: String,
+                  gameRound   :: String,
+                  whitePlayer :: String,
+                  blackPlayer :: String,
+                  result      :: ChessResult,
+                  whiteElo    :: Int,
+                  blackElo    :: Int, 
+                  eco         :: String,
+                  eventDate   :: String,
+                  moves       :: [Chess.Move] } deriving (Show)
+
 data ChessError = TakeError ChessPiece    |
                   BlockError ChessPiece   |
                   PromoteError ChessPiece |
                   MoveError Chess.Move    |
-                  GameError Chess.Outcome
+                  GameError Chess.Outcome |
+                  EloError String
                   deriving (Eq, Show, Ord)
 
 data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
@@ -31,6 +49,7 @@ instance M.ShowErrorComponent ChessError where
     showErrorComponent (GameError o)       = "Game is in: " <> (show o)
     showErrorComponent (PromoteError Pawn) = "Could not promote pawn"
     showErrorComponent (PromoteError p)    = "Could not promote to: " <> (show p)
+    showErrorComponent (EloError elos)     = "Elo is not a valid number: " <> elos
 
 type Parser a = Parsec ChessError String a
 
@@ -52,6 +71,49 @@ extractGame lines = (merge gameLines, lines')
               gameLines = takeWhile (not . headline) headless
               lines'    = dropWhile (not . headline) headless
               headline string = C.head string == '['
+
+headline :: String -> (String -> Parser a) -> Parser a
+headline header f = do
+        _ <- delimitation
+        _ <- char '['
+        _ <- string header
+        _ <- delimitation
+        _ <- char '"'
+        x <- M.manyTill asciiChar (char '"')
+        _ <- char ']'
+        _ <- newline
+        (f x)
+
+headerParser :: Parser Game'
+headerParser = do
+    event  <- headline "Event" return
+    site   <- headline "Site" return
+    date   <- headline "Date" return
+    ground <- headline "Round" return
+    whitep <- headline "White" return
+    blackp <- headline "Black" return
+    result <- headline "Result" (return . mapResult)
+    whitee <- headline "WhiteElo" eloError
+    blacke <- headline "BlackElo" eloError
+    eco    <- headline "ECO" return
+    eventd <- headline "EventDate" return
+    return $ Game' {event       = event,
+                    site        = site,
+                    date        = date,
+                    gameRound   = ground,
+                    whitePlayer = whitep,
+                    blackPlayer = blackp,
+                    result      = result,
+                    whiteElo    = whitee,
+                    blackElo    = blacke,
+                    eco         = eco,
+                    eventDate   = eventd,
+                    moves       = []}
+    where mapResult "1-0"     = WhiteWin
+          mapResult "0-1"     = BlackWin
+          mapResult "1/2-1/2" = Draw
+          eloError sint       = failWith (EloError sint) $ readMaybe sint
+
 
 delimitation :: Parser ()
 delimitation = void $ many spaceChar
@@ -311,12 +373,20 @@ twoMove board = do
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
 turn board = (try $ noMove board) <|> (try $ oneMove board) <|> (try $ twoMove board)
 
-gameParser :: Parser [Chess.Move]
-gameParser = turns [] Chess.board
+moveParser :: Parser [Chess.Move]
+moveParser = turns [] Chess.board
         where turns moves board = turn board >>= (continue moves) 
               continue moves (board, Two (m, m')) = turns (m' : m : moves) board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
+
+gameParser :: Parser Game'
+gameParser = (try newline <|> try (delimitation >> newline)) >> game
+    where game = do 
+            meta   <- headerParser
+            _      <- newline
+            gmoves <- moveParser
+            return meta { moves = gmoves }
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
@@ -339,10 +409,10 @@ fromPGNFile filename = fmap parseGames $ B.readFile $ filename
                        in game : (acc lines')
 
 parseGame :: Game -> Either (M.ParseErrorBundle String ChessError) [Chess.Move]
-parseGame = run gameParser
+parseGame = fmap moves . run gameParser
 
 parseGameIgnore :: Game -> [Chess.Move]
-parseGameIgnore = either (const []) id . run gameParser
+parseGameIgnore = either (const []) moves . run gameParser
 
 computeGameIgnore :: Game -> Either Chess.Outcome Chess.Board
 computeGameIgnore = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGameIgnore
