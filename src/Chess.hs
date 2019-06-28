@@ -234,6 +234,8 @@ attacking dir piece board = gather $ attack dir piece board
               gather (Just m @ (Take  _ piece')) = (Take piece piece') : (gather Nothing)
               gather (Nothing)                   = []
 
+-- A king is not allowed to castle if it PASSES THROUGH A SQUARE ATTACKED BY AN ENEMY
+-- If he doesn't pass through it, he can castle
 castle :: Piece -> Piece -> Move -> Board -> Maybe Move
 castle king rook move board = fmap (const move) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook 
         where boardKing        = lookAt (position king) board
