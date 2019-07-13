@@ -101,12 +101,12 @@ queenSideCastle W = CastleQ (Block (king W) (Empty (3, 1))) (Block (rookQueen W)
 queenSideCastle B = CastleQ (Block (king B) (Empty (3, 8))) (Block (rookQueen B) (Empty (4, 8)))
 
 kingSideFiles :: Colour -> Set Pos
-kingSideFiles W = S.fromList $ [(5, 1), (6, 1), (7, 1)]
-kingSideFiles B = S.fromList $ [(5, 8), (6, 8), (7, 8)]
+kingSideFiles W = S.fromList $ [(6, 1), (7, 1)]
+kingSideFiles B = S.fromList $ [(6, 8), (7, 8)]
 
 queenSideFiles :: Colour -> Set Pos
-queenSideFiles W = S.fromList $ [(2, 1), (3, 1), (4, 1)]
-queenSideFiles B = S.fromList $ [(2, 8), (3, 8), (4, 8)]
+queenSideFiles W = S.fromList $ [(3, 1), (4, 1)]
+queenSideFiles B = S.fromList $ [(3, 8), (4, 8)]
 
 invert :: Colour -> Colour
 invert B = W
@@ -234,15 +234,13 @@ attacking dir piece board = gather $ attack dir piece board
               gather (Just m @ (Take  _ piece')) = (Take piece piece') : (gather Nothing)
               gather (Nothing)                   = []
 
--- A king is not allowed to castle if it PASSES THROUGH A SQUARE ATTACKED BY AN ENEMY
--- If he doesn't pass through it, he can castle
 castle :: Piece -> Piece -> Move -> Board -> Maybe Move
 castle king rook move board = fmap (const move) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook 
         where boardKing        = lookAt (position king) board
               boardRook        = lookAt (position rook) board
-              inPlace (bk, br) = bk == king && br == rook
               firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
-              rookOrKing p     = (p == rook) || (p == king)
+              inPlace (k, r)   = k == king && r == rook
+              rookOrKing p     = p == king || p == rook 
     
 castleKingSide :: Piece -> Board -> Maybe Move
 castleKingSide piece = castle (king player) (rookKing player) (kingSideCastle player)
@@ -356,8 +354,8 @@ castleFiles path board = if free then (Right board) else (Left Illegal)
     where free = S.null $ S.intersection path $ threats board 
 
 castles :: Move -> Board -> Either Outcome Board
-castles (CastleK move _) = castleFiles (kingSideFiles $ colour $ pieceFrom move)
-castles (CastleQ move _) = castleFiles (queenSideFiles $ colour $ pieceFrom move)
+castles (CastleK _ _) board = castleFiles (kingSideFiles $ player board) board
+castles (CastleQ _ _) board = castleFiles (queenSideFiles $ player board) board
 
 stalemate :: Board -> Either Outcome Board
 stalemate board = if (noLegalMoves && notInCheck) then Left Stalemate else Right board
