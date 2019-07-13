@@ -1,7 +1,7 @@
 module PGN (fromFile, parse, compute, fromFileString) where
 
 import qualified Text.Megaparsec as M
-import qualified Chess as Chess
+import qualified Chess.Internal as Chess
 import qualified PGN.Internal as PGN
 
 type StringError = String

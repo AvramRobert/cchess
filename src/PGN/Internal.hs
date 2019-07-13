@@ -1,6 +1,6 @@
 module PGN.Internal where
 
-import qualified Chess as Chess
+import qualified Chess.Internal as Chess
 import qualified Text.Megaparsec as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
