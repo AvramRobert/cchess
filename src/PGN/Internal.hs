@@ -5,6 +5,7 @@ import qualified Text.Megaparsec as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
+import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
@@ -56,18 +57,18 @@ type Parser a = Parsec ChessError String a
 
 data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)  
 
-merge :: [ByteString] -> String
-merge = foldl combine ""
-    where combine s bs = s <> C.unpack bs
+consumeWith :: Monoid b => (a -> Bool) -> (a -> b) -> [a] -> (b, [a])
+consumeWith p f as    = (merge (prelude <> body), rem)
+    where prelude     = takeWhile p as
+          rest        = dropWhile p as
+          body        = takeWhile (not . p) rest
+          rem         = dropWhile (not . p) rest
+          merge       = foldl combine mempty
+          combine b a = b <> (f a) 
 
--- TODO: Stream this properly
 extractGame :: [ByteString] -> (String, [ByteString])
-extractGame lines = (merge (header <> gameLines), remaining)
-        where header    = takeWhile headline lines
-              headless  = dropWhile headline lines
-              gameLines = takeWhile (not . headline) headless
-              remaining = dropWhile (not . headline) headless
-              headline string = C.head string == '['
+extractGame = consumeWith headline C.unpack
+    where headline bs = C.head bs == '['
 
 headline :: String -> (String -> Parser a) -> Parser a
 headline header f = do
@@ -391,15 +392,20 @@ gameParser = do
         gmoves <- moveParser
         return meta { moves = gmoves }
 
+splitGames :: ByteString -> [String]
+splitGames = accumulate . C.lines
+    where accumulate [] = []
+          accumulate ls = let (game, remaining) = extractGame ls
+                          in game : (accumulate remaining)
+
 fromPGNFileString :: String -> IO [String]
-fromPGNFileString = fmap extract . B.readFile
-    where extract = acc . (C.split '\n')
-          acc []    = []
-          acc lines = let (game, remaining) = extractGame lines
-                      in game : (acc remaining)
+fromPGNFileString = fmap splitGames . B.readFile
 
 fromPGNFile :: String -> IO (Either ParseError [Game])
 fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFileString
+
+fromString :: String -> Either ParseError [Game]
+fromString = sequence . fmap (run gameParser) . splitGames . C.pack
 
 parseGame :: String -> Either ParseError [Chess.Move]
 parseGame = fmap moves . run gameParser

@@ -19,5 +19,11 @@ parse :: String -> Either StringError [Chess.Move]
 parse = stringifyError . PGN.parseGame
 
 compute :: String -> Either StringError Chess.Board
-compute game = (parse game) >>= (either (Left . show) (Right) . computeGame)
-    where computeGame = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board)
+compute = fmap head . computeMany
+
+computeMany :: String -> Either StringError [Chess.Board]
+computeMany games = stringifyError (PGN.fromString games) >>= (sequence . fmap runGame)
+
+runGame :: PGN.Game -> Either StringError Chess.Board
+runGame = either (Left . show) (Right) . run . PGN.moves
+    where run = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board)
