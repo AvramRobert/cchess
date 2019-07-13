@@ -37,7 +37,7 @@ data ChessError = TakeError ChessPiece    |
                   PromoteError ChessPiece |
                   MoveError Chess.Move    |
                   GameError Chess.Outcome |
-                  EloError String
+                  EloError String         
                   deriving (Eq, Show, Ord)
 
 data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
@@ -377,19 +377,26 @@ twoMove board = do
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
 turn board = (try $ noMove board) <|> (try $ oneMove board) <|> (try $ twoMove board)
 
-moveParser :: Parser [Chess.Move]
-moveParser = turns [] Chess.board
+turnMoveParser :: Parser [Chess.Move]
+turnMoveParser = turns [] Chess.board
         where turns moves board = turn board >>= (continue moves) 
               continue moves (board, Two (m, m')) = turns (m' : m : moves) board
               continue moves (board, One m) = continue (m : moves) (board, End)
               continue moves (board, End) = return $ reverse moves 
+
+moveParser :: Chess.Board -> Parser Chess.Move
+moveParser board = do
+    _ <- delimitation
+    m <- move board
+    _ <- applied m board
+    return m
 
 gameParser :: Parser Game
 gameParser = do
         _      <- lineDelimitation 
         meta   <- headerParser
         _      <- lineDelimitation
-        gmoves <- moveParser
+        gmoves <- turnMoveParser
         return meta { moves = gmoves }
 
 splitGames :: ByteString -> [String]
@@ -408,7 +415,10 @@ fromString :: String -> Either ParseError [Game]
 fromString = sequence . fmap (run gameParser) . splitGames . C.pack
 
 parseGame :: String -> Either ParseError [Chess.Move]
-parseGame = fmap moves . run gameParser
+parseGame = fmap moves . run gameParser 
+
+parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
+parseMove move board = run (moveParser board) move 
 
 parseGameIgnore :: String -> [Chess.Move]
 parseGameIgnore = either (const []) moves . run gameParser
