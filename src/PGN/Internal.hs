@@ -55,20 +55,19 @@ instance M.ShowErrorComponent ChessError where
 
 type Parser a = Parsec ChessError String a
 
-data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)  
+data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)
 
-consumeWith :: Monoid b => (a -> Bool) -> (a -> b) -> [a] -> (b, [a])
-consumeWith p f as    = (merge (prelude <> body), rem)
-    where prelude     = takeWhile p as
-          rest        = dropWhile p as
-          body        = takeWhile (not . p) rest
-          rem         = dropWhile (not . p) rest
-          merge       = foldl combine mempty
-          combine b a = b <> (f a) 
+merge :: [ByteString] -> String
+merge = foldl combine ""
+    where combine s b = s <> C.unpack b
 
 extractGame :: [ByteString] -> (String, [ByteString])
-extractGame = consumeWith headline C.unpack
-    where headline bs = C.head bs == '['
+extractGame lines = (merge (header <> gameLines), remaining)
+        where header    = takeWhile headline lines
+              headless  = dropWhile headline lines
+              gameLines = takeWhile (not . headline) headless
+              remaining = dropWhile (not . headline) headless
+              headline string = (not $ C.null string) && C.head string == '['
 
 headline :: String -> (String -> Parser a) -> Parser a
 headline header f = do
@@ -139,14 +138,12 @@ file = M.choice [(char 'a' $> 1),
                  (char 'g' $> 7),
                  (char 'h' $> 8)]
 
-promotedPiece :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
-promotedPiece pos board = M.choice [(char 'Q' >> (convert Queen  Chess.Queen)),
-                                    (char 'R' >> (convert Rook   Chess.Rook)),
-                                    (char 'N' >> (convert Knight Chess.Knight)),
-                                    (char 'B' >> (convert Bishop Chess.Bishop))]
-    where 
-        promote f piece = f (Chess.colour piece) (Chess.position piece) 
-        convert piece f = failWith (PromoteError piece) $ fmap (promote f) $ Chess.lookAt pos board
+promotions :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
+promotions pos board = M.choice [(char 'Q' $> (Chess.Queen colour pos)),
+                                 (char 'R' $> (Chess.Rook colour pos)),
+                                 (char 'N' $> (Chess.Knight colour pos)),
+                                 (char 'B' $> (Chess.Bishop colour pos))]
+    where colour = Chess.player board
 
 rank :: Parser Int
 rank = fmap digitToInt $ numberChar
@@ -171,7 +168,8 @@ blocking square = find move
 
 promoting :: Chess.Piece -> [Chess.Move] -> Maybe Chess.Move
 promoting piece = find promotion
-    where promotion (Chess.Promote _ piece') = piece == piece' 
+    where promotion (Chess.Promote _ piece') = piece == piece'
+          promotion _                        = False 
 
 unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
 unambigousTake p board error = do 
@@ -274,16 +272,19 @@ blockPawn board = do
                 isPawn _                = False
             failWith (BlockError Pawn) $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
 
+--- WHATS WITH TAKE PROMOTIONS?!?!?!
 promotePawn :: Chess.Board -> Parser Chess.Move
 promotePawn board = do
             x <- file
             y <- rank
             _ <- char '='
-            p <- promotedPiece (x, y) board
+            p <- promotions (x, y) board
             let colour = Chess.player board
-                pawnAt epos (Chess.Pawn c pos) = (pos == epos) && c == colour
-                pawnAt _ _                     = False
-            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor (pawnAt (x, y)) board 
+                pos    = case colour of Chess.W -> (x, y - 1)
+                                        Chess.B -> (x, y + 1)
+                pawn (Chess.Pawn c pp) = (pp == pos) && c == colour
+                pawn _                 = False
+            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board 
 
 pawn :: Chess.Board -> Parser Chess.Move
 pawn board = (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board) 
@@ -405,26 +406,30 @@ splitGames = accumulate . C.lines
           accumulate ls = let (game, remaining) = extractGame ls
                           in game : (accumulate remaining)
 
-fromPGNFileString :: String -> IO [String]
-fromPGNFileString = fmap splitGames . B.readFile
+fromPGNFile' :: String -> IO [String]
+fromPGNFile' = fmap splitGames . B.readFile
+
+fromString' :: String -> [String]
+fromString' = splitGames . C.pack
 
 fromPGNFile :: String -> IO (Either ParseError [Game])
-fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFileString
+fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFile'
 
 fromString :: String -> Either ParseError [Game]
 fromString = sequence . fmap (run gameParser) . splitGames . C.pack
 
-parseGame :: String -> Either ParseError [Chess.Move]
-parseGame = fmap moves . run gameParser 
+parseGame :: String -> Either ParseError Game
+parseGame = run gameParser
 
 parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
-parseGameIgnore :: String -> [Chess.Move]
-parseGameIgnore = either (const []) moves . run gameParser
+parseCompute :: String -> Either ParseError Chess.Board
+parseCompute game = (parseGame game) >>= (either (Left . convert) (Right) . runGame)
+    where convert outcome = either id (const $ error "This never should succeed") $ run (failWith (GameError outcome) Nothing) ""
 
-computeGameIgnore :: String -> Either Chess.Outcome Chess.Board
-computeGameIgnore = foldl (\b m -> b >>= (Chess.move m)) (Right Chess.board) . parseGameIgnore
+runGame :: Game -> Either Chess.Outcome Chess.Board
+runGame = foldl (\b m -> b >>= (Chess.move m)) (pure Chess.board) . moves
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
@@ -432,7 +437,7 @@ run p = runParser p ""
 --- DEBUG ---
 
 localStringGame :: Int -> String
-localStringGame n = (unsafePerformIO $ fromPGNFileString "./chess_games/batch1.pgn") !! n
+localStringGame n = (unsafePerformIO $ fromPGNFile' "./chess_games/simple.pgn") !! n
 
 printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
 printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle

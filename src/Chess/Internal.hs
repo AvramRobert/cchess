@@ -207,9 +207,9 @@ enpassant dir piece board = fmap take $ mfilter movable $ mzip newSquare $ mfilt
           movable _                  = False 
           take (e, p)                = TakeEP piece e p
 
-promote :: Piece -> Piece -> Board -> Maybe Move
-promote piece @ (Pawn W (_, 8)) piece' board = Just (Promote piece piece') 
-promote piece @ (Pawn B (_, 1)) piece' board = Just (Promote piece piece')
+promote :: Piece -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
+promote piece @ (Pawn W (x, 7)) f board = Just (Promote piece (f W (x, 8))) 
+promote piece @ (Pawn B (x, 2)) f board = Just (Promote piece (f B (x, 1)))
 promote _ _ _ = Nothing
 
 capture :: [Dir] -> Piece -> Board -> Maybe Move
@@ -250,11 +250,12 @@ castleQueenSide :: Piece -> Board -> Maybe Move
 castleQueenSide piece = castle (king player) (rookQueen player) (queenSideCastle player)
         where player  = colour piece
 
+-- A pawn is allowed to take and promote. How is that modelled?
 pawnMoves :: Piece -> Board -> [Move]
-pawnMoves pawn board = catMaybes [promote pawn (Queen c p) board,
-                                  promote pawn (Bishop c p) board,
-                                  promote pawn (Knight c p) board,
-                                  promote pawn (Rook c p) board,
+pawnMoves pawn board = catMaybes [promote pawn Queen board,
+                                  promote pawn Bishop board,
+                                  promote pawn Knight board,
+                                  promote pawn Rook board,
                                   block [U] pawn board,
                                   enpassant [R, U] pawn board,
                                   enpassant [L, U] pawn board,
