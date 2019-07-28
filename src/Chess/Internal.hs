@@ -251,6 +251,7 @@ castleQueenSide piece = castle (king player) (rookQueen player) (queenSideCastle
         where player  = colour piece
 
 -- A pawn is allowed to take and promote. How is that modelled?
+-- There is an additional pawn move -> take promote 
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [promote pawn Queen board,
                                   promote pawn Bishop board,

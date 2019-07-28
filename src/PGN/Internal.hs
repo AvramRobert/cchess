@@ -26,10 +26,11 @@ data Game = Game {
                   whitePlayer :: String,
                   blackPlayer :: String,
                   result      :: ChessResult,
-                  whiteElo    :: Int,
-                  blackElo    :: Int, 
-                  eco         :: String,
-                  eventDate   :: String,
+                  -- These upper 7 are mandatory, the lower 4 aren't
+                  whiteElo    :: Maybe Int,
+                  blackElo    :: Maybe Int, 
+                  eco         :: Maybe String,
+                  eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show)
 
 data ChessError = TakeError ChessPiece    |
@@ -89,10 +90,10 @@ headerParser = do
     whitep <- headline "White" return
     blackp <- headline "Black" return
     result <- headline "Result" (return . mapResult)
-    whitee <- headline "WhiteElo" eloError
-    blacke <- headline "BlackElo" eloError
-    eco    <- headline "ECO" return
-    eventd <- headline "EventDate" return
+    whitee <- M.optional $ headline "WhiteElo" eloError
+    blacke <- M.optional $ headline "BlackElo" eloError
+    eco    <- M.optional $ headline "ECO" return
+    eventd <- M.optional $ headline "EventDate" return
     return $ Game  {event       = event,
                     site        = site,
                     date        = date,
@@ -273,6 +274,7 @@ blockPawn board = do
             failWith (BlockError Pawn) $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
 
 --- WHATS WITH TAKE PROMOTIONS?!?!?!
+-- Take promotions exist: exf8=Q
 promotePawn :: Chess.Board -> Parser Chess.Move
 promotePawn board = do
             x <- file
