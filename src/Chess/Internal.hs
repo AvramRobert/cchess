@@ -364,9 +364,12 @@ stalemate board = if (noLegalMoves && notInCheck) then Left Stalemate else Right
             where notInCheck   = not $ checked board
                   noLegalMoves = S.null $ allMoves board
 
+-- Fifty move rule means that a player can offer a draw.
+-- It doesn't mean that it is automatically forced to a draw or automatically
+-- I have to think about how I might introduce these "suggestions"
 fiftyMove :: Board -> Either Outcome Board
 fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
-        where illegal = fromMaybe (Left Illegal) $ fmap (const legal) $ find takeOrPawn $ take 50 $ pastMoves board
+        where illegal = fromMaybe (Left Draw) $ fmap (const legal) $ find takeOrPawn $ take 50 $ pastMoves board
               legal                           = Right board
               takeOrPawn (Take _ _)           = True
               takeOrPawn (TakeEP _ _ _)       = True
@@ -402,7 +405,8 @@ checkmateless :: Board -> Either Outcome Board
 checkmateless = ruleCheck Draw [kingVsKing, kingBishopVsKingBishop, kingKnightVsKing, kingBishopVsKing]
 
 draw :: Board -> Either Outcome Board
-draw board = stalemate board >> fiftyMove board >> checkmateless board
+--draw board = stalemate board >> fiftyMove board >> checkmateless board
+draw board = stalemate board >> checkmateless board
 
 -- Threefold repetition of a position: 
 -- If it's the same player's turn to move, and there have been 3 positions throughout the game where he was in the exact same position,
