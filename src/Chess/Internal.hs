@@ -2,7 +2,7 @@ module Chess.Internal where
 
 import Data.Map (Map)
 import Data.Set (Set)
-import Data.Either (Either)
+import Data.Either (Either, isRight)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.List (find, intersperse, any)
@@ -329,7 +329,7 @@ isCheck :: Move -> Board -> Bool
 isCheck move = checked . attempt move
 
 isCheckmate :: Board -> Bool
-isCheckmate board = all inCheck $ availableMoves board
+isCheckmate board = all inCheck $ allMoves board
         where inCheck m = isCheck m board
 
 checks :: Move -> Board -> Either Outcome Board
@@ -362,7 +362,7 @@ castles (CastleQ _ _) board = castleFiles (queenSideFiles $ player board) board
 stalemate :: Board -> Either Outcome Board
 stalemate board = if (noLegalMoves && notInCheck) then Left Stalemate else Right board
             where notInCheck   = not $ checked board
-                  noLegalMoves = S.null $ availableMoves board
+                  noLegalMoves = S.null $ allMoves board
 
 fiftyMove :: Board -> Either Outcome Board
 fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
@@ -450,14 +450,19 @@ legality m @ (CastleQ _ _)  board = (turn m board) >> (available m board) >> (ch
 move :: Move -> Board -> Either Outcome Board
 move m = fmap (changeTurn . accumulate m . attempt m) . legality m
 
-availableMoves :: Board -> Set Move
-availableMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
+allMoves :: Board -> Set Move
+allMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
     where gather set piece = set <> (moves piece board)
           currentPlayer p  = (colour p) == (player board)
+
+legalMoves' :: Board -> Set Move
+legalMoves' board = S.filter unchecked $ allMoves board
+        where unchecked m = isRight $ checks m board
            
 movesFor :: (Piece -> Bool) -> Board -> Set Move
-movesFor p board = foldl gather S.empty $ M.elems $ M.filter p $ positions board
+movesFor p board = S.filter unchecked $ foldl gather S.empty $ M.elems $ M.filter p $ positions board
     where gather set piece = set <> (moves piece board)
+          unchecked m = isRight $ checks m board
 
 board :: Board 
 board = Board { positions = M.fromList positions,

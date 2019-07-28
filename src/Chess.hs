@@ -10,7 +10,7 @@ applyMove :: Chess.Move -> Chess.Board -> Either Chess.Outcome Chess.Board
 applyMove m b = Chess.move m b
 
 legalMoves :: Chess.Board -> Set Chess.Move
-legalMoves = Chess.availableMoves 
+legalMoves = Chess.legalMoves'
 
 currentPlayer :: Chess.Board -> Chess.Colour
 currentPlayer = Chess.player
