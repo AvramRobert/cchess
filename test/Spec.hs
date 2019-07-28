@@ -1,5 +1,9 @@
-import Test.QuickCheck
-import ChessProps
+import Test.QuickCheck (quickCheck)
+import Test.Hspec (hspec)
+import ChessProps (gameConsistency)
+import GameSpec (pgnFileSpec)
 
 main :: IO ()
-main = quickCheck gameConsistency
+main = do
+    -- quickCheck gameConsistency
+    hspec pgnFileSpec
