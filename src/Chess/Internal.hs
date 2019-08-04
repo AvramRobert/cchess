@@ -25,13 +25,19 @@ data Piece =
     Empty Pos
     deriving (Eq, Ord)
 
+-- Instead of making the moves concrete chess moves, I can describe them in terms of what actions may be applied on the board and let them be a [Action]
+-- For example the most primitive actions are removing, placing, replacing (or capture, block, promote) => takeEnpassant :: [Action]
+-- The only question is, how do I think about threats.
+-- Well, instead of deciding based on the ADT, I can actually perform the move and see what effect it has on the board.
+
 data Move =
-    Take    Piece Piece       |
-    Block   Piece Piece       |
-    Jump    Piece Piece       |
-    TakeEP  Piece Piece Piece |
-    Promote Piece Piece       |
-    CastleK Move Move         |
+    Take    Piece Piece           |
+    Block   Piece Piece           |
+    Jump    Piece Piece           |
+    TakeEP  Piece Piece Piece     |
+    TakePromote Piece Piece Piece |
+    Promote Piece Piece           |
+    CastleK Move Move             |
     CastleQ Move Move
     deriving (Show, Eq, Ord)
 
@@ -140,13 +146,14 @@ commit (Bishop c _) = Bishop c . position
 commit (Knight c _) = Knight c . position
 
 perform :: Move -> Piece
-perform (Take p p')     = commit p p'
-perform (Block p p')    = commit p p'
-perform (Jump p p')     = commit p p'
-perform (TakeEP p p' _) = commit p p'
-perform (CastleK m _)   = perform m
-perform (CastleQ m _)   = perform m
-perform (Promote p p')  = p'
+perform (Take p p')          = commit p p'
+perform (Block p p')         = commit p p'
+perform (Jump p p')          = commit p p'
+perform (TakeEP p p' _)      = commit p p'
+perform (TakePromote p _ p')  = p'
+perform (CastleK m _)        = perform m
+perform (CastleQ m _)        = perform m
+perform (Promote p p')       = p'
 
 pieceFrom :: Move -> Piece
 pieceFrom (Take p _)     = p
@@ -207,10 +214,17 @@ enpassant dir piece board = fmap take $ mfilter movable $ mzip newSquare $ mfilt
           movable _                  = False 
           take (e, p)                = TakeEP piece e p
 
+-- This doesn't check if there are enemies in front of me
 promote :: Piece -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
 promote piece @ (Pawn W (x, 7)) f board = Just (Promote piece (f W (x, 8))) 
 promote piece @ (Pawn B (x, 2)) f board = Just (Promote piece (f B (x, 1)))
 promote _ _ _ = Nothing
+
+takePromote :: Piece -> [Dir] -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
+takePromote piece dir f board = case piece of (Pawn W (x, 7)) -> fmap (promoteTo W) $ capture dir piece board 
+                                              (Pawn B (x, 2)) -> fmap (promoteTo B) $ capture dir piece board
+                                              _               -> Nothing
+            where promoteTo colour (Take p p') = TakePromote p p' (f colour (position p'))
 
 capture :: [Dir] -> Piece -> Board -> Maybe Move
 capture dir piece = fmap (Take piece) . mfilter (opposite $ colour piece) . lookInto dir piece
@@ -250,13 +264,19 @@ castleQueenSide :: Piece -> Board -> Maybe Move
 castleQueenSide piece = castle (king player) (rookQueen player) (queenSideCastle player)
         where player  = colour piece
 
--- A pawn is allowed to take and promote. How is that modelled?
--- There is an additional pawn move -> take promote 
 pawnMoves :: Piece -> Board -> [Move]
 pawnMoves pawn board = catMaybes [promote pawn Queen board,
                                   promote pawn Bishop board,
                                   promote pawn Knight board,
                                   promote pawn Rook board,
+                                  takePromote pawn [L, U] Queen board,
+                                  takePromote pawn [R, U] Queen board,
+                                  takePromote pawn [L, U] Bishop board,
+                                  takePromote pawn [R, U] Bishop board,
+                                  takePromote pawn [L, U] Knight board,
+                                  takePromote pawn [R, U] Knight board,
+                                  takePromote pawn [L, U] Rook board,
+                                  takePromote pawn [R, U] Rook board,
                                   block [U] pawn board,
                                   enpassant [R, U] pawn board,
                                   enpassant [L, U] pawn board,
@@ -316,10 +336,11 @@ moves piece @ (Empty _)    = const (S.empty)
 threats :: Board -> Set Pos
 threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
             where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
-                  threat (Take _ _)     = True
-                  threat (Block _ _)    = True
-                  threat (TakeEP _ _ _) = True
-                  threat _              = False
+                  threat (Take _ _)          = True
+                  threat (Block _ _)         = True
+                  threat (TakeEP _ _ _)      = True
+                  threat (TakePromote _ _ _) = True
+                  threat _                   = False
 
 checked :: Board -> Bool
 checked board = S.member (position king) $ threats board
@@ -373,6 +394,7 @@ fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
               legal                           = Right board
               takeOrPawn (Take _ _)           = True
               takeOrPawn (TakeEP _ _ _)       = True
+              takeOrPawn (TakePromote _ _ _)  = True
               takeOrPawn (Block (Pawn _ _) _) = True
               takeOrPawn _                    = False
 
@@ -436,20 +458,22 @@ remove piece board = board { positions = M.insert pos (Empty pos) $ positions bo
 attempt :: Move -> Board -> Board
 attempt move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
 attempt move @ (CastleQ m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
-attempt move @ (TakeEP  piece piece' piece'') = add (perform move) . remove piece'' . remove piece
+attempt move @ (TakeEP  piece piece' piece'')     = add (perform move) . remove piece'' . remove piece
+attempt move @ (TakePromote piece piece' piece'') = add (perform move) . remove piece'  . remove piece 
 attempt move @ (Jump    piece piece')   = add (perform move) . remove piece
 attempt move @ (Take    piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
 attempt move @ (Block   piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
 attempt move @ (Promote piece piece')   = add (perform move) . remove piece
 
 legality :: Move -> Board -> Either Outcome Board
-legality m @ (Take _ _)     board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (TakeEP _ _ _) board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Block _ _)    board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Jump _ _)     board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Promote _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (CastleK _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board) 
-legality m @ (CastleQ _ _)  board = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board)
+legality m @ (Take _ _)     board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (TakeEP _ _ _) board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (TakePromote _ _ _) board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Block _ _)    board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Jump _ _)     board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (Promote _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
+legality m @ (CastleK _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board) 
+legality m @ (CastleQ _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board)
 
 move :: Move -> Board -> Either Outcome Board
 move m = fmap (changeTurn . accumulate m . attempt m) . legality m
