@@ -215,11 +215,11 @@ enpassant dir piece board = fmap take $ mfilter movable $ mzip newSquare $ mfilt
           movable _                  = False 
           take (e, p)                = TakeEP piece e p
 
--- This doesn't check if there are enemies in front of me
 promote :: Piece -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
-promote piece @ (Pawn W (x, 7)) f board = Just (Promote piece (f W (x, 8))) 
-promote piece @ (Pawn B (x, 2)) f board = Just (Promote piece (f B (x, 1)))
-promote _ _ _ = Nothing
+promote piece f board = case piece of (Pawn W (x, 7)) -> promoteTo (f W (x, 8)) (x, 8)
+                                      (Pawn B (x, 2)) -> promoteTo (f B (x, 1)) (x, 1) 
+                                      _               -> Nothing
+        where promoteTo piece' pos = fmap (const (Promote piece piece')) $ mfilter empty $ lookAt pos board
 
 takePromote :: Piece -> [Dir] -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
 takePromote piece dir f board = case piece of (Pawn W (x, 7)) -> fmap (promoteTo W) $ capture dir piece board 
