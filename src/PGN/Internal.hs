@@ -169,8 +169,9 @@ blocking square = find move
 
 promoting :: Chess.Piece -> [Chess.Move] -> Maybe Chess.Move
 promoting piece = find promotion
-    where promotion (Chess.Promote _ piece') = piece == piece'
-          promotion _                        = False 
+    where promotion (Chess.Promote _ piece')       = piece == piece'
+          promotion (Chess.TakePromote _ _ piece') = piece == piece'
+          promotion _                              = False
 
 unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
 unambigousTake p board error = do 
@@ -273,8 +274,6 @@ blockPawn board = do
                 isPawn _                = False
             failWith (BlockError Pawn) $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
 
---- WHATS WITH TAKE PROMOTIONS?!?!?!
--- Take promotions exist: exf8=Q
 promotePawn :: Chess.Board -> Parser Chess.Move
 promotePawn board = do
             x <- file
@@ -288,8 +287,23 @@ promotePawn board = do
                 pawn _                 = False
             failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board 
 
+takePromotePawn :: Chess.Board -> Parser Chess.Move
+takePromotePawn board = do
+            x  <- file
+            _  <- char 'x'
+            ox <- file
+            oy <- rank
+            _  <- char '='
+            p  <- promotions (ox, oy) board
+            let colour = Chess.player board
+                pos    = case colour of Chess.W -> (x, oy - 1)
+                                        Chess.B -> (x, oy + 1)
+                pawn (Chess.Pawn c pp) = (pp == pos) && (c == colour)
+                pawn _                 = False
+            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
+
 pawn :: Chess.Board -> Parser Chess.Move
-pawn board = (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board) 
+pawn board = (try $ takePromotePawn board) <|> (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board)   
 
 rook :: Chess.Board -> Parser Chess.Move
 rook board = char 'R' >> takeOrBlock Rook board isRook

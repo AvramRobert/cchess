@@ -156,13 +156,14 @@ perform (CastleQ m _)        = perform m
 perform (Promote p p')       = p'
 
 pieceFrom :: Move -> Piece
-pieceFrom (Take p _)     = p
-pieceFrom (Block p _)    = p
-pieceFrom (Jump p _)     = p
-pieceFrom (TakeEP p _ _) = p
-pieceFrom (Promote p _)  = p
-pieceFrom (CastleK m _)  = pieceFrom m
-pieceFrom (CastleQ m _)  = pieceFrom m
+pieceFrom (Take p _)          = p
+pieceFrom (Block p _)         = p
+pieceFrom (Jump p _)          = p
+pieceFrom (TakeEP p _ _)      = p
+pieceFrom (TakePromote p _ _) = p
+pieceFrom (Promote p _)       = p
+pieceFrom (CastleK m _)       = pieceFrom m
+pieceFrom (CastleQ m _)       = pieceFrom m
 
 currentKing :: Board -> Piece
 currentKing (Board _ _ wk _ W) = wk
