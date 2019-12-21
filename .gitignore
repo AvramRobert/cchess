@@ -1,4 +1,5 @@
 .stack-work/
 cchess.cabal
+stack.yaml.lock
 *~
 chess_games/
