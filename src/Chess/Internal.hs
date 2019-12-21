@@ -59,11 +59,13 @@ data Board = Board {positions :: Map Pos Piece,
 
 
 instance Show Piece where
-    show piece = "[ " <> (figure piece) <> " " <> (show $ position piece) <> " ]"
+    show piece = (figure piece) <> " " <> (show $ position piece)
 
 instance Show Board where
     show board = unlines $ reverse $ fmap row [1..8]
-        where row y = foldl (++) "" $ intersperse "," $ catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8]
+        where row y = let pieces = catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8] 
+                          rank   = ["| "] ++ (intersperse " | " pieces) ++ [" |"]
+                      in foldl (<>) "" rank
 
 figure :: Piece -> String 
 figure (Pawn W p)   = "♙"
