@@ -25,11 +25,6 @@ data Piece =
     Empty Pos
     deriving (Eq, Ord)
 
--- Instead of making the moves concrete chess moves, I can describe them in terms of what actions may be applied on the board and let them be a [Action]
--- For example the most primitive actions are removing, placing, replacing (or capture, block, promote) => takeEnpassant :: [Action]
--- The only question is, how do I think about threats.
--- Well, instead of deciding based on the ADT, I can actually perform the move and see what effect it has on the board.
-
 data Move =
     Take    Piece Piece           |
     Block   Piece Piece           |
@@ -115,6 +110,15 @@ kingSideFiles B = S.fromList $ [(6, 8), (7, 8)]
 queenSideFiles :: Colour -> Set Pos
 queenSideFiles W = S.fromList $ [(3, 1), (4, 1)]
 queenSideFiles B = S.fromList $ [(3, 8), (4, 8)]
+
+shift' :: Piece -> Pos -> Piece
+shift' (Pawn c _)   = Pawn c
+shift' (Rook c _)   = Rook c
+shift' (King c _)   = King c
+shift' (Queen c _)  = Queen c
+shift' (Bishop c _) = Bishop c
+shift' (Knight c _) = Knight c
+shift' (Empty _)    = Empty
 
 invert :: Colour -> Colour
 invert B = W
