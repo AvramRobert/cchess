@@ -3,6 +3,7 @@ module Chess.Internal2 where
 
 -- What do I need to be able to do?
 
+-- TODO: Re-add the pgn files for testing
 
 -- 1. Describe board geometry
 -- 2. Describe and identify captures
@@ -12,7 +13,7 @@ module Chess.Internal2 where
 -- 6. Identify certain special kind of moves: castling; enpassant 
 -- 7. Identify trajectories of pieces'
 -- 8. Block certain moves altogether
-
+-- 9. Do promotions
 
 -- castling, passants and checks -> keep them at a game level, not at a piece level.
 
