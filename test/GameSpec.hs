@@ -9,7 +9,7 @@ import Data.Either (isRight)
 data Result = Game String deriving (Show)
 
 pgnGames :: [String]
-pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/chess_games/2019_game_batch_red.pgn" 
+pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn" 
 
 computeGames :: [String] -> IO ()
 computeGames = computeFrom 1 

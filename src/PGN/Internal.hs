@@ -7,8 +7,8 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
-import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
-import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
+import Text.Megaparsec (Parsec, (<|>), runParser, try, many, oneOf)
+import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline, alphaNumChar, separatorChar)
 import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void)
@@ -37,8 +37,7 @@ data ChessError = TakeError ChessPiece    |
                   BlockError ChessPiece   |
                   PromoteError ChessPiece |
                   MoveError Chess.Move    |
-                  GameError Chess.Outcome |
-                  EloError String         
+                  GameError Chess.Outcome
                   deriving (Eq, Show, Ord)
 
 data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
@@ -52,7 +51,6 @@ instance M.ShowErrorComponent ChessError where
     showErrorComponent (GameError o)       = "Game is in: " <> (show o)
     showErrorComponent (PromoteError Pawn) = "Could not promote pawn"
     showErrorComponent (PromoteError p)    = "Could not promote to: " <> (show p)
-    showErrorComponent (EloError elos)     = "Elo is not a valid number: " <> elos
 
 type Parser a = Parsec ChessError String a
 
@@ -70,30 +68,30 @@ extractGame lines = (merge (header <> gameLines), remaining)
               remaining = dropWhile (not . headline) headless
               headline string = (not $ C.null string) && C.head string == '['
 
-headline :: String -> (String -> Parser a) -> Parser a
-headline header f = do
+headline :: String -> Parser a -> Parser a
+headline header p = do
         _ <- lineDelimitation
         _ <- char '['
         _ <- string header
         _ <- lineDelimitation
-        _ <- char '"'
-        x <- M.manyTill asciiChar (char '"')
+        a <- M.between (char '"') (char '"') p
         _ <- char ']'
-        (f x)
+        _ <- lineDelimitation
+        return a
 
 headerParser :: Parser Game
 headerParser = do
-    event  <- headline "Event" return
-    site   <- headline "Site" return
-    date   <- headline "Date" return
-    ground <- headline "Round" return
-    whitep <- headline "White" return
-    blackp <- headline "Black" return
-    result <- headline "Result" (return . mapResult)
-    whitee <- M.optional $ headline "WhiteElo" eloError
-    blacke <- M.optional $ headline "BlackElo" eloError
-    eco    <- M.optional $ headline "ECO" return
-    eventd <- M.optional $ headline "EventDate" return
+    event  <- headline "Event" characters
+    site   <- headline "Site" characters
+    date   <- headline "Date" characters
+    ground <- headline "Round" characters
+    whitep <- headline "White" characters
+    blackp <- headline "Black" characters
+    result <- headline "Result" results
+    whitee <- headline "WhiteElo" numbers
+    blacke <- headline "BlackElo" numbers
+    eco    <- M.optional $ headline "ECO" characters
+    eventd <- M.optional $ headline "EventDate" characters
     return $ Game  {event       = event,
                     site        = site,
                     date        = date,
@@ -106,20 +104,21 @@ headerParser = do
                     eco         = eco,
                     eventDate   = eventd,
                     moves       = []}
-    where mapResult "1-0"     = WhiteWin
-          mapResult "0-1"     = BlackWin
-          mapResult "1/2-1/2" = Draw
-          eloError sint       = failWith (EloError sint) $ readMaybe sint
-
+    where results             = (try whiteWin) <|> (try blackWin) <|> draw
+          whiteWin            = fmap (const WhiteWin) $ string "1-0"
+          blackWin            = fmap (const BlackWin) $ string "0-1"
+          draw                = fmap (const Draw) $ string "1/2-1/2"
+          characters          = many (try alphaNumChar <|> (try $ oneOf [',', '.', '-', '?', '&']) <|> separatorChar) -- this is idiotic: I just want any string between quotes
+          numbers             = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
 delimitation :: Parser ()
 delimitation = void $ many spaceChar
 
 lineDelimitation :: Parser ()
 lineDelimitation = do 
-        _ <- M.optional newline
+        _ <- M.optional $ many newline
         _ <- delimitation
-        _ <- M.optional newline
+        _ <- M.optional $ many newline
         return ()
 
 failWith :: ChessError -> Maybe a -> Parser a
