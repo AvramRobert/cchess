@@ -1,5 +1,6 @@
 module PGN.Internal where
 
+import GHC.Base (NonEmpty ((:|)))
 import qualified Chess.Internal as Chess
 import qualified Text.Megaparsec as M
 import qualified Data.Set as S
@@ -68,6 +69,9 @@ extractGame lines = (merge (header <> gameLines), remaining)
               remaining = dropWhile (not . headline) headless
               headline string = (not $ C.null string) && C.head string == '['
 
+
+-- apparently there's no sane way to consume any arbitrary ascii character between two quotes, without forcing the user to lookAhead for the quote
+-- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
 headline :: String -> Parser a -> Parser a
 headline header p = do
         _ <- lineDelimitation
@@ -108,7 +112,7 @@ headerParser = do
           whiteWin            = fmap (const WhiteWin) $ string "1-0"
           blackWin            = fmap (const BlackWin) $ string "0-1"
           draw                = fmap (const Draw) $ string "1/2-1/2"
-          characters          = many (try alphaNumChar <|> (try $ oneOf [',', '.', '-', '?', '&']) <|> separatorChar) -- this is idiotic: I just want any string between quotes
+          characters          = M.manyTill asciiChar (M.lookAhead $ char '"')
           numbers             = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
 delimitation :: Parser ()
