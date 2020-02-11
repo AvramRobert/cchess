@@ -1,6 +1,5 @@
 module PGN.Internal where
 
-import GHC.Base (NonEmpty ((:|)))
 import qualified Chess.Internal as Chess
 import qualified Text.Megaparsec as M
 import qualified Data.Set as S
@@ -8,8 +7,8 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
-import Text.Megaparsec (Parsec, (<|>), runParser, try, many, oneOf)
-import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline, alphaNumChar, separatorChar)
+import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
+import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
 import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void)
@@ -26,7 +25,7 @@ data Game = Game {
                   gameRound   :: String,
                   whitePlayer :: String,
                   blackPlayer :: String,
-                  result      :: ChessResult,
+                  endResult   :: ChessResult,
                   -- These upper 7 are mandatory, the lower 4 aren't
                   whiteElo    :: Maybe Int,
                   blackElo    :: Maybe Int, 
@@ -57,6 +56,10 @@ type Parser a = Parsec ChessError String a
 
 data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)
 
+failWith :: ChessError -> Maybe a -> Parser a
+failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
+failWith error (Just a)  = return a
+
 merge :: [ByteString] -> String
 merge = foldl combine ""
     where combine s b = s <> C.unpack b
@@ -69,68 +72,53 @@ extractGame lines = (merge (header <> gameLines), remaining)
               remaining = dropWhile (not . headline) headless
               headline string = (not $ C.null string) && C.head string == '['
 
-
--- apparently there's no sane way to consume any arbitrary ascii character between two quotes, without forcing the user to lookAhead for the quote
+-- apparently there's no sane way to consume any arbitrary ascii characters between two quotes, without forcing the user to lookAhead for the quote
 -- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
+-- so it has to be this: between (char '"') (char '"') (manyTill asciiChar (lookAhead (char '"')))
 headline :: String -> Parser a -> Parser a
 headline header p = do
-        _ <- lineDelimitation
+        _ <- delimitation
         _ <- char '['
         _ <- string header
-        _ <- lineDelimitation
+        _ <- delimitation
         a <- M.between (char '"') (char '"') p
         _ <- char ']'
-        _ <- lineDelimitation
+        _ <- delimitation
         return a
 
 headerParser :: Parser Game
 headerParser = do
-    event  <- headline "Event" characters
-    site   <- headline "Site" characters
-    date   <- headline "Date" characters
-    ground <- headline "Round" characters
-    whitep <- headline "White" characters
-    blackp <- headline "Black" characters
-    result <- headline "Result" results
-    whitee <- headline "WhiteElo" numbers
-    blacke <- headline "BlackElo" numbers
-    eco    <- M.optional $ headline "ECO" characters
-    eventd <- M.optional $ headline "EventDate" characters
+    event   <- headline "Event" characters
+    site    <- headline "Site" characters
+    date    <- headline "Date" characters
+    ground  <- headline "Round" characters
+    whitep  <- headline "White" characters
+    blackp  <- headline "Black" characters
+    outcome <- headline "Result" result
+    whitee  <- headline "WhiteElo" numbers
+    blacke  <- headline "BlackElo" numbers
+    eco     <- M.optional $ headline "ECO" characters
+    eventd  <- M.optional $ headline "EventDate" characters
     return $ Game  {event       = event,
                     site        = site,
                     date        = date,
                     gameRound   = ground,
                     whitePlayer = whitep,
                     blackPlayer = blackp,
-                    result      = result,
+                    endResult   = outcome,
                     whiteElo    = whitee,
                     blackElo    = blacke,
                     eco         = eco,
                     eventDate   = eventd,
                     moves       = []}
-    where results             = (try whiteWin) <|> (try blackWin) <|> draw
-          whiteWin            = fmap (const WhiteWin) $ string "1-0"
-          blackWin            = fmap (const BlackWin) $ string "0-1"
-          draw                = fmap (const Draw) $ string "1/2-1/2"
-          characters          = M.manyTill asciiChar (M.lookAhead $ char '"')
+    where characters          = M.manyTill asciiChar (M.lookAhead $ char '"')
           numbers             = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
 delimitation :: Parser ()
-delimitation = void $ many spaceChar
+delimitation = void $ many (try newline <|> try spaceChar)
 
-lineDelimitation :: Parser ()
-lineDelimitation = do 
-        _ <- M.optional $ many newline
-        _ <- delimitation
-        _ <- M.optional $ many newline
-        return ()
-
-failWith :: ChessError -> Maybe a -> Parser a
-failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
-failWith error (Just a)  = return a
-
-index :: Parser ()
-index = void $ M.takeWhileP Nothing (/= '.') >> (char '.')
+index :: Parser String
+index = M.someTill numberChar (char '.')
 
 file :: Parser Int
 file = M.choice [(char 'a' $> 1),
@@ -153,10 +141,10 @@ rank :: Parser Int
 rank = fmap digitToInt $ numberChar
 
 check :: Parser ()
-check = void $ M.takeWhileP Nothing (== '+')
+check = void $ M.optional $ M.single '+'
 
 mate :: Parser ()
-mate = void $ M.takeWhileP Nothing (== '#')
+mate = void $ M.optional $ M.single '#'
 
 taking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
 taking square = find take
@@ -358,40 +346,42 @@ applied move = either fail return . Chess.move move
     where fail Chess.Illegal = failWith (MoveError move) Nothing
           fail outcome       = failWith (GameError outcome) Nothing
 
-end :: Parser ()
-end = void $ (try $ string "1-0") <|> (try $ string "1/2-1/2") <|> (try $ string "0-1")
+result :: Parser ChessResult
+result = M.choice [(try $ string "1-0") $> WhiteWin,
+                   (try $ string "0-1") $> BlackWin,
+                   (string "1/2-1/2")   $> Draw]
 
 noMove :: Chess.Board -> Parser (Chess.Board, Turn)
-noMove board = end $> (board, End)
+noMove board = result $> (board, End)
 
 oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
 oneMove board = do
-    _ <- lineDelimitation
+    _ <- delimitation
     _ <- index
     _ <- delimitation
     m <- move board
     b <- applied m board
     _ <- check
     _ <- mate
-    _ <- lineDelimitation
-    _ <- end
+    _ <- delimitation
+    _ <- result
     return (b, One m)
 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
 twoMove board = do
-    _  <- lineDelimitation
+    _  <- delimitation
     _  <- index
-    _  <- lineDelimitation
+    _  <- delimitation
     m  <- move board
     b  <- applied m board
     _  <- check
     _  <- mate
-    _  <- lineDelimitation
+    _  <- delimitation
     m' <- move b
     b' <- applied m' b
     _  <- check
     _  <- mate
-    _  <- lineDelimitation
+    _  <- delimitation
     return (b', Two (m, m'))
 
 turn :: Chess.Board -> Parser (Chess.Board, Turn)
@@ -413,9 +403,9 @@ moveParser board = do
 
 gameParser :: Parser Game
 gameParser = do
-        _      <- lineDelimitation 
+        _      <- delimitation 
         meta   <- headerParser
-        _      <- lineDelimitation
+        _      <- delimitation
         gmoves <- turnMoveParser
         return meta { moves = gmoves }
 
@@ -454,9 +444,6 @@ run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.
 run p = runParser p ""
 
 --- DEBUG ---
-
-localStringGame :: Int -> String
-localStringGame n = (unsafePerformIO $ fromPGNFile' "./chess_games/simple.pgn") !! n
 
 printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
 printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle
