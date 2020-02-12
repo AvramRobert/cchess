@@ -2,8 +2,8 @@ module Chess.Internal2 where
 
 import Data.List (find)
 import Control.Monad (mfilter)
-import Data.Functor ((<$))
-import Data.Maybe (maybe)
+import Data.Functor (($>))
+import Data.Maybe (maybe, isJust, isNothing, catMaybes)
 
 -- What do I need to be able to do?
 
@@ -22,29 +22,48 @@ import Data.Maybe (maybe)
 -- castling, passants and checks -> keep them at a game level, not at a piece level.
 
 type Square = (Int, Int)
+
 data Colour = B | W deriving (Eq, Show)
 
-data Piece = Pawn | Knight | Bishop | Rook | Queen | King deriving (Eq, Show)
-data Action = Action Piece Colour [Square] deriving (Eq, Show) -- squares should always be in reverse order of action => head is the last square
+data Piece = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show)
 
-data Move = Capture Action   |
-            Advance Action   |
-            Promote Action   |
-            Castle [Action]   -- this is the only thing that is sort-of compound
+type Position = (Piece, Colour, Square)
+type Action   = (Piece, Colour, [Square]) -- squares should always be in reverse order of action => head is the last square
+
+data Move = Capture Action            |
+            Advance Action            |
+            Enpassant Action          |
+            Promote (Action, Piece)   |
+            Castle  (Action, Action)
             deriving (Eq, Show) 
 
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
-data Board = Board { check  :: Bool,
-                     player :: Colour,
-                     pieces :: [(Piece, Colour, Square)]
+data Board = Board { check   :: Bool,
+                     player  :: Colour,
+                     actions :: [Action],
+                     pieces  :: [(Piece, Colour, Square)]
                      } deriving (Eq, Show)
 
 spread :: [a -> b] -> a -> [b]
-spread fs a = [f a | f <- fs] 
+spread fs a = [f a | f <- fs]
 
-develop :: [Dir] -> (Piece, Colour, Square) -> (Piece, Colour, [Square]) 
+spreadM :: [a -> Maybe b] -> a -> [b]
+spreadM [] a       = []
+spreadM (f : fs) a = case (f a) of (Just b)  -> b : (spreadM fs a)
+                                   (Nothing) -> spreadM fs a
+
+every :: [a -> Bool] -> a -> Bool
+every (p : ps) a = p a && every ps a
+
+y :: Square -> Int
+y = snd
+
+x :: Square -> Int
+x = fst
+
+develop :: [Dir] -> (Piece, Colour, Square) -> Action 
 develop dir (piece, colour, square) = (piece, colour, scanl (develop' colour) square dir)
     where develop' W (x, y) L  = (x - 1, y)
           develop' W (x, y) R  = (x + 1, y)
@@ -63,31 +82,64 @@ develop dir (piece, colour, square) = (piece, colour, scanl (develop' colour) sq
           develop' B (x, y) DL = (x - 1, y + 1)
           develop' B (x, y) DR = (x + 1, y + 1)
 
-colour :: (Piece, Colour, Square) -> Colour
+colour :: Position -> Colour
 colour (_, c, _) = c
 
-lookAt :: Square -> Board -> Maybe (Piece, Colour, Square)
-lookAt square = find position . pieces
+square :: Position -> Square
+square (_, _, s) = s
+
+squares :: Action -> [Square]
+squares (_, _, sqs) = sqs
+
+lookAt :: Board -> Square -> Maybe Position
+lookAt board square = find position $ pieces board
     where position (_, _, square') = square == square'
 
-advance :: [Dir] -> (Piece, Colour, Square) -> Move
-advance dir = create . develop dir
-    where create (piece, colour, squares) = Advance (Action piece colour squares)
+advance :: Board -> [Dir] -> Position -> Maybe Move
+advance board dir = verify board . Advance . develop dir
 
-capture :: [Dir] -> (Piece, Colour, Square) -> Move
-capture dir = create . develop dir
-    where create (piece, colour, squares) = Capture (Action piece colour squares)
+capture :: Board -> [Dir] -> Position -> Maybe Move
+capture board dir = verify board . Capture . develop dir
 
-verify :: Move -> Board -> Maybe Move
-verify m @ (Capture (Action piece colour' squares))                                   = Just m <$ mfilter ((/= colour') . colour) . lookAt (head squares) -- this might actually work
-verify m @ (Advance (Action piece colour' squares))                                   = maybe (Just m) (const Nothing) . lookAt (head squares)
-verify m @ (Castle  [(Action King kcolour ksquares), (Action Rook rcolour rsquares)]) = const Nothing
+opponent :: Colour -> Position -> Bool
+opponent colour (_, colour', _) = colour' /= colour
 
--- in order to keep it rather abstract at the usage level
--- I have to check the validity of a move a the point where it is defined, not in a separate function
--- If I do this, then only the local details of every move definition will contain specialised code, the usage functions and everything else will be kept generalised
-pawnMoves :: (Piece, Colour, Square) -> [Move]
-pawnMoves = spread [capture [UL],
-                    capture [UR],
-                    advance [U],
-                    advance [U, U]]
+empty :: Position -> Bool
+empty (piece, _, _) = piece == Empty 
+
+--------- To check: if the square is occupied with by enemy, if it's check and if yes, if this will escape
+capturingRule :: Board -> Action -> [Position -> Bool]
+capturingRule board (_, colour, _) = [const (not $ check board), opponent colour]
+
+--------- To check: if the square is empty, if it's check and if yes, if this will escape
+advancingRule :: Board -> Action -> [Position -> Bool]
+advancingRule board (_, _, _) = [const (not $ check board), empty] 
+
+--------- To check: if the squares are empty, if any of the king squares are attacked, if there's check, if the rook hasn't moved
+castlingRule :: Board -> (Action, Action) -> [[Position] -> Bool]
+castlingRule board ((king, kcolour, ksquares), (rook, rcolour, rsquares)) = [const (not $ check board), all empty] -- not threatened and the rook hasn't moved
+
+--------- To check: if it's the last rank, if it's taking something, if there's check and if yes, if this will escape
+promotingRule :: Board -> (Action, Piece) -> [Position -> Bool]
+promotingRule board ((Pawn, W, _), piece) = [const (not $ check board), (== 8) . y . square, empty] -- or opponent and was in position to take
+promotingRule board ((Pawn, B, _), piece) = [const (not $ check board), (== 1) . y . square, empty] -- or opponent and was in position to take
+promotingRule board (_, _)                = []
+
+--------- To check: If the square I'm going towards is empty, if the last move was a two square advance, if there's check and if yes, if this will escape
+enpassantRule :: Board -> Action -> [Position -> Bool]
+enpassantRule board (Pawn, _, _) = [const (not $ check board), empty] -- the last move is an opponents pawn doing a two square advance
+
+verify :: Board -> Move -> Maybe Move
+verify board move = if (allowed move) then Just move else Nothing
+    where mergeSquares ((k, kc, ks), (r, rc, rs)) = ks <> rs
+          allowed (Capture action)   = isJust $ mfilter (every (capturingRule board action))   $ lookAt board $ head $ squares action
+          allowed (Advance action)   = isJust $ mfilter (every (advancingRule board action))   $ lookAt board $ head $ squares action
+          allowed (Promote position) = isJust $ mfilter (every (promotingRule board position)) $ lookAt board $ head $ squares $ fst position
+          allowed (Enpassant action) = isJust $ mfilter (every (enpassantRule board action))   $ lookAt board $ head $ squares action
+          allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeSquares actions
+          
+pawnMoves :: Board -> (Piece, Colour, Square) -> [Move]
+pawnMoves board = spreadM [capture board [UL],
+                           capture board [UR],
+                           advance board [U],
+                           advance board [U, U]]
