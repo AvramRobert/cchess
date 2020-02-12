@@ -98,8 +98,7 @@ squares :: Action -> [Square]
 squares (_, _, sqs) = sqs
 
 lookAt :: Board -> Square -> Maybe Position
-lookAt board square = find position $ pieces board
-    where position (_, _, square') = square == square'
+lookAt board square' = find ((== square') . square) $ pieces board
 
 advance' :: Board -> Dir -> Position -> Maybe Move
 advance' board dir = verify board . Advance . develop' dir
