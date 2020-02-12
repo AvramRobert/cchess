@@ -63,24 +63,30 @@ y = snd
 x :: Square -> Int
 x = fst
 
+shift :: Dir -> (Piece, Colour, Square) -> (Piece, Colour, Square)
+shift dir (piece, colour, (x, y)) = (piece, colour, towards dir colour)
+    where towards L  W = (x - 1, y)
+          towards R  W = (x + 1, y)
+          towards U  W = (x, y + 1)
+          towards D  W = (x, y - 1)
+          towards UL W = (x - 1, y + 1)
+          towards UR W = (x + 1, y + 1)
+          towards DL W = (x - 1, y - 1)
+          towards DR W = (x + 1, y - 1)
+          towards L  B = (x - 1, y)
+          towards R  B = (x + 1, y)
+          towards U  B = (x, y - 1)
+          towards D  B = (x, y + 1)
+          towards UL B = (x - 1, y - 1)
+          towards UR B = (x + 1, y - 1)
+          towards DL B = (x - 1, y + 1)
+          towards DR B = (x + 1, y + 1)
+
+develop' :: Dir -> (Piece, Colour, Square) -> Action
+develop' dir position @ (piece, colour, _) = (piece, colour, [square $ shift dir position])
+
 develop :: [Dir] -> (Piece, Colour, Square) -> Action 
-develop dir (piece, colour, square) = (piece, colour, scanl (develop' colour) square dir)
-    where develop' W (x, y) L  = (x - 1, y)
-          develop' W (x, y) R  = (x + 1, y)
-          develop' W (x, y) U  = (x, y + 1)
-          develop' W (x, y) D  = (x, y - 1)
-          develop' W (x, y) UL = (x - 1, y + 1)
-          develop' W (x, y) UR = (x + 1, y + 1)
-          develop' W (x, y) DL = (x - 1, y - 1)
-          develop' W (x, y) DR = (x + 1, y - 1)
-          develop' B (x, y) L  = (x - 1, y)
-          develop' B (x, y) R  = (x + 1, y)
-          develop' B (x, y) U  = (x, y - 1)
-          develop' B (x, y) D  = (x, y + 1)
-          develop' B (x, y) UL = (x - 1, y - 1)
-          develop' B (x, y) UR = (x + 1, y - 1)
-          develop' B (x, y) DL = (x - 1, y + 1)
-          develop' B (x, y) DR = (x + 1, y + 1)
+develop dirs position @ (piece, colour, _) = (piece, colour, fmap square $ scanl (\p d -> shift d p) position dirs) -- (piece, colour, scanl (develop' colour) square dir)
 
 colour :: Position -> Colour
 colour (_, c, _) = c
@@ -94,6 +100,9 @@ squares (_, _, sqs) = sqs
 lookAt :: Board -> Square -> Maybe Position
 lookAt board square = find position $ pieces board
     where position (_, _, square') = square == square'
+
+advance' :: Board -> Dir -> Position -> Maybe Move
+advance' board dir = verify board . Advance . develop' dir
 
 advance :: Board -> [Dir] -> Position -> Maybe Move
 advance board dir = verify board . Advance . develop dir
@@ -137,9 +146,12 @@ verify board move = if (allowed move) then Just move else Nothing
           allowed (Promote position) = isJust $ mfilter (every (promotingRule board position)) $ lookAt board $ head $ squares $ fst position
           allowed (Enpassant action) = isJust $ mfilter (every (enpassantRule board action))   $ lookAt board $ head $ squares action
           allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeSquares actions
-          
+
 pawnMoves :: Board -> (Piece, Colour, Square) -> [Move]
 pawnMoves board = spreadM [capture board [UL],
                            capture board [UR],
                            advance board [U],
                            advance board [U, U]]
+
+bishopMoves :: Board -> (Piece, Colour, Square) -> [Move]
+bishopMoves board = spreadM [] -- i want to repeatedly capture UL -- repeatedly (advance board LU)
