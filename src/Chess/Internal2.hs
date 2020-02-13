@@ -1,9 +1,10 @@
 module Chess.Internal2 where
 
 import Data.List (find)
+import Data.List.NonEmpty (unfold)
 import Control.Monad (mfilter)
 import Data.Functor (($>))
-import Data.Maybe (maybe, isJust, isNothing, catMaybes)
+import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 
 -- What do I need to be able to do?
 
@@ -63,8 +64,8 @@ y = snd
 x :: Square -> Int
 x = fst
 
-shift :: Dir -> (Piece, Colour, Square) -> (Piece, Colour, Square)
-shift dir (piece, colour, (x, y)) = (piece, colour, towards dir colour)
+develop :: Dir -> Position -> Position
+develop dir (piece, colour, (x, y)) = (piece, colour, towards dir colour)
     where towards L  W = (x - 1, y)
           towards R  W = (x + 1, y)
           towards U  W = (x, y + 1)
@@ -80,13 +81,14 @@ shift dir (piece, colour, (x, y)) = (piece, colour, towards dir colour)
           towards UL B = (x - 1, y - 1)
           towards UR B = (x + 1, y - 1)
           towards DL B = (x - 1, y + 1)
-          towards DR B = (x + 1, y + 1)
+          towards DR B = (x + 1, y + 1) 
 
-develop' :: Dir -> (Piece, Colour, Square) -> Action
-develop' dir position @ (piece, colour, _) = (piece, colour, [square $ shift dir position])
-
-develop :: [Dir] -> (Piece, Colour, Square) -> Action 
-develop dirs position @ (piece, colour, _) = (piece, colour, fmap square $ scanl (\p d -> shift d p) position dirs) -- (piece, colour, scanl (develop' colour) square dir)
+-- FIXME: Make this thing stop iterating once the end is reached. Don't make it return maybes 
+-- Use `fromJust` for now, but make it WORK 
+follow :: Board -> Dir -> Position -> [(Position, Position)]
+follow board dir position = proceed $ lookAhead position
+    where proceed (Just p) = unfold (\p' -> ((position, p'), lookAhead p')) p
+          lookAhead p      = lookAt board $ develop dir p 
 
 colour :: Position -> Colour
 colour (_, c, _) = c
@@ -98,17 +100,13 @@ squares :: Action -> [Square]
 squares (_, _, sqs) = sqs
 
 lookAt :: Board -> Square -> Maybe Position
-lookAt board square = find position $ pieces board
-    where position (_, _, square') = square == square'
+lookAt board square' = find ((== square') . square) $ pieces board
 
-advance' :: Board -> Dir -> Position -> Maybe Move
-advance' board dir = verify board . Advance . develop' dir
+advance :: [(Position, Position)] -> Move
+advance (((p, c, s), _) : ps) = Advance (p, c, s : (fmap (square . fst) ps))
 
-advance :: Board -> [Dir] -> Position -> Maybe Move
-advance board dir = verify board . Advance . develop dir
-
-capture :: Board -> [Dir] -> Position -> Maybe Move
-capture board dir = verify board . Capture . develop dir
+capture :: [(Position, Position)]  -> Move
+capture (((p, c, s), _) : ps) = Capture (p, c, s : (fmap (square . fst) ps))
 
 opponent :: Colour -> Position -> Bool
 opponent colour (_, colour', _) = colour' /= colour
@@ -148,10 +146,26 @@ verify board move = if (allowed move) then Just move else Nothing
           allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeSquares actions
 
 pawnMoves :: Board -> (Piece, Colour, Square) -> [Move]
-pawnMoves board = spreadM [capture board [UL],
-                           capture board [UR],
-                           advance board [U],
-                           advance board [U, U]]
+pawnMoves board = spreadM [verify board . capture . take 1 . follow board UL,
+                           verify board . capture . take 1 . follow board UR,
+                           verify board . advance . take 1 . follow board U,
+                           verify board . advance . take 2 . follow board U]
 
+
+ -- What if i do it like this. Every time I pretend to go in a direction, I always have my current piece supposedly at square A and the actual piece at square A
 bishopMoves :: Board -> (Piece, Colour, Square) -> [Move]
-bishopMoves board = spreadM [] -- i want to repeatedly capture UL -- repeatedly (advance board LU)
+bishopMoves board = spreadM [verify board . capture . takeWhile (oneOf [empty . snd, opponent']) . keep (empty . snd) . follow board UR]
+
+onBoard :: Board -> (Position -> Position -> Bool) -> Position -> Bool
+onBoard board f position = isJust $ mfilter (f position) $ lookAt board $ square position
+
+opponent' :: (Position, Position) -> Bool
+opponent' ((_, c, _), (_, c', _)) = c /= c'
+
+keep :: (a -> Bool) -> [a] -> [a]
+keep p (a : as) | p a = a : (keep p as)
+keep p (a : _)        = a : []
+keep _ _                     = []
+
+oneOf :: [(a -> Bool)] -> a -> Bool
+oneOf fs a = isJust $ find (\f -> f a) fs
