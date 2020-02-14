@@ -2,7 +2,7 @@ module Chess.Internal2 where
 
 import Data.List (find)
 import Data.List.NonEmpty (unfoldr, toList)
-import Control.Monad (mfilter)
+import Control.Monad (mfilter, join)
 import Data.Functor (($>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 
@@ -57,6 +57,12 @@ spreadM (f : fs) a = case (f a) of (Just b)  -> b : (spreadM fs a)
 
 every :: [a -> Bool] -> a -> Bool
 every (p : ps) a = p a && every ps a
+
+keepUntil :: (a -> Bool) -> (a -> Bool) -> [a] -> [a]
+keepUntil stop keep (a : as) | keep a && stop a = a : []
+keepUntil stop keep (a : as) | keep a = a : (keepUntil stop keep as)
+keepUntil stop keep (a : as) | stop a = a : []
+keepUntil _ _ _                       = []
 
 y :: Square -> Int
 y = snd
@@ -145,27 +151,60 @@ verify board move = if (allowed move) then Just move else Nothing
           allowed (Enpassant action) = isJust $ mfilter (every (enpassantRule board action))   $ lookAt board $ head $ squares action
           allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeSquares actions
 
-pawnMoves :: Board -> (Piece, Colour, Square) -> [Move]
+pawnMoves :: Board -> Position -> [Move]
 pawnMoves board = spreadM [verify board . capture . takeWhile opponent' . take 1 . follow board UL,
                            verify board . capture . takeWhile opponent' . take 1 . follow board UR,
                            verify board . advance . takeWhile empty'    . take 1 . follow board U,
                            verify board . advance . takeWhile empty'    . take 2 . follow board U]
 
 
- -- What if i do it like this. Every time I pretend to go in a direction, I always have my current piece supposedly at square A and the actual piece at square A
-bishopMoves :: Board -> (Piece, Colour, Square) -> [Move]
-bishopMoves board = spreadM [verify board . capture . takeWhile (oneOf [empty', opponent']) . keep empty' . follow board UR]
+bishopMoves :: Board -> Position -> [Move]
+bishopMoves board = spreadM [verify board . capture . keepUntil opponent' empty' . follow board UR,
+                             verify board . capture . keepUntil opponent' empty' . follow board UL,
+                             verify board . capture . keepUntil opponent' empty' . follow board DR,
+                             verify board . capture . keepUntil opponent' empty' . follow board DL]
+
+rookMoves :: Board -> Position -> [Move]
+rookMoves board = spreadM [verify board . capture . keepUntil opponent' empty' . follow board U,
+                           verify board . capture . keepUntil opponent' empty' . follow board U,
+                           verify board . advance . takeWhile empty' . follow board U,
+                           verify board . advance . takeWhile empty' . follow board U]
+
+queenMoves :: Board -> Position -> [Move]
+queenMoves board = join . spread [bishopMoves board, rookMoves board]
+
+kingMoves :: Board -> Position -> [Move]
+kingMoves board = spreadM [verify board . capture . takeWhile opponent' . take 1 . follow board U,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board D,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board L,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board R,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board UL,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board UR,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board DL,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board DR,
+
+                           verify board . advance . takeWhile empty' . take 1 . follow board U,
+                           verify board . advance . takeWhile empty' . take 1 . follow board D,
+                           verify board . advance . takeWhile empty' . take 1 . follow board L,
+                           verify board . advance . takeWhile empty' . take 1 . follow board R,
+                           verify board . advance . takeWhile empty' . take 1 . follow board UL,
+                           verify board . advance . takeWhile empty' . take 1 . follow board UR,
+                           verify board . advance . takeWhile empty' . take 1 . follow board DL,
+                           verify board . advance . takeWhile empty' . take 1 . follow board DR,
+                           
+                           verify board . castle . tupled (takeWhile empty' . take 2 . follow board R, 
+                                                           takeWhile empty' . take 2 . follow board L),
+                           verify board . castle . tupled (takeWhile empty' . take 2 . follow board L,
+                                                           takeWhile empty' . take 3 . follow board R)]
+
+tupled :: (a -> b) -> (a -> c) -> a -> (a, c)
+tupled f g a = (f a, g a)
 
 empty' :: (Position, Position) -> Bool
 empty' (_, (p, _, _)) = p == Empty
 
 opponent' :: (Position, Position) -> Bool
 opponent' ((_, c, _), (_, c', _)) = c /= c'
-
-keep :: (a -> Bool) -> [a] -> [a]
-keep p (a : as) | p a = a : (keep p as)
-keep p (a : _)        = a : []
-keep _ _                     = []
 
 oneOf :: [(a -> Bool)] -> a -> Bool
 oneOf fs a = isJust $ find (\f -> f a) fs
