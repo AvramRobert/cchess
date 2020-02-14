@@ -145,63 +145,62 @@ promotingRule board (_, _)                = []
 enpassantRule :: Board -> Action -> [Position -> Bool]
 enpassantRule board (Pawn, _, _) = [const (not $ check board), empty] -- the last move is an opponents pawn doing a two coord advance
 
-verify :: Board -> Move -> Maybe Move
-verify board move = Nothing --if (allowed move) then Just move else Nothing
-    --where mergeCoords ((k, kc, ks), (r, rc, rs)) = ks <> rs
-          --allowed (Capture action)   = isJust $ mfilter (every (capturingRule board action))   $ lookAt board $ head $ coords action
-          --allowed (Advance action)   = isJust $ mfilter (every (advancingRule board action))   $ lookAt board $ head $ coords action
-          --allowed (Promote position) = isJust $ mfilter (every (promotingRule board position)) $ lookAt board $ head $ coords $ fst position
-          --allowed (Enpassant action) = isJust $ mfilter (every (enpassantRule board action))   $ lookAt board $ head $ coords action
-          --allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeCoords actions
+verify :: Board -> [Move -> Bool] -> Move -> Maybe Move
+verify board ps move | oneOf ps move = Just move
+verify board ps move                 = Nothing
 
+
+-- captures, advances and such should return maybes and probably check general chess rules. Like check and check escape.
+-- the individual moves themselves should make sure however that their own constraints are checked locally
+-- for example: enpassant => enapssant Pawn . takeWhile (every [opponent' . nextTo, jump board])
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = spreadM [verify board . captureWith Pawn . takeWhile opponent' . take 1 . follow board UL,
-                           verify board . captureWith Pawn . takeWhile opponent' . take 1 . follow board UR,
-                           verify board . advanceWith Pawn . takeWhile empty'    . take 1 . follow board U,
-                           verify board . advanceWith Pawn . takeWhile empty'    . take 2 . follow board U]
+pawnMoves board = spreadM [verify board [] . captureWith Pawn . takeWhile opponent' . take 1 . follow board UL,
+                           verify board [] . captureWith Pawn . takeWhile opponent' . take 1 . follow board UR,
+                           verify board [] . advanceWith Pawn . takeWhile empty'    . take 1 . follow board U,
+                           verify board [] . advanceWith Pawn . takeWhile empty'    . take 2 . follow board U]
 
 
 bishopMoves :: Board -> Square -> [Move]
-bishopMoves board = spreadM [verify board . captureWith Bishop . keepUntil opponent' empty' . follow board UR,
-                             verify board . captureWith Bishop . keepUntil opponent' empty' . follow board UL,
-                             verify board . captureWith Bishop . keepUntil opponent' empty' . follow board DR,
-                             verify board . captureWith Bishop . keepUntil opponent' empty' . follow board DL]
+bishopMoves board = spreadM [verify board [] . captureWith Bishop . keepUntil opponent' empty' . follow board UR,
+                             verify board [] . captureWith Bishop . keepUntil opponent' empty' . follow board UL,
+                             verify board [] . captureWith Bishop . keepUntil opponent' empty' . follow board DR,
+                             verify board [] . captureWith Bishop . keepUntil opponent' empty' . follow board DL]
 
 rookMoves :: Board -> Square -> [Move]
-rookMoves board = spreadM [verify board . captureWith Rook . keepUntil opponent' empty' . follow board U,
-                           verify board . captureWith Rook . keepUntil opponent' empty' . follow board U,
-                           verify board . advanceWith Rook . takeWhile empty' . follow board U,
-                           verify board . advanceWith Rook . takeWhile empty' . follow board U]
+rookMoves board = spreadM [verify board [] . captureWith Rook . keepUntil opponent' empty' . follow board U,
+                           verify board [] . captureWith Rook . keepUntil opponent' empty' . follow board U,
+                           verify board [] . advanceWith Rook . takeWhile empty' . follow board U,
+                           verify board [] . advanceWith Rook . takeWhile empty' . follow board U]
 
 queenMoves :: Board -> Square -> [Move]
-queenMoves board = spreadM [verify board . captureWith Queen . keepUntil opponent' empty' . follow board UR,
-                            verify board . captureWith Queen . keepUntil opponent' empty' . follow board UL,
-                            verify board . captureWith Queen . keepUntil opponent' empty' . follow board DR,
-                            verify board . captureWith Queen . keepUntil opponent' empty' . follow board DL] 
+queenMoves board = spreadM [verify board [] . captureWith Queen . keepUntil opponent' empty' . follow board UR,
+                            verify board [] . captureWith Queen . keepUntil opponent' empty' . follow board UL,
+                            verify board [] . captureWith Queen . keepUntil opponent' empty' . follow board DR,
+                            verify board [] . captureWith Queen . keepUntil opponent' empty' . follow board DL] 
 
 kingMoves :: Board -> Square -> [Move]
-kingMoves board = spreadM [verify board . captureWith King . takeWhile opponent' . take 1 . follow board U,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board D,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board L,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board R,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board UL,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board UR,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board DL,
-                           verify board . captureWith King . takeWhile opponent' . take 1 . follow board DR,
+kingMoves board = spreadM [verify board []. captureWith King . takeWhile opponent' . take 1 . follow board U,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board D,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board L,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board R,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board UL,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board UR,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board DL,
+                           verify board []. captureWith King . takeWhile opponent' . take 1 . follow board DR,
 
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board U,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board D,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board L,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board R,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board UL,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board UR,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board DL,
-                           verify board . advanceWith King . takeWhile empty' . take 1 . follow board DR,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board U,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board D,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board L,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board R,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board UL,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board UR,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board DL,
+                           verify board []. advanceWith King . takeWhile empty' . take 1 . follow board DR,
                            
-                           verify board . castle (advanceWith King . takeWhile empty' . take 2 . follow board R)
-                                                 (advanceWith Rook . takeWhile empty' . take 2 . follow board L . kingside),
-                           verify board . castle (advanceWith King . takeWhile empty' . take 2 . follow board L)
-                                                 (advanceWith Rook . takeWhile empty' . take 3 . follow board R . queenside)]
+                           verify board []. castle (advanceWith King . takeWhile empty' . take 2 . follow board R)
+                                                   (advanceWith Rook . takeWhile empty' . take 2 . follow board L . kingside),
+                           verify board []. castle (advanceWith King . takeWhile empty' . take 2 . follow board L)
+                                                   (advanceWith Rook . takeWhile empty' . take 3 . follow board R . queenside)]
         where kingside  (W, _) = (W, (8, 1))
               kingside  (B, _) = (B, (8, 8))
               queenside (W, _) = (W, (1, 1))
@@ -214,4 +213,5 @@ opponent' :: (Square, Position) -> Bool
 opponent' ((c, _), (_, c', _)) = c /= c'
 
 oneOf :: [(a -> Bool)] -> a -> Bool
+oneOf [] a = True
 oneOf fs a = isJust $ find (\f -> f a) fs
