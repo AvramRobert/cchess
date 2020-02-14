@@ -1,7 +1,7 @@
 module Chess.Internal2 where
 
 import Data.List (find)
-import Data.List.NonEmpty (unfold)
+import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter)
 import Data.Functor (($>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
@@ -83,12 +83,12 @@ develop dir (piece, colour, (x, y)) = (piece, colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1) 
 
--- FIXME: Make this thing stop iterating once the end is reached. Don't make it return maybes 
--- Use `fromJust` for now, but make it WORK 
 follow :: Board -> Dir -> Position -> [(Position, Position)]
 follow board dir position = proceed $ lookAhead position
-    where proceed (Just p) = unfold (\p' -> ((position, p'), lookAhead p')) p
-          lookAhead p      = lookAt board $ develop dir p 
+    where proceed (Just p)    = toList $ unfoldr step p
+          proceed (Nothing)   = []
+          step position'      = ((position, position'), lookAhead position')
+          lookAhead position' = lookAt board $ square $ develop dir position'
 
 colour :: Position -> Colour
 colour (_, c, _) = c
@@ -146,18 +146,18 @@ verify board move = if (allowed move) then Just move else Nothing
           allowed (Castle actions)   = isJust $ mfilter (every (castlingRule board actions))   $ traverse (lookAt board) $ mergeSquares actions
 
 pawnMoves :: Board -> (Piece, Colour, Square) -> [Move]
-pawnMoves board = spreadM [verify board . capture . take 1 . follow board UL,
-                           verify board . capture . take 1 . follow board UR,
-                           verify board . advance . take 1 . follow board U,
-                           verify board . advance . take 2 . follow board U]
+pawnMoves board = spreadM [verify board . capture . takeWhile opponent' . take 1 . follow board UL,
+                           verify board . capture . takeWhile opponent' . take 1 . follow board UR,
+                           verify board . advance . takeWhile empty'    . take 1 . follow board U,
+                           verify board . advance . takeWhile empty'    . take 2 . follow board U]
 
 
  -- What if i do it like this. Every time I pretend to go in a direction, I always have my current piece supposedly at square A and the actual piece at square A
 bishopMoves :: Board -> (Piece, Colour, Square) -> [Move]
-bishopMoves board = spreadM [verify board . capture . takeWhile (oneOf [empty . snd, opponent']) . keep (empty . snd) . follow board UR]
+bishopMoves board = spreadM [verify board . capture . takeWhile (oneOf [empty', opponent']) . keep empty' . follow board UR]
 
-onBoard :: Board -> (Position -> Position -> Bool) -> Position -> Bool
-onBoard board f position = isJust $ mfilter (f position) $ lookAt board $ square position
+empty' :: (Position, Position) -> Bool
+empty' (_, (p, _, _)) = p == Empty
 
 opponent' :: (Position, Position) -> Bool
 opponent' ((_, c, _), (_, c', _)) = c /= c'
