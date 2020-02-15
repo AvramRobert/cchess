@@ -39,10 +39,10 @@ data Move = Capture Action          |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
-data Board = Board { check   :: Bool,
-                     player  :: Colour,
-                     actions :: [Action],
-                     pieces  :: [(Piece, Colour, Coord)]
+data Board = Board { check  :: Bool,
+                     player :: Colour,
+                     past   :: [Action],
+                     pieces :: [(Piece, Colour, Coord)]
                      } deriving (Eq, Show)
 
 spread :: [a -> b] -> a -> [b]
@@ -127,12 +127,26 @@ captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 captureWith piece board []                          = Nothing
 captureWith piece board ps @ (((colour, _), _) : _) = permitted board $ Capture (piece, colour, fmap (coord . snd) ps)
 
+enpassantWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
+enpassantWith piece board []                          = Nothing
+enpassantWith piece board ps @ (((colour, _), _) : _) = permitted board $ Enpassant (piece, colour, fmap (coord . snd) ps)
+
 empty :: (Square, Position) -> Bool
 empty (_, (p, _, _)) = p == Empty
 
 opponent :: (Square, Position) -> Bool
 opponent ((c, _), (_, c', _)) = c /= c'
 
+jumped :: Board -> (Square, Position) -> Bool
+jumped board (square, (Empty, _, (x, y))) = isJust $ mfilter (every [fromBase, twoAway, penemy square]) $ keepFirst $ past board 
+      where keepFirst (a : _)             = Just a
+            keepFirst []                  = Nothing
+            penemy (B, _) (Pawn, W, _)    = True
+            penemy (W, _) (Pawn, B, _)    = True
+            penemy _ _                    = False 
+            twoAway (_, _, ((x', y') : _))= x' == x && ((abs (y' - y)) == 2)
+            fromBase (_, W, as)           = (snd $ last as) == 2
+            fromBase (_, B, as)           = (snd $ last as) == 7
 
 -- This should now check the current global chess rules: check, check escape or mate
 --- NOTE: This checks the influence of the CURRENT chess rules on the move. The move itself, after being performed, has its own influence on the game
@@ -149,7 +163,8 @@ pawnMoves :: Board -> Square -> [Move]
 pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent . take 1 . follow board UL,
                            captureWith Pawn board . takeWhile opponent . take 1 . follow board UR,
                            advanceWith Pawn board . takeWhile empty    . take 1 . follow board U,
-                           advanceWith Pawn board . takeWhile empty    . take 2 . follow board U]
+                           advanceWith Pawn board . takeWhile empty    . take 2 . follow board U,
+                           enpassantWith Pawn board . takeWhile (jumped board) . take 1 . follow board UL]
 
 
 bishopMoves :: Board -> Square -> [Move]
