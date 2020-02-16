@@ -138,22 +138,19 @@ opponent :: (Square, Position) -> Bool
 opponent ((c, _), (_, c', _)) = c /= c'
 
 jumped :: Board -> (Square, Position) -> Bool
-jumped board (square, (Empty, _, (x, y))) = isJust $ mfilter (every [fromBase, twoAway, penemy square]) $ keepFirst $ past board 
-      where keepFirst (a : _)             = Just a
-            keepFirst []                  = Nothing
-            penemy (B, _) (Pawn, W, _)    = True
-            penemy (W, _) (Pawn, B, _)    = True
-            penemy _ _                    = False 
-            twoAway (_, _, ((x', y') : _))= x' == x && ((abs (y' - y)) == 2)
-            fromBase (_, W, as)           = (snd $ last as) == 2
-            fromBase (_, B, as)           = (snd $ last as) == 7
+jumped board ((colour, (x, y)), _)  = isJust $ mfilter (every [leaped, opposing]) $ keepFirst $ past board 
+      where keepFirst (a : _)       = Just a
+            keepFirst []            = Nothing
+            opposing (piece, c, as) = (piece == Pawn) && (colour /= c) && sameFile as
+            sameFile ((x', _) : _)  = x == x' 
+            leaped   (_, W, as)     = (== [4, 3, 2]) $ fmap snd as
+            leaped   (_, B, as)     = (== [7, 6, 5]) $ fmap snd as
 
 -- This should now check the current global chess rules: check, check escape or mate
 --- NOTE: This checks the influence of the CURRENT chess rules on the move. The move itself, after being performed, has its own influence on the game
 -- Therefor, check / mate has to be checked twice. Once before and once after. 
 permitted :: Board -> Move -> Maybe Move
 permitted board = Just
-
 
 
 -- captures, advances and such should return maybes and probably check general chess rules. Like check and check escape.
@@ -164,7 +161,8 @@ pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent . take 1 
                            captureWith Pawn board . takeWhile opponent . take 1 . follow board UR,
                            advanceWith Pawn board . takeWhile empty    . take 1 . follow board U,
                            advanceWith Pawn board . takeWhile empty    . take 2 . follow board U,
-                           enpassantWith Pawn board . takeWhile (jumped board) . take 1 . follow board UL]
+                           enpassantWith Pawn board . takeWhile (every [jumped board, empty]) . take 1 . follow board UL,
+                           enpassantWith Pawn board . takeWhile (every [jumped board, empty]) . take 1 . follow board UR]
 
 
 bishopMoves :: Board -> Square -> [Move]
