@@ -123,6 +123,12 @@ square (_, c, s) = (c, s)
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
 
+trace :: Piece -> [(Square, Position)] -> Action
+trace piece path @ (((colour, _), _) : _) = (piece, colour, construct path)
+      where construct []            = []
+            construct ((s, p) : []) = coord p : (snd s) : []
+            construct ((s, p) : ps) = coord p : (construct ps)
+
 castle :: Board -> (Square -> Maybe Move) -> (Square -> Maybe Move) -> Square -> Maybe Move
 castle board kingf rookf square = do
             kingMove   <- kingf square
@@ -132,16 +138,16 @@ castle board kingf rookf square = do
       where createFrom (Advance k) (Advance r) = Castle k r
 
 advanceWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-advnaceWith piece board []                          = Nothing
-advanceWith piece board ps @ (((colour, _), _) : _) = permitted board $ Advance (piece, colour, fmap (coord . snd) ps)
+advnaceWith piece board []   = Nothing
+advanceWith piece board path = permitted board $ Advance $ trace piece path 
 
 captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-captureWith piece board []                          = Nothing
-captureWith piece board ps @ (((colour, _), _) : _) = permitted board $ Capture (piece, colour, fmap (coord . snd) ps)
+captureWith piece board []   = Nothing
+captureWith piece board path = permitted board $ Capture $ trace piece path
 
 enpassant :: Board -> [(Square, Position)] -> Maybe Move
-enpassant board []                          = Nothing
-enpassant board ps @ (((colour, _), _) : _) = permitted board $ Enpassant (Pawn, colour, fmap (coord . snd) ps)
+enpassant board []   = Nothing
+enpassant board path = permitted board $ Enpassant $ trace Pawn path
 
 empty :: (Square, Position) -> Bool
 empty (_, (p, _, _)) = p == Empty
@@ -173,10 +179,6 @@ threats board sqs = filter (oneOf (fmap attacks sqs)) $ pieces board >>= (movesF
 king :: Board -> Colour -> Position
 king board colour' = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
 
--- This should now check the current global chess rules: check, check escape or mate
---- NOTE: This checks the influence of the CURRENT chess rules on the move. The move itself, after being performed, has its own influence on the game
--- Therefore, check / mate has to be checked twice. Once before and once after. 
-
 -- There should be a way to just simulate this without actually creating a new board every time
 -- In addition, the global threats of a board are constant over a complete pass of move compilation.
 -- That means that I could theoretically compute them once and hand them individually to every `*moves` function
@@ -184,8 +186,6 @@ permitted :: Board -> Move -> Maybe Move
 permitted board move | not $ check board                = Just move
 permitted board move | not $ check $ perform board move = Just move
 permitted board _                                       = Nothing 
-
--- NONE OF THESE ACTUALLY CONTAIN THE ORIGINAL SQUARE POSITION
 
 pawnMoves :: Board -> Square -> [Move]
 pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent                       . follow' board [UL],
@@ -286,13 +286,20 @@ movesFor board (Bishop, c, s) = bishopMoves board (c, s)
 movesFor board (Queen, c, s)  = queenMoves board (c, s)
 movesFor board (Knight, c, s) = knightMoves board (c, s)
 
-remove :: (a -> Bool) -> [a] -> [a]
-remove p = filter (not . p)
+-- this can be optimised, If i've already done one or the other, i can stop once i do the second
+reconstruct :: Position -> Position-> [Position] -> [Position]
+reconstruct old new []                              = []
+reconstruct old new (a : as) | coord a == coord old = (Empty, colour old, coord a) : (reconstruct old new as)
+reconstruct old new (a : as) | coord a == coord new = new : (reconstruct old new as)
 
--- this should remove the intial placement of the piece, which is not in the list of coordinates..
 perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces = commit move $ pieces board, 
                                           past   = move : (past board) }
                          kings  = [square $ king board' W, square $ king board' B]
                      in  board' { check = not $ null $ threats board' kings }
-            where commit (Capture (p, c, (s : _))) ps = (p, c, s) : (remove ((/= s) . coord) ps)
+            where start (p, c, cs)                = (p, c, last cs)
+                  end   (p, c, cs)                = (p, c, head cs)
+                  commit (Capture action)         = reconstruct (start action) (end action)
+                  commit (Advance action)         = reconstruct (start action) (end action)
+                  commit (Enpassant action)       = const [] -- this is a tad bit different
+                  commit (Castle kaction raction) = reconstruct (start raction) (end raction) . reconstruct (start kaction) (end kaction) 
