@@ -39,10 +39,10 @@ data Move = Capture Action          |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
-data Board = Board { check  :: Bool,
-                     player :: Colour,
-                     past   :: [Action],
-                     pieces :: [(Piece, Colour, Coord)]
+data Board = Board { check   :: Bool,
+                     player  :: Colour,
+                     past    :: [Move],
+                     pieces  :: [(Piece, Colour, Coord)]
                      } deriving (Eq, Show)
 
 spread :: [a -> b] -> a -> [b]
@@ -65,12 +65,6 @@ keepUntil stop keep (a : as) | keep a && stop a = a : []
 keepUntil stop keep (a : as) | keep a = a : (keepUntil stop keep as)
 keepUntil stop keep (a : as) | stop a = a : []
 keepUntil _ _ _                       = []
-
-y :: Coord -> Int
-y = snd
-
-x :: Coord -> Int
-x = fst
 
 develop :: Dir -> Square -> Square
 develop dir (colour, (x, y)) = (colour, towards dir colour)
@@ -114,14 +108,17 @@ follow' board all @ (d : ds) square       = go [] ds (lookAhead board d square)
             go xs _ _                            = []
             nextSquare position                  = (colour position, coord position)
 
+piece :: Position -> Piece
+piece (p, _, _) = p
+
 colour :: Position -> Colour
 colour (_, c, _) = c
 
 coord :: Position -> Coord
 coord (_, _, s) = s
 
-coords :: Action -> [Coord]
-coords (_, _, sqs) = sqs
+square :: Position -> Square
+square (_, c, s) = (c, s)
 
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
@@ -142,9 +139,9 @@ captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 captureWith piece board []                          = Nothing
 captureWith piece board ps @ (((colour, _), _) : _) = permitted board $ Capture (piece, colour, fmap (coord . snd) ps)
 
-enpassantWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-enpassantWith piece board []                          = Nothing
-enpassantWith piece board ps @ (((colour, _), _) : _) = permitted board $ Enpassant (piece, colour, fmap (coord . snd) ps)
+enpassant :: Board -> [(Square, Position)] -> Maybe Move
+enpassant board []                          = Nothing
+enpassant board ps @ (((colour, _), _) : _) = permitted board $ Enpassant (Pawn, colour, fmap (coord . snd) ps)
 
 empty :: (Square, Position) -> Bool
 empty (_, (p, _, _)) = p == Empty
@@ -154,28 +151,49 @@ opponent ((c, _), (_, c', _)) = c /= c'
 
 jumped :: Board -> (Square, Position) -> Bool
 jumped board ((colour, (x, y)), _)  = isJust $ mfilter (every [leaped, opposing]) $ keepFirst $ past board 
-      where keepFirst (a : _)       = Just a
-            keepFirst []            = Nothing
-            opposing (piece, c, as) = (piece == Pawn) && (colour /= c) && sameFile as
-            sameFile ((x', _) : _)  = x == x' 
-            leaped   (_, W, as)     = (== [4, 3, 2]) $ fmap snd as
-            leaped   (_, B, as)     = (== [7, 6, 5]) $ fmap snd as
+      where keepFirst ((Advance a) : _) = Just a
+            keepFirst []                = Nothing
+            opposing (piece, c, as)     = (piece == Pawn) && (colour /= c) && sameFile as
+            sameFile ((x', _) : _)      = x == x' 
+            leaped   (_, W, as)         = (== [4, 3, 2]) $ fmap snd as
+            leaped   (_, B, as)         = (== [7, 6, 5]) $ fmap snd as
+
+started :: Board -> (Square, Position) -> Bool
+started board ((colour, coord), _)     = isJust $ mfilter (pawnOf colour) $ lookAt board coord
+      where pawnOf W (Pawn, W, (_, 2)) = True
+            pawnOf B (Pawn, B, (_, 7)) = True
+            pawnOf _ _                 = False
+
+threats :: Board -> [Square] -> [Move]
+threats board sqs = filter (oneOf (fmap attacks sqs)) $ pieces board >>= (movesFor board)
+      where attacks (c, s) (Capture   (_, c', s' : _)) = c /= c' && s == s'
+            attacks (c, s) (Enpassant (_, c', s' : _)) = c /= c' && s == s' -- i don't think this is right
+            attacks _ _                                = False  
+
+king :: Board -> Colour -> Position
+king board colour' = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
 
 -- This should now check the current global chess rules: check, check escape or mate
 --- NOTE: This checks the influence of the CURRENT chess rules on the move. The move itself, after being performed, has its own influence on the game
 -- Therefore, check / mate has to be checked twice. Once before and once after. 
+
+-- There should be a way to just simulate this without actually creating a new board every time
+-- In addition, the global threats of a board are constant over a complete pass of move compilation.
+-- That means that I could theoretically compute them once and hand them individually to every `*moves` function
 permitted :: Board -> Move -> Maybe Move
-permitted board = Just
+permitted board move | not $ check board                = Just move
+permitted board move | not $ check $ perform board move = Just move
+permitted board _                                       = Nothing 
 
 -- NONE OF THESE ACTUALLY CONTAIN THE ORIGINAL SQUARE POSITION
 
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = spreadM [captureWith Pawn board   . takeWhile opponent                      . follow' board [UL],
-                           captureWith Pawn board   . takeWhile opponent                      . follow' board [UR],
-                           advanceWith Pawn board   . takeWhile empty                         . follow' board [U],
-                           advanceWith Pawn board   . takeWhile empty                         . follow' board [U, U], -- this should check if the pawn can jump
-                           enpassantWith Pawn board . takeWhile (every [jumped board, empty]) . follow' board [UL],
-                           enpassantWith Pawn board . takeWhile (every [jumped board, empty]) . follow' board [UR]]
+pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent                       . follow' board [UL],
+                           captureWith Pawn board . takeWhile opponent                       . follow' board [UR],
+                           advanceWith Pawn board . takeWhile empty                          . follow' board [U],
+                           advanceWith Pawn board . takeWhile (every [started board, empty]) . follow' board [U, U],
+                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UL],
+                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UR]]
 
 
 bishopMoves :: Board -> Square -> [Move]
@@ -257,10 +275,24 @@ kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow'
               queenside (W, _) = (W, (1, 1))
               queenside (B, _) = (B, (1, 8))
 
-moves :: Board -> Position -> [Move]
-moves board (Pawn, c, s)   = pawnMoves board (c, s)
-moves board (King, c, s)   = kingMoves board (c, s)
-moves board (Rook, c, s)   = rookMoves board (c, s)
-moves board (Bishop, c, s) = bishopMoves board (c, s)
-moves board (Queen, c, s)  = queenMoves board (c, s)
-moves board (Knight, c, s) = knightMoves board (c, s)
+moves :: Board -> Square -> [Move]
+moves board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
+
+movesFor :: Board -> Position -> [Move]
+movesFor board (Pawn, c, s)   = pawnMoves board (c, s)
+movesFor board (King, c, s)   = kingMoves board (c, s)
+movesFor board (Rook, c, s)   = rookMoves board (c, s)
+movesFor board (Bishop, c, s) = bishopMoves board (c, s)
+movesFor board (Queen, c, s)  = queenMoves board (c, s)
+movesFor board (Knight, c, s) = knightMoves board (c, s)
+
+remove :: (a -> Bool) -> [a] -> [a]
+remove p = filter (not . p)
+
+-- this should remove the intial placement of the piece, which is not in the list of coordinates..
+perform :: Board -> Move -> Board
+perform board move = let board' = board { pieces = commit move $ pieces board, 
+                                          past   = move : (past board) }
+                         kings  = [square $ king board' W, square $ king board' B]
+                     in  board' { check = not $ null $ threats board' kings }
+            where commit (Capture (p, c, (s : _))) ps = (p, c, s) : (remove ((/= s) . coord) ps)
