@@ -158,8 +158,9 @@ started board ((colour, coord), _)     = isJust $ mfilter (pawnOf colour) $ look
             pawnOf B (Pawn, B, (_, 7)) = True
             pawnOf _ _                 = False
 
-threats :: Board -> [Square] -> [Move]
-threats board sqs = filter (oneOf (fmap attacks sqs)) $ pieces board >>= (movesFor board)
+threats :: Board -> ([Square] -> [Move])
+threats board = let moves = pieces board >>= (movesFor board)
+                in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
       where attacks (c, s) (Capture   (_, c', _) e)    = c /= c' && s == e
             attacks (c, s) (Enpassant (_, c', _) _ e)  = c /= c' && s == e
             attacks _ _                                = False  
