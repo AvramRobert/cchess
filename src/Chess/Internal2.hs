@@ -40,10 +40,12 @@ data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
 --- FIXME: Make castling part of the board
-data Board = Board { check   :: Bool,
-                     player  :: Colour,
-                     past    :: [Move],
-                     pieces  :: [Position]
+data Board = Board { check           :: Bool,
+                     player          :: Colour,
+                     past            :: [Move],
+                     pieces          :: [Position],
+                     kingsideCastle  :: Bool,
+                     queensideCastle :: Bool
                      } deriving (Eq, Show)
 
 spread :: [a -> b] -> a -> [b]
@@ -158,12 +160,21 @@ started board ((colour, coord), _)     = isJust $ mfilter (pawnOf colour) $ look
             pawnOf B (Pawn, B, (_, 7)) = True
             pawnOf _ _                 = False
 
+safe :: Board -> (Dir -> (Square, Position) -> Bool)
+safe board = let attackers = threats board
+             in \dir s -> case (dir, fst $ fst s) of 
+                               (R, W) -> null $ attackers [(W, (3, 1))] -- add proper coords
+                               (R, B) -> null $ attackers [(B, (3, 8))]
+                               (L, W) -> null $ attackers [(W, (1, 1))]
+                               (L, B) -> null $ attackers [(B, (1, 8))]
+                               (_, _) -> False
+
 threats :: Board -> ([Square] -> [Move])
 threats board = let moves = pieces board >>= (movesFor board)
                 in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
       where attacks (c, s) (Capture   (_, c', _) e)    = c /= c' && s == e
             attacks (c, s) (Enpassant (_, c', _) _ e)  = c /= c' && s == e
-            attacks _ _                                = False  
+            attacks _ _                                = False
 
 king :: Board -> Colour -> Position
 king board colour' = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
@@ -254,12 +265,15 @@ kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow'
                            advanceWith King board . takeWhile empty . follow' board [DL],
                            advanceWith King board . takeWhile empty . follow' board [DR],
                            
-                           -- Castle can be simpler. The filter here can check if the path is attacked
-                           castle board (advanceWith King board . takeWhile empty . follow' board [R, R])
+                           -- Castle can be simpler. This should also check that the rook or rook haven't moved
+                           castle board (advanceWith King board . takeWhile (every [safeKingside, empty]) . follow' board [R, R])
                                         (advanceWith Rook board . takeWhile empty . follow' board [L, L] . kingside),
-                           castle board (advanceWith King board . takeWhile empty . follow' board [L, L])
+                           castle board (advanceWith King board . takeWhile (every [safeQueenside, empty]) . follow' board [L, L])
                                         (advanceWith Rook board . takeWhile empty . follow' board [R, R, R] . queenside)]
-        where kingside  (W, _) = (W, (8, 1))
+        where safecheck        = safe board
+              safeKingside     = safecheck R
+              safeQueenside    = safecheck L
+              kingside  (W, _) = (W, (8, 1))
               kingside  (B, _) = (B, (8, 8))
               queenside (W, _) = (W, (1, 1))
               queenside (B, _) = (B, (1, 8))
@@ -283,6 +297,7 @@ reconstruct [] [] rs                                      = rs
 reconstruct ps cs (r : rs)                                = r : (reconstruct ps cs rs)
 reconstruct ps cs []                                      = []
 
+-- This should globally say decide if a castle is still possible or not
 perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces = commit move $ pieces board, 
                                           past   = move : (past board) }
