@@ -39,14 +39,16 @@ data Move = Capture   Position Coord       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
---- FIXME: Make castling part of the board
 data Board = Board { check           :: Bool,
                      player          :: Colour,
                      past            :: [Move],
                      pieces          :: [Position],
-                     kingsideCastle  :: Bool,
-                     queensideCastle :: Bool
+                     kingsideCastle  :: (Bool, Bool),
+                     queensideCastle :: (Bool, Bool)
                      } deriving (Eq, Show)
+
+xor :: Bool -> Bool -> Bool
+xor a b = a /= b
 
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]
@@ -163,11 +165,18 @@ started board ((colour, coord), _)     = isJust $ mfilter (pawnOf colour) $ look
 safe :: Board -> (Dir -> (Square, Position) -> Bool)
 safe board = let attackers = threats board
              in \dir s -> case (dir, fst $ fst s) of 
-                               (R, W) -> null $ attackers [(W, (3, 1))] -- add proper coords
-                               (R, B) -> null $ attackers [(B, (3, 8))]
-                               (L, W) -> null $ attackers [(W, (1, 1))]
-                               (L, B) -> null $ attackers [(B, (1, 8))]
+                               (R, W) -> null $ attackers [(W, (6, 1)), (W, (7, 1))]
+                               (R, B) -> null $ attackers [(B, (6, 8)), (B, (7, 8))]
+                               (L, W) -> null $ attackers [(W, (3, 1)), (W, (4, 1))]
+                               (L, B) -> null $ attackers [(B, (3, 8)), (B, (4, 8))]
                                (_, _) -> False
+
+canCastle :: Board -> Dir -> (Square, Position) -> Bool
+canCastle board L ((W, _), _) = fst $ queensideCastle board
+canCastle board L ((B, _), _) = snd $ queensideCastle board
+canCastle board R ((W, _), _) = fst $ kingsideCastle board
+canCastle board R ((B, _), _) = snd $ kingsideCastle board
+canCastle board _ _           = False
 
 threats :: Board -> ([Square] -> [Move])
 threats board = let moves = pieces board >>= (movesFor board)
@@ -209,7 +218,7 @@ rookMoves board = spreadM [captureWith Rook board . keepUntil opponent empty . f
 
 knightMoves :: Board -> Square -> [Move]
 knightMoves board = spreadM [captureWith Knight board . keepUntil opponent empty . follow' board [U, U, L],
-                             captureWith Knight board . keepUntil opponent empty . follow' board [U, U, R],
+                              captureWith Knight board . keepUntil opponent empty . follow' board [U, U, R],
                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, L],
                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, R],
                              captureWith Knight board . keepUntil opponent empty . follow' board [L, L, U],
@@ -265,11 +274,10 @@ kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow'
                            advanceWith King board . takeWhile empty . follow' board [DL],
                            advanceWith King board . takeWhile empty . follow' board [DR],
                            
-                           -- Castle can be simpler. This should also check that the rook or rook haven't moved
-                           castle board (advanceWith King board . takeWhile (every [safeKingside, empty]) . follow' board [R, R])
-                                        (advanceWith Rook board . takeWhile empty . follow' board [L, L] . kingside),
-                           castle board (advanceWith King board . takeWhile (every [safeQueenside, empty]) . follow' board [L, L])
-                                        (advanceWith Rook board . takeWhile empty . follow' board [R, R, R] . queenside)]
+                           castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
+                                        (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
+                           castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
+                                        (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)]
         where safecheck        = safe board
               safeKingside     = safecheck R
               safeQueenside    = safecheck L
@@ -297,15 +305,32 @@ reconstruct [] [] rs                                      = rs
 reconstruct ps cs (r : rs)                                = r : (reconstruct ps cs rs)
 reconstruct ps cs []                                      = []
 
--- This should globally say decide if a castle is still possible or not
+castled :: Dir -> (Bool, Bool) -> Move -> (Bool, Bool)
+castled R (w, b) (Castle (_, d) _)        = (w `xor` (d == (7, 1)), b `xor` (d == (7, 8)))
+castled L (w, b) (Castle (_, d) _)        = (w `xor` (d == (3, 1)), b `xor` (d == (3, 8)))
+
+castled R (w, b) (Advance (Rook, _, s) _) = (w && (s == (8, 1)), b && (s == (8, 8)))
+castled L (w, b) (Capture (Rook, _, s) _) = (w && (s == (1, 1)), b && (s == (1, 8)))
+
+castled _ (w, b) (Advance (King, _, s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
+castled _ (w, b) (Capture (King, _, s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
+
+castled _ (w, b) _                        = (w, b)
+
 perform :: Board -> Move -> Board
-perform board move = let board' = board { pieces = commit move $ pieces board, 
-                                          past   = move : (past board) }
+perform board move = let board' = board { pieces          = commit move $ pieces board, 
+                                          past            = move : (past board),
+                                          kingsideCastle  = castled R (kingsideCastle board) move,
+                                          queensideCastle = castled L (queensideCastle board) move  }
                          kings  = [square $ king board' W, square $ king board' B]
                      in  board' { check = not $ null $ threats board' kings }
-            where commit (Capture (p, c, s) e)     = reconstruct [(p, c, e)] [s]
-                  commit (Advance (p, c, s) e)     = reconstruct [(p, c, e)] [s]
-                  commit (Enpassant (p, c, s) e r) = reconstruct [(p, c, e)] [s, r]
-                  commit (Promote (p, c, s) p' e)  = reconstruct [(p',c, e)] [s] 
+            where commit (Capture (p, c, s) e)      = reconstruct [(p, c, e)] [s]
+                  commit (Advance (p, c, s) e)      = reconstruct [(p, c, e)] [s]
+                  commit (Enpassant (p, c, s) e r)  = reconstruct [(p, c, e)] [s, r]
+                  commit (Promote (p, c, s) p' e)   = reconstruct [(p',c, e)] [s] 
                   commit (Castle ((k, kc, ks), ke) 
-                                 ((r, rc, rs), re))= reconstruct [(k, kc, ke), (r, rc, re)] [ks, rs]
+                                 ((r, rc, rs), re)) = reconstruct [(k, kc, ke), (r, rc, re)] [ks, rs]
+
+-- TODO: 
+-- 1. Pawn promotions as moves
+-- 2. Promotions seen as threats
