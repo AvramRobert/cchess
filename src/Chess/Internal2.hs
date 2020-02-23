@@ -32,7 +32,7 @@ data Board = Board { check           :: Bool,
                      queensideCastle :: (Bool, Bool) } deriving (Eq)
 
 instance Show Board where
-      show = whiteView . pieces
+      show board = unlines [whiteView $ pieces board, statistics board]
 
 instance Show Position where
       show (Pos Pawn W xy)   = "♙ " <> show xy
@@ -80,6 +80,17 @@ blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
 
 whiteView :: [Position] -> String
 whiteView = blackView . reverse
+
+statistics :: Board -> String
+statistics (Board check player past _ kc qc) = unlines ["Player:     " <> show player, 
+                                                        "In-Check:   " <> show check, 
+                                                        "Can castle: " <> (verify $ pickCastle player)]
+      where pickCastle B = (snd kc, snd qc)
+            pickCastle W = (fst kc, fst qc)
+            verify (True, True)  = "Both sides"
+            verify (True, False) = "King-Side"
+            verify (False, True) = "Queen-Side"
+            verify _             = "False" 
 
 develop :: Dir -> Square -> Square
 develop dir (colour, (x, y)) = (colour, towards dir colour)
