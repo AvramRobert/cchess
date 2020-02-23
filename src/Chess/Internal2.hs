@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Chess.Internal2 where
 
 import Data.List (find)
@@ -10,7 +12,7 @@ type Coord    = (Int, Int)
 data Colour   = B | W deriving (Eq, Show)
 data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show)
 type Square   = (Colour, Coord)
-type Position = (Piece, Colour, Coord)
+data Position = Pos Piece Colour Coord deriving (Eq)
 
 data Move = Capture   Position Coord       |
             Advance   Position Coord       | 
@@ -30,6 +32,21 @@ data Board = Board { check           :: Bool,
                      kingsideCastle  :: (Bool, Bool),
                      queensideCastle :: (Bool, Bool)
                      } deriving (Eq, Show)
+
+instance Show Position where
+      show (Pos Pawn W xy)   = "♙ " <> show xy
+      show (Pos Pawn B xy)   = "♟ " <> show xy
+      show (Pos Rook W xy)   = "♖ " <> show xy
+      show (Pos Rook B xy)   = "♜ " <> show xy
+      show (Pos Bishop W xy) = "♗ " <> show xy
+      show (Pos Bishop B xy) = "♝ " <> show xy
+      show (Pos Knight W xy) = "♘ " <> show xy
+      show (Pos Knight B xy) = "♞ " <> show xy 
+      show (Pos King W xy)   = "♔ " <> show xy
+      show (Pos King B xy)   = "♚ " <> show xy
+      show (Pos Queen W xy)  = "♕ " <> show xy
+      show (Pos Queen B xy)  = "♛ " <> show xy
+      show (Pos Empty _ _)   = " "
 
 xor :: Bool -> Bool -> Bool
 xor a b = a /= b
@@ -91,16 +108,16 @@ follow' board all @ (d : ds) square       = go [] ds (lookAhead board d square)
             nextSquare position                  = (colour position, coord position)
 
 piece :: Position -> Piece
-piece (p, _, _) = p
+piece (Pos p _ _) = p
 
 colour :: Position -> Colour
-colour (_, c, _) = c
+colour (Pos _ c _) = c
 
 coord :: Position -> Coord
-coord (_, _, s) = s
+coord (Pos _ _ s) = s
 
 square :: Position -> Square
-square (_, c, s) = (c, s)
+square (Pos _ c s) = (c, s)
 
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
@@ -115,40 +132,40 @@ castle board kingf rookf square = do
 
 advanceWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 advnaceWith piece board []                        = Nothing
-advanceWith piece board (((c, s), (_, _, e)) : _) = permitted board $ Advance (piece, c, s) e 
+advanceWith piece board (((c, s), (Pos _ _ e)) : _) = permitted board $ Advance (Pos piece c s) e 
 
 captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 captureWith piece board []                        = Nothing
-captureWith piece board (((c, s), (_, _, e)) : _) = permitted board $ Capture (piece, c, s) e  
+captureWith piece board (((c, s), (Pos _ _ e)) : _) = permitted board $ Capture (Pos piece c s) e  
 
 promoteTo :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 promoteTo piece board []                          = Nothing
-promoteTo piece board (((c, s), (_, _, e)) : _)   = permitted board $ Promote (Pawn, c, s) piece e
+promoteTo piece board (((c, s), (Pos _ _ e)) : _)   = permitted board $ Promote (Pos Pawn c s) piece e
 
 enpassant :: Board -> [(Square, Position)] -> Maybe Move
 enpassant board []                        = Nothing
-enpassant board (((c, s), (_, _, e)) : _) = permitted board $ Enpassant (Pawn, c, s) e (fst s, (snd s) - 1)
+enpassant board (((c, s), (Pos _ _ e)) : _) = permitted board $ Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
 
 empty :: (Square, Position) -> Bool
-empty (_, (p, _, _)) = p == Empty
+empty (_, (Pos p _ _)) = p == Empty
 
 opponent :: (Square, Position) -> Bool
-opponent ((c, _), (_, c', _)) = c /= c'
+opponent ((c, _), (Pos _ c' _)) = c /= c'
 
 jumped :: Board -> (Square, Position) -> Bool
 jumped board ((colour, (x, y)), _)  = isJust $ mfilter opposed $ keepFirst $ past board 
-      where keepFirst ((Advance p ps) : _)               = Just (Advance p ps)
-            keepFirst []                                 = Nothing
-            opposed (Advance (p, c, (xs, ys)) (xe, ye))  = (Pawn == p) && 
-                                                           (colour /= c) &&   
-                                                           (abs (xs - x) == 1) && 
-                                                           (abs (ye - ys) == 2)
+      where keepFirst ((Advance p ps) : _)                 = Just (Advance p ps)
+            keepFirst []                                   = Nothing
+            opposed (Advance (Pos p c (xs, ys)) (xe, ye))  = (Pawn == p) && 
+                                                             (colour /= c) &&   
+                                                             (abs (xs - x) == 1) && 
+                                                             (abs (ye - ys) == 2)
 
 started :: Board -> (Square, Position) -> Bool
-started board ((colour, coord), _)     = isJust $ mfilter (pawnOf colour) $ lookAt board coord
-      where pawnOf W (Pawn, W, (_, 2)) = True
-            pawnOf B (Pawn, B, (_, 7)) = True
-            pawnOf _ _                 = False
+started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lookAt board coord
+      where pawnOf W (Pos Pawn W (_, 2)) = True
+            pawnOf B (Pos Pawn B (_, 7)) = True
+            pawnOf _ _                   = False
 
 safe :: Board -> (Dir -> (Square, Position) -> Bool)
 safe board = let attackers = threats board
@@ -160,8 +177,8 @@ safe board = let attackers = threats board
                                (_, _) -> False
 
 backrank :: (Square, Position) -> Bool
-backrank ((W, (_, 7)), (_, _, (_, 8))) = True
-backrank ((B, (_, 2)), (_, _, (_, 1))) = True
+backrank ((W, (_, 7)), (Pos _ _ (_, 8))) = True
+backrank ((B, (_, 2)), (Pos _ _ (_, 1))) = True
 backrank _                             = False
 
 canCastle :: Board -> Dir -> (Square, Position) -> Bool
@@ -174,10 +191,10 @@ canCastle board _ _           = False
 threats :: Board -> ([Square] -> [Move])
 threats board = let moves = pieces board >>= (movesFor board)
                 in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
-      where attacks (c, s) (Capture   (_, c', _) e)    = c /= c' && s == e
-            attacks (c, s) (Enpassant (_, c', _) _ e)  = c /= c' && s == e
-            attacks (c, s) (Promote   (_, c', _) _ e)  = c /= c' && s == e
-            attacks _ _                                = False
+      where attacks (c, s) (Capture   (Pos _ c' _) e)    = c /= c' && s == e
+            attacks (c, s) (Enpassant (Pos _ c' _) _ e)  = c /= c' && s == e
+            attacks (c, s) (Promote   (Pos _ c' _) _ e)  = c /= c' && s == e
+            attacks _ _                                  = False
 
 king :: Board -> Colour -> Position
 king board colour' = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
@@ -297,30 +314,30 @@ moves :: Board -> Square -> [Move]
 moves board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
 
 movesFor :: Board -> Position -> [Move]
-movesFor board (Pawn, c, s)   = pawnMoves board (c, s)
-movesFor board (King, c, s)   = kingMoves board (c, s)
-movesFor board (Rook, c, s)   = rookMoves board (c, s)
-movesFor board (Bishop, c, s) = bishopMoves board (c, s)
-movesFor board (Queen, c, s)  = queenMoves board (c, s)
-movesFor board (Knight, c, s) = knightMoves board (c, s)
+movesFor board (Pos Pawn c s)   = pawnMoves board (c, s)
+movesFor board (Pos King c s)   = kingMoves board (c, s)
+movesFor board (Pos Rook c s)   = rookMoves board (c, s)
+movesFor board (Pos Bishop c s) = bishopMoves board (c, s)
+movesFor board (Pos Queen c s)  = queenMoves board (c, s)
+movesFor board (Pos Knight c s) = knightMoves board (c, s)
 
 -- reconstruct by telling it which position to add and which coordinates to remove
 reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
-reconstruct ((p, c, s) : ps) cs ((_, _, r) : rs) | s == r = (p, c, r) : (reconstruct ps cs rs)
-reconstruct ps (c : cs) ((_, _, r) : rs)         | c == r = (Empty, W, r) : (reconstruct ps cs rs)
-reconstruct [] [] rs                                      = rs
-reconstruct ps cs (r : rs)                                = r : (reconstruct ps cs rs)
-reconstruct ps cs []                                      = []
+reconstruct ((Pos p c s) : ps) cs ((Pos _ _ r) : rs) | s == r = (Pos p c r) : (reconstruct ps cs rs)
+reconstruct ps (c : cs) ((Pos _ _ r) : rs)           | c == r = (Pos Empty W r) : (reconstruct ps cs rs)
+reconstruct [] [] rs                                          = rs
+reconstruct ps cs (r : rs)                                    = r : (reconstruct ps cs rs)
+reconstruct ps cs []                                          = []
 
 castled :: Dir -> (Bool, Bool) -> Move -> (Bool, Bool)
-castled R (w, b) (Castle (_, d) _)        = (w `xor` (d == (7, 1)), b `xor` (d == (7, 8)))
-castled L (w, b) (Castle (_, d) _)        = (w `xor` (d == (3, 1)), b `xor` (d == (3, 8)))
+castled R (w, b) (Castle (_, d) _)          = (w `xor` (d == (7, 1)), b `xor` (d == (7, 8)))
+castled L (w, b) (Castle (_, d) _)          = (w `xor` (d == (3, 1)), b `xor` (d == (3, 8)))
 
-castled R (w, b) (Advance (Rook, _, s) _) = (w && (s == (8, 1)), b && (s == (8, 8)))
-castled L (w, b) (Capture (Rook, _, s) _) = (w && (s == (1, 1)), b && (s == (1, 8)))
+castled R (w, b) (Advance (Pos Rook _ s) _) = (w && (s == (8, 1)), b && (s == (8, 8)))
+castled L (w, b) (Capture (Pos Rook _ s) _) = (w && (s == (1, 1)), b && (s == (1, 8)))
 
-castled _ (w, b) (Advance (King, _, s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
-castled _ (w, b) (Capture (King, _, s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
+castled _ (w, b) (Advance (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
+castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
 
 castled _ (w, b) _                        = (w, b)
 
@@ -333,9 +350,9 @@ perform board move = let board' = board { pieces          = commit move $ pieces
                                           }
                          kings  = [square $ king board' W, square $ king board' B]
                      in  board' { check = not $ null $ threats board' kings }
-            where commit (Capture (p, c, s) e)      = reconstruct [(p, c, e)] [s]
-                  commit (Advance (p, c, s) e)      = reconstruct [(p, c, e)] [s]
-                  commit (Enpassant (p, c, s) e r)  = reconstruct [(p, c, e)] [s, r]
-                  commit (Promote (p, c, s) p' e)   = reconstruct [(p',c, e)] [s] 
-                  commit (Castle ((k, kc, ks), ke) 
-                                 ((r, rc, rs), re)) = reconstruct [(k, kc, ke), (r, rc, re)] [ks, rs]
+            where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+                  commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+                  commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
+                  commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
+                  commit (Castle ((Pos k kc ks), ke) 
+                                 ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
