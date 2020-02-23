@@ -328,7 +328,9 @@ perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces          = commit move $ pieces board, 
                                           past            = move : (past board),
                                           kingsideCastle  = castled R (kingsideCastle board) move,
-                                          queensideCastle = castled L (queensideCastle board) move  }
+                                          queensideCastle = castled L (queensideCastle board) move,  
+                                          player          = if (player board == W) then B else W
+                                          }
                          kings  = [square $ king board' W, square $ king board' B]
                      in  board' { check = not $ null $ threats board' kings }
             where commit (Capture (p, c, s) e)      = reconstruct [(p, c, e)] [s]
