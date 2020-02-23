@@ -262,7 +262,7 @@ rookMoves board = spreadM [captureWith Rook board . keepUntil opponent empty . f
 
 knightMoves :: Board -> Square -> [Move]
 knightMoves board = spreadM [captureWith Knight board . keepUntil opponent empty . follow' board [U, U, L],
-                              captureWith Knight board . keepUntil opponent empty . follow' board [U, U, R],
+                             captureWith Knight board . keepUntil opponent empty . follow' board [U, U, R],
                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, L],
                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, R],
                              captureWith Knight board . keepUntil opponent empty . follow' board [L, L, U],
@@ -352,22 +352,18 @@ reconstruct ps cs []                                          = []
 castled :: Dir -> (Bool, Bool) -> Move -> (Bool, Bool)
 castled R (w, b) (Castle (_, d) _)          = (w `xor` (d == (7, 1)), b `xor` (d == (7, 8)))
 castled L (w, b) (Castle (_, d) _)          = (w `xor` (d == (3, 1)), b `xor` (d == (3, 8)))
-
 castled R (w, b) (Advance (Pos Rook _ s) _) = (w && (s == (8, 1)), b && (s == (8, 8)))
 castled L (w, b) (Capture (Pos Rook _ s) _) = (w && (s == (1, 1)), b && (s == (1, 8)))
-
 castled _ (w, b) (Advance (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
 castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
-
-castled _ (w, b) _                        = (w, b)
+castled _ (w, b) _                          = (w, b)
 
 perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces          = commit move $ pieces board, 
                                           past            = move : (past board),
                                           kingsideCastle  = castled R (kingsideCastle board) move,
                                           queensideCastle = castled L (queensideCastle board) move,  
-                                          player          = if (player board == W) then B else W
-                                          }
+                                          player          = if (player board == W) then B else W }
                          kings  = [square $ king board' W, square $ king board' B]
                      in  board' { check = not $ null $ threats board' kings }
             where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
