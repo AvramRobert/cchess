@@ -29,13 +29,10 @@ data Board = Board { check           :: Bool,
                      past            :: [Move],
                      pieces          :: [Position],
                      kingsideCastle  :: (Bool, Bool),
-                     queensideCastle :: (Bool, Bool)
-                     } deriving (Eq)
+                     queensideCastle :: (Bool, Bool) } deriving (Eq)
 
 instance Show Board where
-      show = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . pieces
-            where makeRow    = foldl (\l c -> l <> (show c) <> " | ") "| "
-                  chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
+      show = whiteView . pieces
 
 instance Show Position where
       show (Pos Pawn W xy)   = "♙ " <> show xy
@@ -50,7 +47,7 @@ instance Show Position where
       show (Pos King B xy)   = "♚ " <> show xy
       show (Pos Queen W xy)  = "♕ " <> show xy
       show (Pos Queen B xy)  = "♛ " <> show xy
-      show (Pos Empty _ xy)  = "◻ " <> show xy
+      show (Pos Empty _ xy)  = "- " <> show xy
 
 xor :: Bool -> Bool -> Bool
 xor a b = a /= b
@@ -75,6 +72,14 @@ keepUntil stop keep (a : as) | keep a && stop a = a : []
 keepUntil stop keep (a : as) | keep a = a : (keepUntil stop keep as)
 keepUntil stop keep (a : as) | stop a = a : []
 keepUntil _ _ _                       = []
+
+blackView :: [Position] -> String
+blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
+            where makeRow    = foldl (\l c -> l <> (show c) <> " | ") "| "
+                  chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
+
+whiteView :: [Position] -> String
+whiteView = blackView . reverse
 
 develop :: Dir -> Square -> Square
 develop dir (colour, (x, y)) = (colour, towards dir colour)
@@ -361,6 +366,9 @@ perform board move = let board' = board { pieces          = commit move $ pieces
                   commit (Castle ((Pos k kc ks), ke) 
                                  ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
+-- Would it actually make sense to reverse the coordinates? 
+-- White to be at top end with y = 8 and black at the bottom with y = 1?
+-- I think this would make the parser a bit more complicated
 board :: Board
 board = Board { player          = W,
                 past            = [],
@@ -370,8 +378,7 @@ board = Board { player          = W,
                 pieces          = do (y, ps) <- zip [1..] figs 
                                      let c = col y
                                      (x, p)  <- zip [1..] ps
-                                     return (Pos p c (x, y))
-                }
+                                     return (Pos p c (x, y)) }
       where col y = if (y == 7 || y == 8) then B else W
             figs  = [[Rook,  Knight, Bishop, Queen, King,  Bishop, Knight, Rook],
                      [Pawn,  Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn],
