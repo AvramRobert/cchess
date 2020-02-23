@@ -1,14 +1,13 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-
 module Chess.Internal2 where
 
-import Data.List (find)
+import Data.Tuple (swap)
+import Data.List (find, sortOn)
 import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter, join)
 import Data.Functor (($>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 
-type Coord    = (Int, Int)
+type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show)
 data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show)
 type Square   = (Colour, Coord)
@@ -31,7 +30,12 @@ data Board = Board { check           :: Bool,
                      pieces          :: [Position],
                      kingsideCastle  :: (Bool, Bool),
                      queensideCastle :: (Bool, Bool)
-                     } deriving (Eq, Show)
+                     } deriving (Eq)
+
+instance Show Board where
+      show = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . pieces
+            where makeRow    = foldl (\l c -> l <> (show c) <> " | ") "| "
+                  chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
 instance Show Position where
       show (Pos Pawn W xy)   = "♙ " <> show xy
@@ -46,7 +50,7 @@ instance Show Position where
       show (Pos King B xy)   = "♚ " <> show xy
       show (Pos Queen W xy)  = "♕ " <> show xy
       show (Pos Queen B xy)  = "♛ " <> show xy
-      show (Pos Empty _ _)   = " "
+      show (Pos Empty _ xy)  = "◻ " <> show xy
 
 xor :: Bool -> Bool -> Bool
 xor a b = a /= b
@@ -356,3 +360,24 @@ perform board move = let board' = board { pieces          = commit move $ pieces
                   commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
                   commit (Castle ((Pos k kc ks), ke) 
                                  ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
+
+board :: Board
+board = Board { player          = W,
+                past            = [],
+                check           = False,
+                kingsideCastle  = (True, True),
+                queensideCastle = (True, True),
+                pieces          = do (y, ps) <- zip [1..] figs 
+                                     let c = col y
+                                     (x, p)  <- zip [1..] ps
+                                     return (Pos p c (x, y))
+                }
+      where col y = if (y == 7 || y == 8) then B else W
+            figs  = [[Rook,  Knight, Bishop, Queen, King,  Bishop, Knight, Rook],
+                     [Pawn,  Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn],
+                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
+                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
+                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
+                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
+                     [Pawn,  Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn],
+                     [Rook,  Knight, Bishop, Queen, King,  Bishop, Knight, Rook]]
