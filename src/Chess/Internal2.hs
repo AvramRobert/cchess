@@ -6,22 +6,6 @@ import Control.Monad (mfilter, join)
 import Data.Functor (($>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 
--- What do I need to be able to do?
-
--- TODO: Re-add the pgn files for testing
-
--- 1. Describe board geometry
--- 2. Describe and identify captures
--- 3. Describe and identity moves
--- 4. Identify types of moves and the pieces that made them
--- 5. Describe compound moves
--- 6. Identify certain special kind of moves: castling; enpassant 
--- 7. Identify trajectories of pieces'
--- 8. Block certain moves altogether
--- 9. Do promotions
-
--- castling, checks -> keep them at a game level, not at a piece level.
-
 type Coord    = (Int, Int)
 data Colour   = B | W deriving (Eq, Show)
 data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show)
@@ -137,6 +121,10 @@ captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 captureWith piece board []                        = Nothing
 captureWith piece board (((c, s), (_, _, e)) : _) = permitted board $ Capture (piece, c, s) e  
 
+promoteTo :: Piece -> Board -> [(Square, Position)] -> Maybe Move
+promoteTo piece board []                          = Nothing
+promoteTo piece board (((c, s), (_, _, e)) : _)   = permitted board $ Promote (Pawn, c, s) piece e
+
 enpassant :: Board -> [(Square, Position)] -> Maybe Move
 enpassant board []                        = Nothing
 enpassant board (((c, s), (_, _, e)) : _) = permitted board $ Enpassant (Pawn, c, s) e (fst s, (snd s) - 1)
@@ -171,6 +159,11 @@ safe board = let attackers = threats board
                                (L, B) -> null $ attackers [(B, (3, 8)), (B, (4, 8))]
                                (_, _) -> False
 
+backrank :: (Square, Position) -> Bool
+backrank ((W, (_, 7)), (_, _, (_, 8))) = True
+backrank ((B, (_, 2)), (_, _, (_, 1))) = True
+backrank _                             = False
+
 canCastle :: Board -> Dir -> (Square, Position) -> Bool
 canCastle board L ((W, _), _) = fst $ queensideCastle board
 canCastle board L ((B, _), _) = snd $ queensideCastle board
@@ -183,6 +176,7 @@ threats board = let moves = pieces board >>= (movesFor board)
                 in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
       where attacks (c, s) (Capture   (_, c', _) e)    = c /= c' && s == e
             attacks (c, s) (Enpassant (_, c', _) _ e)  = c /= c' && s == e
+            attacks (c, s) (Promote   (_, c', _) _ e)  = c /= c' && s == e
             attacks _ _                                = False
 
 king :: Board -> Colour -> Position
@@ -201,8 +195,21 @@ pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent          
                            advanceWith Pawn board . takeWhile empty                          . follow' board [U],
                            advanceWith Pawn board . takeWhile (every [started board, empty]) . follow' board [U, U],
                            enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UL],
-                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UR]]
-
+                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UR],
+                           promoteTo Queen board  . takeWhile (every [backrank, empty])      . follow' board [U],
+                           promoteTo Knight board . takeWhile (every [backrank, empty])      . follow' board [U],
+                           promoteTo Rook board   . takeWhile (every [backrank, empty])      . follow' board [U],
+                           promoteTo Bishop board . takeWhile (every [backrank, empty])      . follow' board [U],
+                           
+                           promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                           promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                           promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                           promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                           
+                           promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                           promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                           promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                           promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UR]]
 
 bishopMoves :: Board -> Square -> [Move]
 bishopMoves board = spreadM [captureWith Bishop board . keepUntil opponent empty . follow board UR,
@@ -330,7 +337,3 @@ perform board move = let board' = board { pieces          = commit move $ pieces
                   commit (Promote (p, c, s) p' e)   = reconstruct [(p',c, e)] [s] 
                   commit (Castle ((k, kc, ks), ke) 
                                  ((r, rc, rs), re)) = reconstruct [(k, kc, ke), (r, rc, re)] [ks, rs]
-
--- TODO: 
--- 1. Pawn promotions as moves
--- 2. Promotions seen as threats
