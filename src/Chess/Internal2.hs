@@ -9,7 +9,7 @@ import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show)
-data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show)
+data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square   = (Colour, Coord)
 data Position = Pos Piece Colour Coord deriving (Eq)
 
@@ -24,7 +24,13 @@ data Move = Capture   Position Coord       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
-data Board = Board { check           :: Bool,
+data Standing =  Continue  |
+                 Check     |
+                 Draw      |
+                 Stalemate |
+                 Checkmate Colour deriving (Show, Eq) 
+
+data Board = Board { standing        :: Standing,
                      player          :: Colour,
                      past            :: [Move],
                      pieces          :: [Position],
@@ -222,9 +228,11 @@ king board colour' = fromJust $ find (every [(== colour') . colour, (== King) . 
 -- The current threats of a board are constant over a complete pass of move compilation.
 -- That means that I could theoretically compute them once and hand them individually to every `*moves` function
 permitted :: Board -> Move -> Maybe Move
-permitted board move | not $ check board                = Just move
-permitted board move | not $ check $ perform board move = Just move
-permitted board _                                       = Nothing 
+permitted board move = if (checked (standing board) || (checked $ standing $ perform board move))
+                       then (Just move)
+                       else Nothing
+            where checked Check         = True
+                  checked (Checkmate _) = True   
 
 pawnMoves :: Board -> Square -> [Move]
 pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent                       . follow' board [UL],
@@ -358,14 +366,19 @@ castled _ (w, b) (Advance (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5
 castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
 castled _ (w, b) _                          = (w, b)
 
+-- you have to compute the other states aswell
+evaluate :: Board -> Standing
+evaluate board = if noThreat then Continue else Check
+      where kings    = [square $ king board W, square $ king board B]
+            noThreat = not $ null $ threats board kings
+
 perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces          = commit move $ pieces board, 
                                           past            = move : (past board),
                                           kingsideCastle  = castled R (kingsideCastle board) move,
                                           queensideCastle = castled L (queensideCastle board) move,  
                                           player          = if (player board == W) then B else W }
-                         kings  = [square $ king board' W, square $ king board' B]
-                     in  board' { check = not $ null $ threats board' kings }
+                     in  board' { standing = evaluate board' }
             where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
                   commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
                   commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
@@ -379,7 +392,7 @@ perform board move = let board' = board { pieces          = commit move $ pieces
 board :: Board
 board = Board { player          = W,
                 past            = [],
-                check           = False,
+                standing        = Continue,
                 kingsideCastle  = (True, True),
                 queensideCastle = (True, True),
                 pieces          = do (y, (ps, c)) <- zip [1..] figs 
