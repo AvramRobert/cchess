@@ -382,16 +382,14 @@ board = Board { player          = W,
                 check           = False,
                 kingsideCastle  = (True, True),
                 queensideCastle = (True, True),
-                pieces          = do (y, ps) <- zip [1..] figs 
-                                     let c = col y
-                                     (x, p)  <- zip [1..] ps
+                pieces          = do (y, (ps, c)) <- zip [1..] figs 
+                                     (x, p)       <- zip [1..] ps
                                      return (Pos p c (x, y)) }
-      where col y = if (y == 7 || y == 8) then B else W
-            figs  = [[Rook,  Knight, Bishop, Queen, King,  Bishop, Knight, Rook],
-                     [Pawn,  Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn],
-                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
-                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
-                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
-                     [Empty, Empty,  Empty,  Empty, Empty, Empty,  Empty,  Empty],
-                     [Pawn,  Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn],
-                     [Rook,  Knight, Bishop, Queen, King,  Bishop, Knight, Rook]]
+      where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B),
+                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
+                     ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W)]
