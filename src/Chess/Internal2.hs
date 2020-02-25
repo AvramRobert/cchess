@@ -4,8 +4,8 @@ import Data.Tuple (swap)
 import Data.List (find, sortOn)
 import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter, join)
-import Data.Functor (($>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
+import Lib
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show)
@@ -54,30 +54,6 @@ instance Show Position where
       show (Pos Queen W xy)  = "♕ " <> show xy
       show (Pos Queen B xy)  = "♛ " <> show xy
       show (Pos Empty _ xy)  = "- " <> show xy
-
-xor :: Bool -> Bool -> Bool
-xor a b = a /= b
-
-spread :: [a -> b] -> a -> [b]
-spread fs a = [f a | f <- fs]
-
-spreadM :: [a -> Maybe b] -> a -> [b]
-spreadM [] a       = []
-spreadM (f : fs) a = case (f a) of (Just b)  -> b : (spreadM fs a)
-                                   (Nothing) -> spreadM fs a
-
-every :: [a -> Bool] -> a -> Bool
-every (p : ps) a = p a && every ps a
-
-oneOf :: [(a -> Bool)] -> a -> Bool
-oneOf [] a = True
-oneOf fs a = isJust $ find (\f -> f a) fs
-
-keepUntil :: (a -> Bool) -> (a -> Bool) -> [a] -> [a]
-keepUntil stop keep (a : as) | keep a && stop a = a : []
-keepUntil stop keep (a : as) | keep a = a : (keepUntil stop keep as)
-keepUntil stop keep (a : as) | stop a = a : []
-keepUntil _ _ _                       = []
 
 blackView :: [Position] -> String
 blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
@@ -132,6 +108,13 @@ follow' board all @ (d : ds) square       = go [] ds (lookAhead board d square)
             go xs [] _ | length all == length xs = xs
             go xs _ _                            = []
             nextSquare position                  = (colour position, coord position)
+
+position :: Move -> Position
+position (Advance p _)     = p
+position (Capture p _)     = p
+position (Promote p _ _)   = p
+position (Enpassant p _ _) = p
+position (Castle (p, _) _) = p 
 
 piece :: Position -> Piece
 piece (Pos p _ _) = p
