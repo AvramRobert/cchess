@@ -8,10 +8,10 @@ import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 import Lib
 
 type Coord    = (Integer, Integer)
-data Colour   = B | W deriving (Eq, Show)
+data Colour   = B | W deriving (Eq, Show, Ord)
 data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square   = (Colour, Coord)
-data Position = Pos Piece Colour Coord deriving (Eq)
+data Position = Pos Piece Colour Coord deriving (Eq, Ord)
 
 data Move = Capture   Position Coord       |
             Advance   Position Coord       | 
@@ -19,16 +19,17 @@ data Move = Capture   Position Coord       |
             Promote   Position Piece Coord |
             Castle   (Position, Coord) 
                      (Position, Coord)
-            deriving (Eq, Show) 
+            deriving (Eq, Show, Ord) 
 
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq)
 
-data Standing =  Continue  |
-                 Check     |
-                 Draw      |
-                 Stalemate |
-                 Checkmate Colour deriving (Show, Eq) 
+data Standing =  Continue       |
+                 Check          |
+                 Draw           |
+                 Stalemate      |
+                 Illegal Move   | 
+                 Checkmate Colour deriving (Show, Eq, Ord) 
 
 data Board = Board { standing        :: Standing,
                      player          :: Colour,
@@ -321,8 +322,12 @@ kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow'
               queenside (W, _) = (W, (1, 1))
               queenside (B, _) = (B, (1, 8))
 
-moves :: Board -> Square -> [Move]
-moves board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
+
+moves :: Board -> [Move]
+moves board = pieces board >>= (movesFor board)
+
+movesAt :: Board -> Square -> [Move]
+movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
 
 movesFor :: Board -> Position -> [Move]
 movesFor board (Pos Pawn c s)   = pawnMoves board (c, s)
