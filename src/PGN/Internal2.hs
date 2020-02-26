@@ -347,13 +347,13 @@ castle colour moves = M.choice [try $ queenCastle colour moves,
                                 try $ kingCastle colour moves]
 
 move :: Chess.Board -> Parser Chess.Move
-move board = (try $ pawn colour moves)   <|>
-             (try $ king colour moves)   <|>
-             (try $ rook colour moves)   <|>
-             (try $ bishop colour moves) <|> 
-             (try $ knight colour moves) <|>
-             (try $ queen colour moves)  <|>
-             (try $ castle colour moves)
+move board = M.choice [try $ pawn colour moves,
+                       try $ king colour moves,
+                       try $ rook colour moves,
+                       try $ bishop colour moves,
+                       try $ knight colour moves,
+                       try $ queen colour moves,
+                       try $ castle colour moves]
     where moves  = Chess.moves board
           colour = Chess.player board
 
@@ -451,12 +451,11 @@ parseGame = run gameParser
 parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
--- parseCompute :: String -> Either ParseError Chess.Board
--- parseCompute game = (parseGame game) >>= (either (Left . convert) (Right) . runGame)
---     where convert outcome = either id (const $ error "This never should succeed") $ run (failWith (GameError outcome) Nothing) ""
+parseCompute :: String -> Either ParseError Chess.Board
+parseCompute = fmap runGame . parseGame
 
--- runGame :: Game -> Either Chess.Standing Chess.Board
--- runGame = foldl (\b m -> b >>= (Chess.move m)) (pure Chess.board) . moves
+runGame :: Game -> Chess.Board
+runGame = foldl Chess.perform Chess.board . moves
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""

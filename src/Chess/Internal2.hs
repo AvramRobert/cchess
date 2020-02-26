@@ -360,6 +360,7 @@ evaluate board = if noThreat then Continue else Check
       where kings    = [square $ king board W, square $ king board B]
             noThreat = not $ null $ threats board kings
 
+-- This should have some stopping rules if the game has ended
 perform :: Board -> Move -> Board
 perform board move = let board' = board { pieces          = commit move $ pieces board, 
                                           past            = move : (past board),
