@@ -22,7 +22,7 @@ data Move = Capture   Position Coord       |
             deriving (Eq, Show, Ord) 
 
 data Dir = U  | D  | L  | R |
-           UL | UR | DL | DR deriving (Show, Eq)
+           UL | UR | DL | DR deriving (Show, Eq, Ord)
 
 data Standing =  Continue       |
                  Check          |
