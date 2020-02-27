@@ -16,6 +16,7 @@ spreadM (f : fs) a = case (f a) of (Just b)  -> b : (spreadM fs a)
 
 every :: [a -> Bool] -> a -> Bool
 every (p : ps) a = p a && every ps a
+every [] _       = True
 
 oneOf :: [(a -> Bool)] -> a -> Bool
 oneOf [] a = True

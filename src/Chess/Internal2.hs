@@ -97,17 +97,17 @@ lookAhead :: Board -> Dir -> Square -> Maybe Position
 lookAhead board dir = lookAt board . snd . develop dir
 
 follow :: Board -> Dir -> Square -> [(Square, Position)]
-follow board dir square = go [] $ lookAhead board dir square
-      where go xs (Just position) = go ((square, position) : xs) (lookAhead board dir $ nextSquare position)
-            go xs (Nothing)       = xs
-            nextSquare position   = (colour position, coord position)
+follow board d s = case (lookAhead board d s) of
+      (Just p)  -> (s, p) : (follow board d $ square p)
+      (Nothing) -> []
 
 follow' :: Board -> [Dir] -> Square -> [(Square, Position)]
-follow' board all @ (d : ds) square       = go [] ds (lookAhead board d square) 
-      where go xs (d : ds) (Just position)       = go ((square, position) : xs) ds (lookAhead board d $ nextSquare position)
-            go xs [] _ | length all == length xs = xs
-            go xs _ _                            = []
-            nextSquare position                  = (colour position, coord position)
+follow' board ds s = let sqs = gather ds s
+                     in if (length ds == length sqs) then sqs else []
+      where gather [] _     = []
+            gather (d:ds) s = case (lookAhead board d s) of
+                  (Just p)  -> (s, p) : (gather ds $ square p)
+                  (Nothing) -> []
 
 other :: Colour -> Colour
 other W = B
@@ -132,6 +132,9 @@ coord (Pos _ _ s) = s
 square :: Position -> Square
 square (Pos _ c s) = (c, s)
 
+set :: Piece -> Square -> Position
+set p (c, s) = Pos p c s
+
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
 
@@ -143,21 +146,23 @@ castle board kingf rookf square = do
             permitted board $ castle
       where createFrom (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
 
+--- THESE THINGS NOW ARE REVERSED ---
+--- THE LAST ELEMENTS HAVE THE LATEST VALUE ---
 advanceWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-advnaceWith piece board []                        = Nothing
-advanceWith piece board (((c, s), (Pos _ _ e)) : _) = permitted board $ Advance (Pos piece c s) e 
+advanceWith piece board []                          = Nothing
+advanceWith piece board ((square, (Pos _ _ e)) : _) = permitted board $ Advance (set piece square) e 
 
 captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-captureWith piece board []                        = Nothing
-captureWith piece board (((c, s), (Pos _ _ e)) : _) = permitted board $ Capture (Pos piece c s) e  
+captureWith piece board []                          = Nothing
+captureWith piece board ((square, (Pos _ _ e)) : _) = permitted board $ Capture (set piece square) e  
 
 promoteTo :: Piece -> Board -> [(Square, Position)] -> Maybe Move
 promoteTo piece board []                          = Nothing
-promoteTo piece board (((c, s), (Pos _ _ e)) : _)   = permitted board $ Promote (Pos Pawn c s) piece e
+promoteTo piece board ((square, (Pos _ _ e)) : _) = permitted board $ Promote (set Pawn square) piece e
 
 enpassant :: Board -> [(Square, Position)] -> Maybe Move
-enpassant board []                        = Nothing
-enpassant board (((c, s), (Pos _ _ e)) : _) = permitted board $ Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
+enpassant board []                                   = Nothing
+enpassant board ((square @ (c, s), (Pos _ _ e)) : _) = permitted board $ Enpassant (set Pawn square) e (fst s, (snd s) - 1)
 
 empty :: (Square, Position) -> Bool
 empty (_, (Pos p _ _)) = p == Empty
@@ -268,7 +273,7 @@ knightMoves board = spreadM [captureWith Knight board . keepUntil opponent empty
                              advanceWith Knight board . takeWhile empty . follow' board [R, R, U],
                              advanceWith Knight board . takeWhile empty . follow' board [R, R, D]]
                              
-
+-- the `follow` moves don't have all intermediate starts and ends
 queenMoves :: Board -> Square -> [Move]
 queenMoves board = spreadM [captureWith Queen board . keepUntil opponent empty . follow board UR,
                             captureWith Queen board . keepUntil opponent empty . follow board UL,
