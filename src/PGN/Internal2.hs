@@ -173,7 +173,6 @@ promotesAt :: Chess.Coord -> Chess.Move -> Bool
 promotesAt s (Chess.Promote _ _ e) = s == e
 promotesAt _ _                     = False
 
--- verify these again
 castlesTowards :: Chess.Dir -> Chess.Move -> Bool
 castlesTowards Chess.R (Chess.Castle (_, e) _) = e == (7, 1) || e == (7, 8)
 castlesTowards Chess.L (Chess.Castle (_, e) _) = e == (3, 1) || e == (3, 8)
