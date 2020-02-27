@@ -24,16 +24,14 @@ data Move = Capture   Position Coord       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
-data Standing =  Continue       |
-                 Check          |
-                 Draw           |
-                 Stalemate      |
-                 Forfeit Colour | 
-                 Checkmate Colour deriving (Show, Eq, Ord)
+data Outcome = Continue       |
+               Draw           |
+               Stalemate      |
+               Forfeit Colour | 
+               Checkmate Colour deriving (Show, Eq, Ord)
 
-data Board = Board { standing        :: Standing,
-                     winner          :: Maybe Colour,           
-                     player          :: Colour,
+data Board = Board { player          :: Colour,
+                     check           :: Bool,
                      past            :: [Move],
                      pieces          :: [Position],
                      kingsideCastle  :: (Bool, Bool),
@@ -66,10 +64,9 @@ whiteView :: [Position] -> String
 whiteView = blackView . reverse
 
 statistics :: Board -> String
-statistics (Board standing winner player past _ kc qc) = unlines ["Player:     " <> show player,
-                                                                  "Winner      " <> maybe "None" show winner,      
-                                                                  "Standing:   " <> show standing, 
-                                                                  "Can castle: " <> (verify $ pickCastle player)]
+statistics (Board player check past _ kc qc) = unlines ["Player:     " <> show player,
+                                                        "In-Check:   " <> show check,
+                                                        "Can castle: " <> (verify $ pickCastle player)]
       where pickCastle B = (snd kc, snd qc)
             pickCastle W = (fst kc, fst qc)
             verify (True, True)  = "Both sides"
@@ -215,11 +212,8 @@ threats board = let moves = pieces board >>= (movesFor board)
 -- The current threats of a board are constant over a complete pass of move compilation.
 -- That means that I could theoretically compute them once and hand them individually to every `*moves` function
 permitted :: Board -> Move -> Maybe Move
-permitted board move = if (checked (standing board) || (checked $ standing $ perform board move))
-                       then (Just move)
-                       else Nothing
-            where checked Check         = True
-                  checked (Checkmate _) = True   
+permitted board move | check board = Nothing
+permitted board move               = Just move   
 
 pawnMoves :: Board -> Square -> [Move]
 pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent                       . follow' board [UL],
@@ -361,24 +355,24 @@ castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5
 castled _ (w, b) _                          = (w, b)
 
 -- you have to compute the other states aswell
-evaluate :: Board -> Board
-evaluate board = if      mate  then board { standing = Checkmate colour', winner = Just $ other colour' }
-                 else if check then board { standing = Check }
-                 else if stale then board { standing = Stalemate } 
-                 else               board { standing = Continue }
-      where check    = not $ null $ threats board [square king]
-            mate     = check && immoble
+evaluate :: Board -> (Outcome, Board)
+evaluate board = if      mate  then (Checkmate colour', board)
+                 else if stale then (Stalemate, board) 
+                 else               (Continue, board)
+      where mate     = check board && immoble
             stale    = False -- check this
-            immoble  = all ((== Check) . standing . perform board) $ filter ((== colour') . colour . position) $ moves board
+            immoble  = all (check . apply board) $ movesOpponent board
             king     = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
             colour'  = player board
             
 apply :: Board -> Move -> Board
-apply board move = board { pieces          = commit move $ pieces board, 
-                           past            = move : (past board),
-                           kingsideCastle  = castled R (kingsideCastle board) move,
-                           queensideCastle = castled L (queensideCastle board) move,  
-                           player          = other $ player board }
+apply board move = let  king   = fromJust $ find (every [(== player board') . colour, (== King) . piece]) $ pieces board'
+                        board' = board { pieces          = commit move $ pieces board, 
+                                         past            = move : (past board),
+                                         kingsideCastle  = castled R (kingsideCastle board) move,
+                                         queensideCastle = castled L (queensideCastle board) move,  
+                                         player          = other $ player board }
+                   in board' { check = not $ null $ threats board' [square king] }
       where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
@@ -386,19 +380,13 @@ apply board move = board { pieces          = commit move $ pieces board,
             commit (Castle ((Pos k kc ks), ke) 
                            ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
-perform :: Board -> Move -> Board
-perform board move = case (standing board) of
-      Continue -> evaluate $ apply board move
-      _        -> board
+perform :: Board -> Move -> (Outcome, Board) 
+perform board = evaluate . apply board
 
--- Would it actually make sense to reverse the coordinates? 
--- White to be at top end with y = 8 and black at the bottom with y = 1?
--- I think this would make the parser a bit more complicated
 board :: Board
 board = Board { player          = W,
                 past            = [],
-                winner          = Nothing,
-                standing        = Continue,
+                check           = False,
                 kingsideCastle  = (True, True),
                 queensideCastle = (True, True),
                 pieces          = do (y, (ps, c)) <- zip [1..] figs 

@@ -38,7 +38,7 @@ data ChessError = CaptureError Chess.Piece |
                   AdvanceError Chess.Piece |
                   PromoteError Chess.Piece |
                   CastleError  Chess.Dir   | 
-                  GameError Chess.Standing
+                  GameError    Chess.Outcome
                   deriving (Eq, Show, Ord)
 
 type ParseError = M.ParseErrorBundle String ChessError
@@ -357,11 +357,10 @@ move board = M.choice [try $ pawn colour moves,
           colour = Chess.player board
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move board = let board'  = Chess.perform board move
-                         outcome = Chess.standing board
-                     in if (outcome == Chess.Continue)
-                        then return board'
-                        else failWith (GameError outcome) Nothing
+applied move board = if (outcome == Chess.Continue)
+                     then return board' 
+                     else failWith (GameError outcome) Nothing
+    where (outcome, board') = Chess.perform board move
 
 result :: Parser ChessResult
 result = M.choice [(try $ string "1-0") $> WhiteWin,
@@ -381,7 +380,7 @@ oneMove board = do
     _ <- check
     _ <- mate
     _ <- delimitation
-    _ <- result
+    _ <- result -- if no mate occurs, but the game stops, then depending on the result, the standing on the board changes: it's either a forfeit or a draw
     return (b, One m)
 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
@@ -451,10 +450,12 @@ parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
 parseCompute :: String -> Either ParseError Chess.Board
-parseCompute = fmap runGame . parseGame
+parseCompute = fmap (snd . runGame) . parseGame
 
-runGame :: Game -> Chess.Board
-runGame = foldl Chess.perform Chess.board . moves
+runGame :: Game -> (Chess.Outcome, Chess.Board)
+runGame = foldl proceed (Chess.Continue, Chess.board) . moves
+    where proceed (Chess.Continue, board) = Chess.perform board
+          proceed a                       = const a
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
