@@ -1,4 +1,4 @@
-module Lib (xor, spread, spreadM, every, oneOf, keepUntil) where
+module Lib (xor, spread, spreadM, every, oneOf, keepUntil, conjoin) where
 
 import Data.List (find)
 import Data.Maybe (isJust)
@@ -8,6 +8,9 @@ xor a b = a /= b
 
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]
+
+conjoin :: [a -> [b]] -> a -> [b]
+conjoin fs a = fs >>= (\f -> f a) 
 
 spreadM :: [a -> Maybe b] -> a -> [b]
 spreadM [] a       = []

@@ -4,6 +4,7 @@ import Data.Tuple (swap)
 import Data.List (find, sortOn)
 import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter, join)
+import Control.Applicative ((<|>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 import Lib
 
@@ -38,30 +39,34 @@ data Board = Board { player          :: Colour,
                      queensideCastle :: (Bool, Bool) } deriving (Eq)
 
 instance Show Board where
-      show board = unlines [whiteView $ pieces board, statistics board]
+      show board = unlines [whiteView $ pieces board, statistics board] -- make this based on the player? 
 
 instance Show Position where
-      show (Pos Pawn W xy)   = "♙ " <> show xy
-      show (Pos Pawn B xy)   = "♟ " <> show xy
-      show (Pos Rook W xy)   = "♖ " <> show xy
-      show (Pos Rook B xy)   = "♜ " <> show xy
-      show (Pos Bishop W xy) = "♗ " <> show xy
-      show (Pos Bishop B xy) = "♝ " <> show xy
-      show (Pos Knight W xy) = "♘ " <> show xy
-      show (Pos Knight B xy) = "♞ " <> show xy 
-      show (Pos King W xy)   = "♔ " <> show xy
-      show (Pos King B xy)   = "♚ " <> show xy
-      show (Pos Queen W xy)  = "♕ " <> show xy
-      show (Pos Queen B xy)  = "♛ " <> show xy
-      show (Pos Empty _ xy)  = "- " <> show xy
+      show (Pos Pawn W xy)   = "♙ W" <> show xy
+      show (Pos Pawn B xy)   = "♟ B" <> show xy
+      show (Pos Rook W xy)   = "♖ W" <> show xy
+      show (Pos Rook B xy)   = "♜ B" <> show xy
+      show (Pos Bishop W xy) = "♗ W" <> show xy
+      show (Pos Bishop B xy) = "♝ B" <> show xy
+      show (Pos Knight W xy) = "♘ W" <> show xy
+      show (Pos Knight B xy) = "♞ B" <> show xy 
+      show (Pos King W xy)   = "♔ W" <> show xy
+      show (Pos King B xy)   = "♚ B" <> show xy
+      show (Pos Queen W xy)  = "♕ W" <> show xy
+      show (Pos Queen B xy)  = "♛ B" <> show xy
+      show (Pos Empty _ xy)  = "-  " <> show xy
+
+makeRow :: Show a => [a] -> String
+makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
+
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
 blackView :: [Position] -> String
 blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
-            where makeRow    = foldl (\l c -> l <> (show c) <> " | ") "| "
-                  chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
 whiteView :: [Position] -> String
-whiteView = blackView . reverse
+whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
 
 statistics :: Board -> String
 statistics (Board player check past _ kc qc) = unlines ["Player:     " <> show player,
@@ -102,11 +107,13 @@ follow board d s = case (lookAhead board d s) of
       (Nothing) -> []
 
 follow' :: Board -> [Dir] -> Square -> [(Square, Position)]
-follow' board ds s = let sqs = gather ds s
-                     in if (length ds == length sqs) then sqs else []
-      where gather [] _     = []
+follow' board dirs s0 = if (length dirs == length path) 
+                        then path
+                        else []
+      where path            = gather dirs s0
+            gather [] _     = []
             gather (d:ds) s = case (lookAhead board d s) of
-                  (Just p)  -> (s, p) : (gather ds $ square p)
+                  (Just p)  -> (s0, p) : (gather ds $ square p)
                   (Nothing) -> []
 
 other :: Colour -> Colour
@@ -145,6 +152,37 @@ castle board kingf rookf square = do
             let castle = createFrom kingMove rookMove
             permitted board $ castle
       where createFrom (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
+
+-- these functions are just priority functions
+-- they are applied in order. first right and then left. 
+-- isn't there a more interesting abstraction at play here?
+-- the problem here is, that there's a particular speciality here.
+-- If `keepf` stops, then the list consumptions goes to `stopf` and stops once `stopf` yields a value.
+-- It doesn't continue with the list
+-- The general abstraction behind this would, given a list of handles h :: [a -> Maybe b]
+-- try h0 a1, if fail => h1 a1. If success => would continue with a2
+-- I want it however to not continue with a2 once h1 was applied.
+
+-- basically, there would be one primary function and a list of `handler` functions
+-- the primary function would riffle through the list and the handler functions would be applied iff the primary one fails and the consumption would stop
+label :: (a -> Maybe b) -> (a -> Maybe b) -> [a] -> [b]
+label stopf keepf []     = []
+label stopf keepf (a:as) = case (keepf a) of
+      (Just b)   -> b : (label stopf keepf as)
+      (Nothing)  -> maybe [] (\a -> a : []) $ stopf a
+
+advanceWith' :: Piece -> Board -> (Square, Position) -> Maybe Move
+advanceWith' piece board ((c, s), (Pos _ _ e)) = permitted board $ Advance (Pos piece c s) e
+
+captureWith' :: Piece -> Board -> (Square, Position) -> Maybe Move
+captureWith' piece board ((c, s), (Pos _ _ e)) = permitted board $ Capture (Pos piece c s) e
+
+enpassant' :: Board -> (Square, Position) -> Maybe Move
+enpassant' board (square @ (c, s), (Pos _ _ e)) = permitted board $ Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
+
+promoteTo' :: Piece -> Board -> (Square, Position) -> Maybe Move
+promoteTo' piece board ((c, s), (Pos _ _ e)) = permitted board $ Promote (Pos Pawn c s) piece e
+
 
 --- THESE THINGS NOW ARE REVERSED ---
 --- THE LAST ELEMENTS HAVE THE LATEST VALUE ---
@@ -185,6 +223,11 @@ started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lo
             pawnOf B (Pos Pawn B (_, 7)) = True
             pawnOf _ _                   = False
 
+pawnOf :: Colour -> Position -> Bool
+pawnOf W (Pos Pawn W (_, 2)) = True
+pawnOf B (Pos Pawn B (_, 7)) = True
+pawnOf _ _                   = False
+
 safe :: Board -> (Dir -> (Square, Position) -> Bool)
 safe board = let attackers = threats board
              in \dir s -> case (dir, fst $ fst s) of 
@@ -214,33 +257,42 @@ threats board = let moves = pieces board >>= (movesFor board)
             attacks (c, s) (Promote   (Pos _ c' _) _ e)  = c /= c' && s == e
             attacks _ _                                  = False
 
+while :: (a -> Bool) -> (a -> Maybe b) -> a -> Maybe b
+while p f a | p a = f a
+while _ _ _       = Nothing 
+
 -- The current threats of a board are constant over a complete pass of move compilation.
 -- That means that I could theoretically compute them once and hand them individually to every `*moves` function
 permitted :: Board -> Move -> Maybe Move
-permitted board move | check board = Nothing
+permitted board move | check board = Nothing -- the move is permitted if, when applied, the board isn't in check anymore.
 permitted board move               = Just move   
 
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = spreadM [captureWith Pawn board . takeWhile opponent                       . follow' board [UL],
-                           captureWith Pawn board . takeWhile opponent                       . follow' board [UR],
-                           advanceWith Pawn board . takeWhile empty                          . follow' board [U],
-                           advanceWith Pawn board . takeWhile (every [started board, empty]) . follow' board [U, U],
-                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UL],
-                           enpassant board        . takeWhile (every [jumped board, empty])  . follow' board [UR],
-                           promoteTo Queen board  . takeWhile (every [backrank, empty])      . follow' board [U],
-                           promoteTo Knight board . takeWhile (every [backrank, empty])      . follow' board [U],
-                           promoteTo Rook board   . takeWhile (every [backrank, empty])      . follow' board [U],
-                           promoteTo Bishop board . takeWhile (every [backrank, empty])      . follow' board [U],
+pawnMoves board = conjoin [label (while opponent (captureWith' Pawn board)) (const Nothing)                       . follow' board [UL],
+                           label (while opponent (captureWith' Pawn board)) (const Nothing)                       . follow' board [UR],
+                           label (const Nothing) (while empty (advanceWith' Pawn board))                          . follow' board [U],
+                           label (const Nothing) (while (every [started board, empty]) (advanceWith' Pawn board)) . follow' board [U, U],
+                           label (const Nothing) (while (every [jumped board, empty]) (enpassant' board))         . follow' board [UL],
+                           label (const Nothing) (while (every [jumped board, empty]) (enpassant' board))         . follow' board [UR],
+                           label (while (every [backrank, opponent]) (promoteTo' Queen board)) 
+                                 (while (every [backrank, empty])    (promoteTo' Queen board))                    . follow' board [U]
                            
-                           promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UL],
-                           promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UL],
-                           promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UL],
-                           promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                        --    promoteTo Queen board  . takeWhile (every [backrank, empty])      . follow' board [U],
+                        --    promoteTo Knight board . takeWhile (every [backrank, empty])      . follow' board [U],
+                        --    promoteTo Rook board   . takeWhile (every [backrank, empty])      . follow' board [U],
+                        --    promoteTo Bishop board . takeWhile (every [backrank, empty])      . follow' board [U],
                            
-                           promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UR],
-                           promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UR],
-                           promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UR],
-                           promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UR]]
+                        --    promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                        --    promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                        --    promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                        --    promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UL],
+                           
+                        --    promoteTo Queen board  . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                        --    promoteTo Knight board . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                        --    promoteTo Rook board   . takeWhile (every [backrank, opponent])   . follow' board [UR],
+                        --    promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UR]
+                           
+                           ]
 
 bishopMoves :: Board -> Square -> [Move]
 bishopMoves board = spreadM [captureWith Bishop board . keepUntil opponent empty . follow board UR,
@@ -397,11 +449,11 @@ board = Board { player          = W,
                 pieces          = do (y, (ps, c)) <- zip [1..] figs 
                                      (x, p)       <- zip [1..] ps
                                      return (Pos p c (x, y)) }
-      where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B),
-                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
-                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
-                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
-                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
-                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+      where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
-                     ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W)]
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
+                     ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B)]
