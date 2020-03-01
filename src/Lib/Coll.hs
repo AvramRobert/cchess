@@ -1,10 +1,7 @@
-module Lib (xor, spread, spreadM, every, oneOf, keepUntil, conjoin) where
+module Lib.Coll (spread, spreadM, every, oneOf, keepUntil, conjoin) where
 
 import Data.List (find)
 import Data.Maybe (isJust)
-
-xor :: Bool -> Bool -> Bool
-xor a b = a /= b
 
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]

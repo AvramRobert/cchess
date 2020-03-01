@@ -15,7 +15,7 @@ import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import System.IO.Unsafe (unsafePerformIO)
-import Lib
+import Lib.Coll
 
 data ChessResult = WhiteWin | BlackWin | Draw deriving (Show)
 

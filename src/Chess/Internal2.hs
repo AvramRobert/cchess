@@ -6,7 +6,8 @@ import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter, join)
 import Control.Applicative ((<|>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
-import Lib
+import Lib.Coll
+import Lib.Scalar
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show, Ord)
@@ -261,6 +262,65 @@ while :: (a -> Bool) -> (a -> Maybe b) -> a -> Maybe b
 while p f a | p a = f a
 while _ _ _       = Nothing 
 
+data Development a b = Allowed a   | -- A value can be evaluated 
+                       Ignored a   | -- A value should be ignored in the next step
+                       Accepted b  | -- A value has been succesfully evaluated
+                       Terminated b  -- A value has been sucessfully evaluated and any subsequent inputs should be ignored
+
+
+-- I want to apply a function only when some predicate holds
+-- If the predicate holds, then I apply, that might work or might not
+-- if it works, then `try` says `Accepted` 
+-- if it doesn't, it says `Unnapplicable`
+-- shifts it through
+
+-- things that are perimitted are put up for evaluation
+-- things that are accepted are just shifted through
+-- things that are terminated will end the stream
+
+-- I two types of control functions, some that control the stream.
+-- others that influence the stream
+
+allow :: [a] -> [Development a b]
+allow = map Allowed
+
+try :: (a -> b) -> [Development a b] -> [Development a b]
+try f []     = []
+try f (a:as) = case a of (Allowed a) -> (Accepted $ f a) : (try f as)
+                         (Ignored a) -> (Allowed a) : (try f as)
+                         others      -> others : (try f as)
+
+end :: (a -> b) -> [Development a b] -> [Development a b]
+end f [] = []
+end f (a:as) = case a of (Allowed a) -> (Terminated $ f a) : []
+                         (Ignored a) -> (Allowed a) : (end f as)
+                         others      -> others : (end f as)
+
+advancing :: Piece -> Board -> (Square, Position) -> Move
+advancing piece board ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
+
+capturing :: Piece -> Board -> (Square, Position) -> Move
+capturing piece board ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
+
+enpassanting :: Board -> (Square, Position) -> Move
+enpassanting board ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
+
+promotingTo :: Piece -> Board -> (Square, Position) -> Move
+promotingTo piece board ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
+
+while' :: (a -> Bool) -> [Development a b] -> [Development a b]
+while' p []      = []
+while' p (d:ds) = case d of (Allowed a) | p a -> (Allowed a) : (while' p ds)
+                            (Allowed a)       -> (Ignored a) : (while' p ds)
+                            _                 -> d : (while' p ds)
+
+complete :: Board -> [Development (Square, Position) Move] -> [Move]
+complete board []     = []
+complete board (a:as) = case a of (Accepted m)   -> if (allowed m) then (m : (complete board as)) else complete board as 
+                                  (Terminated m) -> if (allowed m) then m : [] else []
+                                  _              -> []
+      where allowed   = isJust . permitted board 
+
 -- The current threats of a board are constant over a complete pass of move compilation.
 -- That means that I could theoretically compute them once and hand them individually to every `*moves` function
 permitted :: Board -> Move -> Maybe Move
@@ -293,6 +353,41 @@ pawnMoves board = conjoin [label (while opponent (captureWith' Pawn board)) (con
                         --    promoteTo Bishop board . takeWhile (every [backrank, opponent])   . follow' board [UR]
                            
                            ]
+
+contraSieve :: (b -> Bool) -> [a -> [Development c b]] -> a -> [b]
+contraSieve p fs = gather . conjoin fs
+      where gather []     = []
+            gather (d:ds) = case d of (Accepted b)   | p b -> b : (gather ds)
+                                      (Terminated b) | p b -> b : (gather ds)
+                                      _                    -> gather ds
+
+permitted' :: Board -> [Square -> [Development (Square, Position) Move]] -> Square -> [Move]
+permitted' board fs = contraSieve (const (not $ check board)) fs
+
+-- the complete board part can be done by the `conjoin` 
+pawnMoves' :: Board -> Square -> [Move]
+pawnMoves' board = permitted' board [try (capturing Pawn board) . while' opponent . allow . follow' board [UL],
+                                     try (capturing Pawn board) . while' opponent . allow . follow' board [UR],
+                                     try (advancing Pawn board) . while' empty . allow . follow' board [U],
+                                     try (advancing Pawn board) . while' (every [started board, empty]) . allow . follow' board [U, U],
+                                     try (enpassanting board)   . while' (every [jumped board, empty])  . allow . follow' board [UR],
+                                     try (enpassanting board)   . while' (every [jumped board, empty])  . allow . follow' board [UL],
+                                    
+                                     try (promotingTo Queen board)  . while' (every [backrank, empty]) . allow . follow' board [U],
+                                     try (promotingTo Knight board) . while' (every [backrank, empty]) . allow . follow' board [U],
+                                     try (promotingTo Bishop board) . while' (every [backrank, empty]) . allow . follow' board [U],
+                                     try (promotingTo Rook board)   . while' (every [backrank, empty]) . allow . follow' board [U],
+
+                                     try (promotingTo Queen board)  . while' (every [backrank, opponent]) . allow . follow' board [UL],
+                                     try (promotingTo Knight board) . while' (every [backrank, opponent]) . allow . follow' board [UL],
+                                     try (promotingTo Bishop board) . while' (every [backrank, opponent]) . allow . follow' board [UL],
+                                     try (promotingTo Rook board)   . while' (every [backrank, opponent]) . allow . follow' board [UL],
+
+                                     try (promotingTo Queen board)  . while' (every [backrank, opponent]) . allow . follow' board [UR],
+                                     try (promotingTo Knight board) . while' (every [backrank, opponent]) . allow . follow' board [UR],
+                                     try (promotingTo Bishop board) . while' (every [backrank, opponent]) . allow . follow' board [UR],
+                                     try (promotingTo Rook board)   . while' (every [backrank, opponent]) . allow . follow' board [UR]]
+
 
 bishopMoves :: Board -> Square -> [Move]
 bishopMoves board = spreadM [captureWith Bishop board . keepUntil opponent empty . follow board UR,
