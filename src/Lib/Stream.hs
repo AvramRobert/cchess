@@ -1,4 +1,4 @@
-module Lib.Stream (while, accept, terminate, contraSieve) where
+module Lib.Stream (FTag, while, lastly, accept, allow, ignore, terminate, contraSieve) where
 
 import Lib.Coll (conjoin)
 
@@ -14,6 +14,11 @@ while p (ft:fts) = case ft of
     (Allowed a)       -> (Ignored a) : (while p fts)
     _                 -> ft : (while p fts)
 
+allow :: [a] -> [FTag a b]
+allow = map Allowed
+
+ignore :: [a] -> [FTag a b]
+ignore = map Ignored
 
 accept :: (a -> b) -> [FTag a b] -> [FTag a b]
 accept f []       = []
@@ -25,6 +30,12 @@ terminate :: (a -> b) -> [FTag a b] -> [FTag a b]
 terminate f []     = []
 terminate f (ft:_) = case ft of (Allowed a) -> (Terminated (f a)) : []
                                 _           -> []
+
+
+lastly :: ([FTag a b] -> [FTag a b]) -> [FTag a b] -> [FTag a b]
+lastly f []       = []
+lastly f (ft:[])  = f (ft:[])
+lastly f (ft:fts) = ft:(lastly f fts)
 
 contraSieve :: (b -> Bool) -> [a -> [FTag c b]] -> a -> [b]
 contraSieve p fs = gather . conjoin fs
