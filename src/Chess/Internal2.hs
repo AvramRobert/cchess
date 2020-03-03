@@ -429,19 +429,8 @@ queenMoves board = permitted' board [terminate (capture Queen board) . while opp
 --               queenside (B, _) = (B, (1, 8))
 
 
-castle' :: (Move, Move) -> Move
-castle' (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
-
-xs :: Board -> Square -> [FTag Square (Move, Move)]
-xs board = fmap castle' . wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . allow . follow' board [R, R])
-                                (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . allow . follow' board [L, L] . kingside)
-        where safecheck        = safe board
-              safeKingside     = safecheck R
-              safeQueenside    = safecheck L
-              kingside  (W, _) = (W, (8, 1))
-              kingside  (B, _) = (B, (8, 8))
-              queenside (W, _) = (W, (1, 1))
-              queenside (B, _) = (B, (1, 8))
+castle' :: Move -> Move -> Move
+castle' (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
 
 kingMoves :: Board -> Square -> [Move]
 kingMoves board = permitted' board [terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [U],
@@ -451,16 +440,10 @@ kingMoves board = permitted' board [terminate (capture King board) . while oppon
                                     terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [UL],
                                     terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [UR],
                                     terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [DL],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [DR]
-      
-                        --             accept castle' . wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . allow . follow' board [R, R])
-                        --                                  (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . allow . follow' board [L, L] . kingside)
-                        -- --    castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
-                        --                 (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
-                        --    castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
-                        --                 (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)
-                                        
-                                        ]
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [DR],
+                                    mergeWith castle' . 
+                                          wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . allow . follow' board [R, R])
+                                              (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . allow . follow' board [L, L] . kingside)]
         where safecheck        = safe board
               safeKingside     = safecheck R
               safeQueenside    = safecheck L

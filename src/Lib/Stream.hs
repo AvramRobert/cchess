@@ -1,4 +1,4 @@
-module Lib.Stream (FTag, while, exactly, accept, allow, ignore, terminate, wye, lastly, contraSieve) where
+module Lib.Stream (FTag, while, exactly, accept, allow, ignore, terminate, wye, lastly, mergeWith, contraSieve) where
 
 import Lib.Coll (conjoin)
 
@@ -38,7 +38,7 @@ terminate f []     = []
 terminate f (ft:_) = case ft of (Allowed a) -> (Terminated (f a)) : []
                                 _           -> []
 
-wye :: (a -> [FTag b e]) -> (a -> [FTag c f]) -> a -> [FTag a (e, f)]
+wye :: (a -> [FTag b e]) -> (a -> [FTag b f]) -> a -> [FTag b (e, f)]
 wye h y a = spread (h a) (y a)
     where spread [] _ = []
           spread _ [] = []
@@ -46,6 +46,12 @@ wye h y a = spread (h a) (y a)
                                                 (Accepted e, Terminated f) -> Terminated (e, f) : []
                                                 (Terminated e, Accepted f) -> Terminated (e, f) : []
                                                 _                          -> spread bs cs
+
+mergeWith :: (b -> c -> d) -> [FTag a (b, c)] -> [FTag a d]
+mergeWith f []          = []
+mergeWith f (bc:bcs) = case bc of (Accepted (b, c))   -> Accepted (f b c) : (mergeWith f bcs)
+                                  (Terminated (b, c)) -> Terminated (f b c) : []
+                                  _                   -> mergeWith f bcs 
 
 lastly :: ([FTag a b] -> [FTag a b]) -> [FTag a b] -> [FTag a b]
 lastly f []       = []
