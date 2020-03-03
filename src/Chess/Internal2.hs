@@ -147,13 +147,20 @@ set p (c, s) = Pos p c s
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
 
-castle :: Board -> (Square -> Maybe Move) -> (Square -> Maybe Move) -> Square -> Maybe Move
-castle board kingf rookf square = do
-            kingMove   <- kingf square
-            rookMove   <- rookf square
-            let castle = createFrom kingMove rookMove
-            permitted board $ castle
-      where createFrom (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
+-- castle :: Board -> (Square -> Maybe Move) -> (Square -> Maybe Move) -> Square -> Maybe Move
+-- castle board kingf rookf square = do
+--             kingMove   <- kingf square
+--             rookMove   <- rookf square
+--             let castle = createFrom kingMove rookMove
+--             permitted board $ castle
+--       where createFrom (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
+
+castle :: Board -> (Square -> Move) -> (Square -> Move) -> Square -> Move
+castle board kingf rookf square = let kingMove = kingf square
+                                      rookMove = rookf square
+                                  in case (kingMove, rookMove) of 
+                                        (Advance k kp, Advance r rp) -> Castle (k, kp) (r, rp)
+
 
 -- these functions are just priority functions
 -- they are applied in order. first right and then left. 
@@ -361,49 +368,73 @@ knightMoves board = permitted' board [lastly (terminate (capture Knight board)) 
                                       lastly (terminate (capture Knight board)) . while opponent . lastly (accept (advance Knight board)) . while empty . allow . follow' board [R, R, U],
                                       lastly (terminate (capture Knight board)) . while opponent . lastly (accept (advance Knight board)) . while empty . allow . follow' board [R, R, D]]
 
--- the `follow` moves don't have all intermediate starts and ends
-queenMoves :: Board -> Square -> [Move]
-queenMoves board = spreadM [captureWith Queen board . keepUntil opponent empty . follow board UR,
-                            captureWith Queen board . keepUntil opponent empty . follow board UL,
-                            captureWith Queen board . keepUntil opponent empty . follow board DR,
-                            captureWith Queen board . keepUntil opponent empty . follow board DL,
-                            captureWith Queen board . keepUntil opponent empty . follow board U,
-                            captureWith Queen board . keepUntil opponent empty . follow board D,
-                            captureWith Queen board . keepUntil opponent empty . follow board L,
-                            captureWith Queen board . keepUntil opponent empty . follow board R,
+-- queenMoves :: Board -> Square -> [Move]
+-- queenMoves board = spreadM [captureWith Queen board . keepUntil opponent empty . follow board UR,
+--                             captureWith Queen board . keepUntil opponent empty . follow board UL,
+--                             captureWith Queen board . keepUntil opponent empty . follow board DR,
+--                             captureWith Queen board . keepUntil opponent empty . follow board DL,
+--                             captureWith Queen board . keepUntil opponent empty . follow board U,
+--                             captureWith Queen board . keepUntil opponent empty . follow board D,
+--                             captureWith Queen board . keepUntil opponent empty . follow board L,
+--                             captureWith Queen board . keepUntil opponent empty . follow board R,
                             
-                            advanceWith Queen board . takeWhile empty . follow board UR,
-                            advanceWith Queen board . takeWhile empty . follow board UL,
-                            advanceWith Queen board . takeWhile empty . follow board DR,
-                            advanceWith Queen board . takeWhile empty . follow board DL,
-                            advanceWith Queen board . takeWhile empty . follow board U,
-                            advanceWith Queen board . takeWhile empty . follow board D,
-                            advanceWith Queen board . takeWhile empty . follow board L,
-                            advanceWith Queen board . takeWhile empty . follow board R] 
+--                             advanceWith Queen board . takeWhile empty . follow board UR,
+--                             advanceWith Queen board . takeWhile empty . follow board UL,
+--                             advanceWith Queen board . takeWhile empty . follow board DR,
+--                             advanceWith Queen board . takeWhile empty . follow board DL,
+--                             advanceWith Queen board . takeWhile empty . follow board U,
+--                             advanceWith Queen board . takeWhile empty . follow board D,
+--                             advanceWith Queen board . takeWhile empty . follow board L,
+--                             advanceWith Queen board . takeWhile empty . follow board R] 
 
-kingMoves :: Board -> Square -> [Move]
-kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow' board [U],
-                           captureWith King board . takeWhile opponent . follow' board [D],
-                           captureWith King board . takeWhile opponent . follow' board [L],
-                           captureWith King board . takeWhile opponent . follow' board [R],
-                           captureWith King board . takeWhile opponent . follow' board [UL],
-                           captureWith King board . takeWhile opponent . follow' board [UR],
-                           captureWith King board . takeWhile opponent . follow' board [DL],
-                           captureWith King board . takeWhile opponent . follow' board [DR],
+queenMoves :: Board -> Square -> [Move]
+queenMoves board = permitted' board [terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board UR,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board UL,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board DL,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board DR,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board U,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board D,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board L,
+                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . allow . follow board R]
 
-                           advanceWith King board . takeWhile empty . follow' board [U],
-                           advanceWith King board . takeWhile empty . follow' board [D],
-                           advanceWith King board . takeWhile empty . follow' board [L],
-                           advanceWith King board . takeWhile empty . follow' board [R],
-                           advanceWith King board . takeWhile empty . follow' board [UL],
-                           advanceWith King board . takeWhile empty . follow' board [UR],
-                           advanceWith King board . takeWhile empty . follow' board [DL],
-                           advanceWith King board . takeWhile empty . follow' board [DR],
+-- kingMoves :: Board -> Square -> [Move]
+-- kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow' board [U],
+--                            captureWith King board . takeWhile opponent . follow' board [D],
+--                            captureWith King board . takeWhile opponent . follow' board [L],
+--                            captureWith King board . takeWhile opponent . follow' board [R],
+--                            captureWith King board . takeWhile opponent . follow' board [UL],
+--                            captureWith King board . takeWhile opponent . follow' board [UR],
+--                            captureWith King board . takeWhile opponent . follow' board [DL],
+--                            captureWith King board . takeWhile opponent . follow' board [DR],
+
+--                            advanceWith King board . takeWhile empty . follow' board [U],
+--                            advanceWith King board . takeWhile empty . follow' board [D],
+--                            advanceWith King board . takeWhile empty . follow' board [L],
+--                            advanceWith King board . takeWhile empty . follow' board [R],
+--                            advanceWith King board . takeWhile empty . follow' board [UL],
+--                            advanceWith King board . takeWhile empty . follow' board [UR],
+--                            advanceWith King board . takeWhile empty . follow' board [DL],
+--                            advanceWith King board . takeWhile empty . follow' board [DR],
                            
-                           castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
-                                        (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
-                           castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
-                                        (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)]
+--                            castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
+--                                         (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
+--                            castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
+--                                         (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)]
+--         where safecheck        = safe board
+--               safeKingside     = safecheck R
+--               safeQueenside    = safecheck L
+--               kingside  (W, _) = (W, (8, 1))
+--               kingside  (B, _) = (B, (8, 8))
+--               queenside (W, _) = (W, (1, 1))
+--               queenside (B, _) = (B, (1, 8))
+
+
+castle' :: (Move, Move) -> Move
+castle' (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
+
+xs :: Board -> Square -> [FTag Square (Move, Move)]
+xs board = fmap castle' . wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . allow . follow' board [R, R])
+                                (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . allow . follow' board [L, L] . kingside)
         where safecheck        = safe board
               safeKingside     = safecheck R
               safeQueenside    = safecheck L
@@ -412,6 +443,31 @@ kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow'
               queenside (W, _) = (W, (1, 1))
               queenside (B, _) = (B, (1, 8))
 
+kingMoves :: Board -> Square -> [Move]
+kingMoves board = permitted' board [terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [U],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [D],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [L],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [R],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [UL],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [UR],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [DL],
+                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . allow . follow' board [DR]
+      
+                        --             accept castle' . wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . allow . follow' board [R, R])
+                        --                                  (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . allow . follow' board [L, L] . kingside)
+                        -- --    castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
+                        --                 (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
+                        --    castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
+                        --                 (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)
+                                        
+                                        ]
+        where safecheck        = safe board
+              safeKingside     = safecheck R
+              safeQueenside    = safecheck L
+              kingside  (W, _) = (W, (8, 1))
+              kingside  (B, _) = (B, (8, 8))
+              queenside (W, _) = (W, (1, 1))
+              queenside (B, _) = (B, (1, 8))
 
 moves :: Board -> [Move]
 moves board = pieces board >>= (movesFor board)
