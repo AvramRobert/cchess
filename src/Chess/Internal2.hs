@@ -8,7 +8,6 @@ import Control.Applicative ((<|>))
 import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
 import Lib.Coll
 import Lib.Scalar
-import Lib.PipedStream
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show, Ord)
@@ -147,70 +146,6 @@ set p (c, s) = Pos p c s
 lookAt :: Board -> Coord -> Maybe Position
 lookAt board coord' = find ((== coord') . coord) $ pieces board
 
--- castle :: Board -> (Square -> Maybe Move) -> (Square -> Maybe Move) -> Square -> Maybe Move
--- castle board kingf rookf square = do
---             kingMove   <- kingf square
---             rookMove   <- rookf square
---             let castle = createFrom kingMove rookMove
---             permitted board $ castle
---       where createFrom (Advance k kp) (Advance r rp) = Castle (k, kp) (r, rp)
-
-castle :: Board -> (Square -> Move) -> (Square -> Move) -> Square -> Move
-castle board kingf rookf square = let kingMove = kingf square
-                                      rookMove = rookf square
-                                  in case (kingMove, rookMove) of 
-                                        (Advance k kp, Advance r rp) -> Castle (k, kp) (r, rp)
-
-
--- these functions are just priority functions
--- they are applied in order. first right and then left. 
--- isn't there a more interesting abstraction at play here?
--- the problem here is, that there's a particular speciality here.
--- If `keepf` stops, then the list consumptions goes to `stopf` and stops once `stopf` yields a value.
--- It doesn't continue with the list
--- The general abstraction behind this would, given a list of handles h :: [a -> Maybe b]
--- try h0 a1, if fail => h1 a1. If success => would continue with a2
--- I want it however to not continue with a2 once h1 was applied.
-
--- basically, there would be one primary function and a list of `handler` functions
--- the primary function would riffle through the list and the handler functions would be applied iff the primary one fails and the consumption would stop
-label :: (a -> Maybe b) -> (a -> Maybe b) -> [a] -> [b]
-label stopf keepf []     = []
-label stopf keepf (a:as) = case (keepf a) of
-      (Just b)   -> b : (label stopf keepf as)
-      (Nothing)  -> maybe [] (\a -> a : []) $ stopf a
-
-advanceWith' :: Piece -> Board -> (Square, Position) -> Maybe Move
-advanceWith' piece board ((c, s), (Pos _ _ e)) = permitted board $ Advance (Pos piece c s) e
-
-captureWith' :: Piece -> Board -> (Square, Position) -> Maybe Move
-captureWith' piece board ((c, s), (Pos _ _ e)) = permitted board $ Capture (Pos piece c s) e
-
-enpassant' :: Board -> (Square, Position) -> Maybe Move
-enpassant' board (square @ (c, s), (Pos _ _ e)) = permitted board $ Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
-
-promoteTo' :: Piece -> Board -> (Square, Position) -> Maybe Move
-promoteTo' piece board ((c, s), (Pos _ _ e)) = permitted board $ Promote (Pos Pawn c s) piece e
-
-
---- THESE THINGS NOW ARE REVERSED ---
---- THE LAST ELEMENTS HAVE THE LATEST VALUE ---
-advanceWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-advanceWith piece board []                          = Nothing
-advanceWith piece board ((square, (Pos _ _ e)) : _) = permitted board $ Advance (set piece square) e 
-
-captureWith :: Piece -> Board -> [(Square, Position)] -> Maybe Move
-captureWith piece board []                          = Nothing
-captureWith piece board ((square, (Pos _ _ e)) : _) = permitted board $ Capture (set piece square) e  
-
--- promoteTo :: Piece -> Board -> [(Square, Position)] -> Maybe Move
--- promoteTo piece board []                          = Nothing
--- promoteTo piece board ((square, (Pos _ _ e)) : _) = permitted board $ Promote (set Pawn square) piece e
-
--- enpassant :: Board -> [(Square, Position)] -> Maybe Move
--- enpassant board []                                   = Nothing
--- enpassant board ((square @ (c, s), (Pos _ _ e)) : _) = permitted board $ Enpassant (set Pawn square) e (fst s, (snd s) - 1)
-
 empty :: (Square, Position) -> Bool
 empty (_, (Pos p _ _)) = p == Empty
 
@@ -266,188 +201,96 @@ threats board = let moves = pieces board >>= (movesFor board)
             attacks (c, s) (Promote   (Pos _ c' _) _ e)  = c /= c' && s == e
             attacks _ _                                  = False
 
-advance :: Piece -> Board -> (Square, Position) -> Move
-advance piece board ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
+advance :: Piece -> (Square, Position) -> Move
+advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
 
-capture :: Piece -> Board -> (Square, Position) -> Move
-capture piece board ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
+capture :: Piece -> (Square, Position) -> Move
+capture piece ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
 
-enpassant :: Board -> (Square, Position) -> Move
-enpassant board ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
+enpassant :: (Square, Position) -> Move
+enpassant ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
 
-promotionTo :: Piece -> Board -> (Square, Position) -> Move
-promotionTo piece board ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
+promoteTo :: Piece -> (Square, Position) -> Move
+promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
 
--- The current threats of a board are constant over a complete pass of move compilation.
--- That means that I could theoretically compute them once and hand them individually to every `*moves` function
-permitted :: Board -> Move -> Maybe Move
-permitted board move | check board = Nothing -- the move is permitted if, when applied, the board isn't in check anymore.
-permitted board move               = Just move   
+castle :: (Move, Move) -> Move
+castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
-permitted' :: Board -> [Square -> [Pipe (Square, Position) Move]] -> Square -> [Move]
-permitted' board fs = sink . conjoin fs
+permitted :: Board -> Move -> Bool
+permitted board move = (not $ check board) || (escapes $ perform board move)
+      where escapes (Checkmate _, _) = True
+            escapes (Stalemate, _)   = True
+            escapes (_, board')      = not $ check board' 
 
--- the complete board part can be done by the `conjoin` 
+compile :: Board -> [Square -> [Move]] -> Square -> [Move]
+compile board moves = filter (permitted board) . conjoin moves
+
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = permitted' board [accept (capture Pawn board) . while opponent . tap . follow' board [UL],
-                                    accept (capture Pawn board) . while opponent . tap . follow' board [UR],
-                                    accept (advance Pawn board) . while empty . tap . follow' board [U],
-                                    accept (advance Pawn board) . while (every [started board, empty]) . tap . follow' board [U, U],
-                                    accept (enpassant board)   . while (every [jumped board, empty])  . tap . follow' board [UR],
-                                    accept (enpassant board)   . while (every [jumped board, empty])  . tap . follow' board [UL],
-                                    
-                                    accept (promotionTo Queen board)  . while (every [backrank, empty]) . tap . follow' board [U],
-                                    accept (promotionTo Knight board) . while (every [backrank, empty]) . tap . follow' board [U],
-                                    accept (promotionTo Bishop board) . while (every [backrank, empty]) . tap . follow' board [U],
-                                    accept (promotionTo Rook board)   . while (every [backrank, empty]) . tap . follow' board [U],
-
-                                    accept (promotionTo Queen board)  . while (every [backrank, opponent]) . tap . follow' board [UL],
-                                    accept (promotionTo Knight board) . while (every [backrank, opponent]) . tap . follow' board [UL],
-                                    accept (promotionTo Bishop board) . while (every [backrank, opponent]) . tap . follow' board [UL],
-                                    accept (promotionTo Rook board)   . while (every [backrank, opponent]) . tap . follow' board [UL],
-
-                                    accept (promotionTo Queen board)  . while (every [backrank, opponent]) . tap . follow' board [UR],
-                                    accept (promotionTo Knight board) . while (every [backrank, opponent]) . tap . follow' board [UR],
-                                    accept (promotionTo Bishop board) . while (every [backrank, opponent]) . tap . follow' board [UR],
-                                    accept (promotionTo Rook board)   . while (every [backrank, opponent]) . tap . follow' board [UR]]
-
-
--- bishopMoves :: Board -> Square -> [Move]
--- bishopMoves board = spreadM [captureWith Bishop board . keepUntil opponent empty . follow board UR,
---                              captureWith Bishop board . keepUntil opponent empty . follow board UL,
---                              captureWith Bishop board . keepUntil opponent empty . follow board DR,
---                              captureWith Bishop board . keepUntil opponent empty . follow board DL]
+pawnMoves board = compile board [   keepLast . consume [when empty              $ advance Pawn]     . follow' board [U, U],
+                                    consume [when empty                         $ advance Pawn]     . follow' board [U],
+                                    consume [once opponent                      $ capture Pawn]     . follow' board [UR],
+                                    consume [once opponent                      $ capture Pawn]     . follow' board [UL],
+                                    consume [once (every [jumped board, empty]) $ enpassant]        . follow' board [UR],
+                                    consume [once (every [jumped board, empty]) $ enpassant]        . follow' board [UL],
+                                    consume [once (every [backrank, empty])     $ promoteTo Queen]  . follow' board [U],
+                                    consume [once (every [backrank, empty])     $ promoteTo Knight] . follow' board [U],
+                                    consume [once (every [backrank, empty])     $ promoteTo Rook]   . follow' board [U],
+                                    consume [once (every [backrank, empty])     $ promoteTo Bishop] . follow' board [U],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Queen]  . follow' board [UL],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Knight] . follow' board [UL],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Rook]   . follow' board [UL],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Bishop] . follow' board [UL],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Queen]  . follow' board [UR],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Knight] . follow' board [UR],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Rook]   . follow' board [UR],
+                                    consume [once (every [backrank, opponent])  $ promoteTo Bishop] . follow' board [UR]]
 
 bishopMoves :: Board -> Square -> [Move]
-bishopMoves board = permitted' board [terminate (capture Bishop board) . while opponent . accept (advance Bishop board) . while empty . tap . follow board UR,
-                                      terminate (capture Bishop board) . while opponent . accept (advance Bishop board) . while empty . tap . follow board UL,
-                                      terminate (capture Bishop board) . while opponent . accept (advance Bishop board) . while empty . tap . follow board DR,
-                                      terminate (capture Bishop board) . while opponent . accept (advance Bishop board) . while empty . tap . follow board DL]
-
--- rookMoves :: Board -> Square -> [Move]
--- rookMoves board = spreadM [captureWith Rook board . keepUntil opponent empty . follow board U,
---                            captureWith Rook board . keepUntil opponent empty . follow board U,
---                            advanceWith Rook board . takeWhile empty . follow board U,
---                            advanceWith Rook board . takeWhile empty . follow board U]
+bishopMoves board = compile board [ consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UL,
+                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UR,
+                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DR,
+                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DL]
 
 rookMoves :: Board -> Square -> [Move]
-rookMoves board = permitted' board [terminate (capture Rook board) . while opponent . accept (advance Rook board) . while empty . tap . follow board U,
-                                    terminate (capture Rook board) . while opponent . accept (advance Rook board) . while empty . tap . follow board D,
-                                    terminate (capture Rook board) . while opponent . accept (advance Rook board) . while empty . tap . follow board R,
-                                    terminate (capture Rook board) . while opponent . accept (advance Rook board) . while empty . tap . follow board L]
-
-
--- knightMoves :: Board -> Square -> [Move]
--- knightMoves board = spreadM [captureWith Knight board . keepUntil opponent empty . follow' board [U, U, L],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [U, U, R],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, L],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [D, D, R],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [L, L, U],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [L, L, D],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [R, R, U],
---                              captureWith Knight board . keepUntil opponent empty . follow' board [R, R, D],
-
---                              advanceWith Knight board . takeWhile empty . follow' board [U, U, L],
---                              advanceWith Knight board . takeWhile empty . follow' board [U, U, R],
---                              advanceWith Knight board . takeWhile empty . follow' board [D, D, L],
---                              advanceWith Knight board . takeWhile empty . follow' board [D, D, R],
---                              advanceWith Knight board . takeWhile empty . follow' board [L, L, U],
---                              advanceWith Knight board . takeWhile empty . follow' board [L, L, D],
---                              advanceWith Knight board . takeWhile empty . follow' board [R, R, U],
---                              advanceWith Knight board . takeWhile empty . follow' board [R, R, D]]
-                             
+rookMoves board = compile board [   consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board U,
+                                    consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board D,
+                                    consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board L,
+                                    consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board R]
 
 knightMoves :: Board -> Square -> [Move]
-knightMoves board = permitted' board [terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [U, U, L],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [U, U, R],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [D, D, L],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [D, D, R],
-
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [L, L, U],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [L, L, D],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [R, R, U],
-                                      terminate (capture Knight board) . while opponent . keepLast . accept (advance Knight board) . while empty . tap . follow' board [R, R, D]]
-
--- queenMoves :: Board -> Square -> [Move]
--- queenMoves board = spreadM [captureWith Queen board . keepUntil opponent empty . follow board UR,
---                             captureWith Queen board . keepUntil opponent empty . follow board UL,
---                             captureWith Queen board . keepUntil opponent empty . follow board DR,
---                             captureWith Queen board . keepUntil opponent empty . follow board DL,
---                             captureWith Queen board . keepUntil opponent empty . follow board U,
---                             captureWith Queen board . keepUntil opponent empty . follow board D,
---                             captureWith Queen board . keepUntil opponent empty . follow board L,
---                             captureWith Queen board . keepUntil opponent empty . follow board R,
-                            
---                             advanceWith Queen board . takeWhile empty . follow board UR,
---                             advanceWith Queen board . takeWhile empty . follow board UL,
---                             advanceWith Queen board . takeWhile empty . follow board DR,
---                             advanceWith Queen board . takeWhile empty . follow board DL,
---                             advanceWith Queen board . takeWhile empty . follow board U,
---                             advanceWith Queen board . takeWhile empty . follow board D,
---                             advanceWith Queen board . takeWhile empty . follow board L,
---                             advanceWith Queen board . takeWhile empty . follow board R] 
+knightMoves board = compile board [ consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, L],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, R],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, L],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, R],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [L, L, U],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [L, L, D],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [R, R, U],
+                                    consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [R, R, D]]
 
 queenMoves :: Board -> Square -> [Move]
-queenMoves board = permitted' board [terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board UR,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board UL,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board DL,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board DR,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board U,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board D,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board L,
-                                     terminate (capture Queen board) . while opponent . accept (advance Queen board) . while empty . tap . follow board R]
+queenMoves board = compile board [  consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board U,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board D,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board L,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board R,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UL,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UR,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DL,
+                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DR]
 
--- kingMoves :: Board -> Square -> [Move]
--- kingMoves board = spreadM [captureWith King board . takeWhile opponent . follow' board [U],
---                            captureWith King board . takeWhile opponent . follow' board [D],
---                            captureWith King board . takeWhile opponent . follow' board [L],
---                            captureWith King board . takeWhile opponent . follow' board [R],
---                            captureWith King board . takeWhile opponent . follow' board [UL],
---                            captureWith King board . takeWhile opponent . follow' board [UR],
---                            captureWith King board . takeWhile opponent . follow' board [DL],
---                            captureWith King board . takeWhile opponent . follow' board [DR],
-
---                            advanceWith King board . takeWhile empty . follow' board [U],
---                            advanceWith King board . takeWhile empty . follow' board [D],
---                            advanceWith King board . takeWhile empty . follow' board [L],
---                            advanceWith King board . takeWhile empty . follow' board [R],
---                            advanceWith King board . takeWhile empty . follow' board [UL],
---                            advanceWith King board . takeWhile empty . follow' board [UR],
---                            advanceWith King board . takeWhile empty . follow' board [DL],
---                            advanceWith King board . takeWhile empty . follow' board [DR],
-                           
---                            castle board (advanceWith King board . takeWhile (every [safeKingside, empty, canCastle board R]) . follow' board [R, R])
---                                         (advanceWith Rook board . takeWhile (every [empty, canCastle board R]) . follow' board [L, L] . kingside),
---                            castle board (advanceWith King board . takeWhile (every [safeQueenside, empty, canCastle board L]) . follow' board [L, L])
---                                         (advanceWith Rook board . takeWhile (every [empty, canCastle board L]) . follow' board [R, R, R] . queenside)]
---         where safecheck        = safe board
---               safeKingside     = safecheck R
---               safeQueenside    = safecheck L
---               kingside  (W, _) = (W, (8, 1))
---               kingside  (B, _) = (B, (8, 8))
---               queenside (W, _) = (W, (1, 1))
---               queenside (B, _) = (B, (1, 8))
-
-
-castle' :: (Move, Move) -> Move
-castle' (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
 kingMoves :: Board -> Square -> [Move]
-kingMoves board = permitted' board [terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [U],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [D],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [L],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [R],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [UL],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [UR],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [DL],
-                                    terminate (capture King board) . while opponent . accept (advance King board) . while empty . tap . follow' board [DR],
-                                    mapTo castle' . fork (keepLast . accept (advance King board) . exactly (every [safeKingside, empty, canCastle board R]) . tap . follow' board [R, R])
-                                                         (keepLast . accept (advance Rook board) . exactly (every [empty, canCastle board R]) . tap . follow' board [L, L] . kingside) 
-                                    -- mergeWith castle' . 
-                                    --       wye (lastly (accept (advance King board)) . exactly (every [safeKingside, empty, canCastle board R]) . tap . follow' board [R, R])
-                                    --           (lastly (accept (advance Rook board)) . exactly (every [empty, canCastle board R]) . tap . follow' board [L, L] . kingside)
-                                              
-                                              ]
+kingMoves board = compile board [   consume [when empty $ advance King, once opponent $ capture King] . follow' board [U],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [D],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [L],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [R],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [UL],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [UR],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [DL],
+                                    consume [when empty $ advance King, once opponent $ capture King] . follow' board [DR],
+                                    map castle . zipped (keepLast . consume [when (every [empty, safeKingside, canCastle board R])  $ advance King] . follow' board [R, R])
+                                                      (keepLast . consume [when (every [empty, canCastle board R])                $ advance Rook] . follow' board [L, L] . kingside),
+                                    map castle . zipped (keepLast . consume [when (every [empty, safeQueenside, canCastle board L]) $ advance King] . follow' board [L, L])
+                                                      (keepLast . consume [when (every [empty, canCastle board L])                $ advance Rook] . follow' board [R, R, R] . queenside)]
         where safecheck        = safe board
               safeKingside     = safecheck R
               safeQueenside    = safecheck L
