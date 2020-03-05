@@ -2,10 +2,8 @@ module Chess.Internal2 where
 
 import Data.Tuple (swap)
 import Data.List (find, sortOn)
-import Data.List.NonEmpty (unfoldr, toList)
 import Control.Monad (mfilter, join)
-import Control.Applicative ((<|>))
-import Data.Maybe (maybe, isJust, isNothing, catMaybes, fromJust)
+import Data.Maybe (maybe, isJust, fromJust)
 import Lib.Coll
 import Lib.Scalar
 
