@@ -27,6 +27,7 @@ data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
 data Outcome = Continue       |
+               Illegal        |
                Draw           |
                Stalemate      |
                Forfeit Colour | 
@@ -214,7 +215,7 @@ castle :: (Move, Move) -> Move
 castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
 permitted :: Board -> Move -> Bool
-permitted board move = (not $ check board) || (escapes $ perform board move)
+permitted board move = (not $ check board) || (escapes $ forcePerform board move)
       where escapes (Checkmate _, _) = True
             escapes (Stalemate, _)   = True
             escapes (_, board')      = not $ check board' 
@@ -357,8 +358,11 @@ apply board move = let  king   = fromJust $ find (every [(== player board') . co
             commit (Castle ((Pos k kc ks), ke) 
                            ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
+forcePerform :: Board -> Move -> (Outcome, Board) 
+forcePerform board = evaluate . apply board
+
 perform :: Board -> Move -> (Outcome, Board) 
-perform board = evaluate . apply board
+perform board move = maybe (Illegal, board) (forcePerform board) $ find (== move) $ movesFor board $ position move
 
 board :: Board
 board = Board { player          = W,
