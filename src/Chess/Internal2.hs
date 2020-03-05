@@ -149,28 +149,25 @@ lookAt board coord' = find ((== coord') . coord) $ pieces board
 empty :: (Square, Position) -> Bool
 empty (_, (Pos p _ _)) = p == Empty
 
+opposites :: (Square, Position) -> Bool
+opposites ((c, _), (Pos _ c' _)) = c /= c'
+
 opponent :: (Square, Position) -> Bool
-opponent ((c, _), (Pos _ c' _)) = c /= c'
+opponent = every [not . empty, opposites]
 
 jumped :: Board -> (Square, Position) -> Bool
-jumped board ((colour, (x, y)), _)  = isJust $ mfilter opposed $ keepFirst $ past board 
-      where keepFirst ((Advance p ps) : _)                 = Just (Advance p ps)
-            keepFirst []                                   = Nothing
-            opposed (Advance (Pos p c (xs, ys)) (xe, ye))  = (Pawn == p) && 
-                                                             (colour /= c) &&   
-                                                             (abs (xs - x) == 1) && 
-                                                             (abs (ye - ys) == 2)
+jumped board ((colour, (x, y)), _)  = isJust $ mfilter opposed $ first $ past board 
+      where opposed (Advance (Pos p c (xs, ys)) (xe, ye)) = (Pawn          == p) && 
+                                                            (colour        /= c) && 
+                                                            (abs (xs - x)  == 1) && 
+                                                            (abs (ye - ys) == 2)
+            opposed _                                     = False
 
 started :: Board -> (Square, Position) -> Bool
 started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lookAt board coord
       where pawnOf W (Pos Pawn W (_, 2)) = True
             pawnOf B (Pos Pawn B (_, 7)) = True
             pawnOf _ _                   = False
-
-pawnOf :: Colour -> Position -> Bool
-pawnOf W (Pos Pawn W (_, 2)) = True
-pawnOf B (Pos Pawn B (_, 7)) = True
-pawnOf _ _                   = False
 
 safe :: Board -> (Dir -> (Square, Position) -> Bool)
 safe board = let attackers = threats board

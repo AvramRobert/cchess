@@ -1,4 +1,4 @@
-module Lib.Coll (spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once) where
+module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once) where
 
 import Data.List (find)
 import Data.Maybe (isJust)
@@ -39,3 +39,7 @@ keepLast :: [a] -> [a]
 keepLast []     = []
 keepLast (a:[]) = (a:[])
 keepLast (a:as) = keepLast as
+
+first :: [a] -> Maybe a
+first []    = Nothing
+first (a:_) = Just a
