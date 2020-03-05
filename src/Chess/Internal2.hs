@@ -312,6 +312,7 @@ movesFor board (Pos Rook c s)   = rookMoves board (c, s)
 movesFor board (Pos Bishop c s) = bishopMoves board (c, s)
 movesFor board (Pos Queen c s)  = queenMoves board (c, s)
 movesFor board (Pos Knight c s) = knightMoves board (c, s)
+movesFor board (Pos Empty _ _)  = []
 
 movesOpponent :: Board -> [Move]
 movesOpponent board = (filter ((== (other $ player board)) . colour) $ pieces board) >>= (movesFor board)
