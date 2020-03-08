@@ -142,8 +142,8 @@ rank = fmap (toInteger . digitToInt) $ numberChar
 check :: Parser ()
 check = void $ M.optional $ M.single '+'
 
-mate :: Parser ()
-mate = void $ M.optional $ M.single '#'
+mate :: Parser Bool
+mate = fmap (maybe False (const True)) $ M.optional $ M.single '#'
 
 hasColour :: Chess.Colour -> Chess.Move -> Bool
 hasColour colour = (== colour) . Chess.colour . Chess.position
@@ -362,6 +362,8 @@ applied move board = if (outcome == Chess.Continue)
                      else failWith (GameError outcome) Nothing
     where (outcome, board') = Chess.perform board move
 
+-- if no mate occurs, but the game stops, then depending on the result, the outcome may be a forfeit, draw, stalemate or checkmate
+-- this however should be part of the in-game parser
 result :: Parser ChessResult
 result = M.choice [(try $ string "1-0") $> WhiteWin,
                    (try $ string "0-1") $> BlackWin,
@@ -380,7 +382,7 @@ oneMove board = do
     _ <- check
     _ <- mate
     _ <- delimitation
-    _ <- result -- if no mate occurs, but the game stops, then depending on the result, the standing on the board changes: it's either a forfeit or a draw
+    _ <- result
     return (b, One m)
 
 twoMove :: Chess.Board -> Parser (Chess.Board, Turn)

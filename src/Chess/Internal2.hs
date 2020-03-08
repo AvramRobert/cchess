@@ -190,7 +190,7 @@ canCastle board R ((B, _), _) = snd $ kingsideCastle board
 canCastle board _ _           = False
 
 threats :: Board -> ([Square] -> [Move])
-threats board = let moves = pieces board >>= (movesFor board)
+threats board = let moves = pieces board >>= (movesPosition board)
                 in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
       where attacks (c, s) (Capture   (Pos _ c' _) e)    = c /= c' && s == e
             attacks (c, s) (Enpassant (Pos _ c' _) _ e)  = c /= c' && s == e
@@ -296,22 +296,25 @@ kingMoves board = compile board [   consume [when empty $ advance King, once opp
               queenside (B, _) = (B, (1, 8))
 
 moves :: Board -> [Move]
-moves board = pieces board >>= (movesFor board)
+moves board = pieces board >>= (movesPosition board)
 
 movesAt :: Board -> Square -> [Move]
 movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
 
-movesFor :: Board -> Position -> [Move]
-movesFor board (Pos Pawn c s)   = pawnMoves board (c, s)
-movesFor board (Pos King c s)   = kingMoves board (c, s)
-movesFor board (Pos Rook c s)   = rookMoves board (c, s)
-movesFor board (Pos Bishop c s) = bishopMoves board (c, s)
-movesFor board (Pos Queen c s)  = queenMoves board (c, s)
-movesFor board (Pos Knight c s) = knightMoves board (c, s)
-movesFor board (Pos Empty _ _)  = []
+movesPosition :: Board -> Position -> [Move]
+movesPosition board (Pos Pawn c s)   = pawnMoves board (c, s)
+movesPosition board (Pos King c s)   = kingMoves board (c, s)
+movesPosition board (Pos Rook c s)   = rookMoves board (c, s)
+movesPosition board (Pos Bishop c s) = bishopMoves board (c, s)
+movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
+movesPosition board (Pos Knight c s) = knightMoves board (c, s)
+movesPosition board (Pos Empty _ _)  = []
+
+movesPiece :: Board -> (Piece, Colour) -> [Move]
+movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
 
 movesOpponent :: Board -> [Move]
-movesOpponent board = (filter ((== (other $ player board)) . colour) $ pieces board) >>= (movesFor board)
+movesOpponent board = (filter ((== (other $ player board)) . colour) $ pieces board) >>= (movesPosition board)
 
 -- reconstruct by telling it which position to add and which coordinates to remove
 reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
@@ -360,7 +363,7 @@ forcePerform :: Board -> Move -> (Outcome, Board)
 forcePerform board = evaluate . apply board
 
 perform :: Board -> Move -> (Outcome, Board) 
-perform board move = maybe (Illegal, board) (forcePerform board) $ find (== move) $ movesFor board $ position move
+perform board move = maybe (Illegal, board) (forcePerform board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
 board = Board { player          = W,
