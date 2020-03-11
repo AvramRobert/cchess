@@ -163,7 +163,7 @@ hasY y = (== y) . snd . Chess.coord . Chess.position
 -- Can't I abstract over these?
 advancesTo :: Chess.Coord -> Chess.Move -> Bool
 advancesTo s (Chess.Advance _ e) = s == e
-advanceTo _ _                    = False
+advancesTo _ _                    = False
 
 capturesAt :: Chess.Coord -> Chess.Move -> Bool
 capturesAt s (Chess.Capture _ e) = s == e
@@ -270,7 +270,7 @@ capturePawn colour moves = fileAmbigousCapture (Chess.Pawn, colour) moves (Captu
 
 -- there's a pawn at file `ox` that can advnace to `x, y`
 advancePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-advancePawn colour moves = fileAmbigousAdvance (Chess.Pawn, colour) moves (AdvanceError Chess.Pawn) 
+advancePawn colour moves = unambigousAdvance (Chess.Pawn, colour) moves (AdvanceError Chess.Pawn) 
 
 -- there's a pawn at promoting position `x, y -+ 1` and can promote at `x, y`
 promotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
@@ -316,8 +316,8 @@ capturePromotePawn colour moves = do
 -- theoretically, after this point, I don't need a Chess.Board for every sub-predicate
 pawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
 pawn colour moves = M.choice [try $ capturePawn colour moves,
-                              try $ capturePromotePawn colour moves,
-                              try $ promotePawn colour moves,
+                              --try $ capturePromotePawn colour moves,
+                              --try $ promotePawn colour moves,
                               try $ advancePawn colour moves]   
 
 rook :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
@@ -353,7 +353,7 @@ move board = M.choice [try $ pawn colour moves,
                        try $ knight colour moves,
                        try $ queen colour moves,
                        try $ castle colour moves]
-    where moves  = Chess.moves board
+    where moves  = Chess.allMoves board
           colour = Chess.player board
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
@@ -416,6 +416,7 @@ moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
     m <- move board
+    _ <- delimitation
     _ <- applied m board
     return m
 

@@ -113,7 +113,7 @@ follow' board dirs s0 = if (length dirs == length path)
       where path            = gather dirs s0
             gather [] _     = []
             gather (d:ds) s = case (lookAhead board d s) of
-                  (Just p)  -> (s0, p) : (gather ds $ square p)
+                  (Just p)  -> (s0, p) : (gather ds (fst s0, coord p))
                   (Nothing) -> []
 
 other :: Colour -> Colour
@@ -156,10 +156,11 @@ opponent = every [not . empty, opposites]
 
 jumped :: Board -> (Square, Position) -> Bool
 jumped board ((colour, (x, y)), _)  = isJust $ mfilter opposed $ first $ past board 
-      where opposed (Advance (Pos p c (xs, ys)) (xe, ye)) = (Pawn          == p) && 
-                                                            (colour        /= c) && 
-                                                            (abs (xs - x)  == 1) && 
-                                                            (abs (ye - ys) == 2)
+      where opposed (Advance (Pos p c (xs, ys)) (xe, ye)) = (Pawn          == p) && -- it's a pawn 
+                                                            (colour        /= c) && -- and my opponent
+                                                            (abs (ye - ys) == 2) && -- has jumped two squares
+                                                            (abs (xe - x)  == 1) && -- is next to me!  
+                                                            (ye == y)               -- is on my rank
             opposed _                                     = False
 
 started :: Board -> (Square, Position) -> Bool
@@ -204,7 +205,7 @@ capture :: Piece -> (Square, Position) -> Move
 capture piece ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
 
 enpassant :: (Square, Position) -> Move
-enpassant ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (fst s, (snd s) - 1)
+enpassant ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (snd $ develop D (c, e))
 
 promoteTo :: Piece -> (Square, Position) -> Move
 promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
@@ -222,24 +223,24 @@ compile :: Board -> [Square -> [Move]] -> Square -> [Move]
 compile board moves = filter (permitted board) . conjoin moves
 
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = compile board [   keepLast . consume [when empty              $ advance Pawn]     . follow' board [U, U],
-                                    consume [when empty                         $ advance Pawn]     . follow' board [U],
-                                    consume [once opponent                      $ capture Pawn]     . follow' board [UR],
-                                    consume [once opponent                      $ capture Pawn]     . follow' board [UL],
-                                    consume [once (every [jumped board, empty]) $ enpassant]        . follow' board [UR],
-                                    consume [once (every [jumped board, empty]) $ enpassant]        . follow' board [UL],
-                                    consume [once (every [backrank, empty])     $ promoteTo Queen]  . follow' board [U],
-                                    consume [once (every [backrank, empty])     $ promoteTo Knight] . follow' board [U],
-                                    consume [once (every [backrank, empty])     $ promoteTo Rook]   . follow' board [U],
-                                    consume [once (every [backrank, empty])     $ promoteTo Bishop] . follow' board [U],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Queen]  . follow' board [UL],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Knight] . follow' board [UL],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Rook]   . follow' board [UL],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Bishop] . follow' board [UL],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Queen]  . follow' board [UR],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Knight] . follow' board [UR],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Rook]   . follow' board [UR],
-                                    consume [once (every [backrank, opponent])  $ promoteTo Bishop] . follow' board [UR]]
+pawnMoves board = compile board [   keepLast . consume [when (every [started board, empty]) $ advance Pawn]     . follow' board [U, U], -- started is missing from here
+                                    consume [when empty                                     $ advance Pawn]     . follow' board [U],
+                                    consume [once opponent                                  $ capture Pawn]     . follow' board [UR],
+                                    consume [once opponent                                  $ capture Pawn]     . follow' board [UL],
+                                    consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UR],
+                                    consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UL],
+                                    consume [once (every [backrank, empty])                 $ promoteTo Queen]  . follow' board [U],
+                                    consume [once (every [backrank, empty])                 $ promoteTo Knight] . follow' board [U],
+                                    consume [once (every [backrank, empty])                 $ promoteTo Rook]   . follow' board [U],
+                                    consume [once (every [backrank, empty])                 $ promoteTo Bishop] . follow' board [U],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Queen]  . follow' board [UL],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Knight] . follow' board [UL],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Rook]   . follow' board [UL],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Bishop] . follow' board [UL],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Queen]  . follow' board [UR],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Knight] . follow' board [UR],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Rook]   . follow' board [UR],
+                                    consume [once (every [backrank, opponent])              $ promoteTo Bishop] . follow' board [UR]]
 
 bishopMoves :: Board -> Square -> [Move]
 bishopMoves board = compile board [ consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UL,
@@ -295,8 +296,8 @@ kingMoves board = compile board [   consume [when empty $ advance King, once opp
               queenside (W, _) = (W, (1, 1))
               queenside (B, _) = (B, (1, 8))
 
-moves :: Board -> [Move]
-moves board = pieces board >>= (movesPosition board)
+allMoves :: Board -> [Move]
+allMoves board = pieces board >>= (movesPosition board)
 
 movesAt :: Board -> Square -> [Move]
 movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
@@ -313,8 +314,8 @@ movesPosition board (Pos Empty _ _)  = []
 movesPiece :: Board -> (Piece, Colour) -> [Move]
 movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
 
-movesOpponent :: Board -> [Move]
-movesOpponent board = (filter ((== (other $ player board)) . colour) $ pieces board) >>= (movesPosition board)
+movesColour :: Board -> Colour -> [Move]
+movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPosition board)
 
 -- reconstruct by telling it which position to add and which coordinates to remove
 reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
@@ -334,16 +335,18 @@ castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5
 castled _ (w, b) _                          = (w, b)
 
 -- you have to compute the other states aswell
+-- this already is the opponent
 evaluate :: Board -> (Outcome, Board)
 evaluate board = if      mate  then (Checkmate colour', board)
                  else if stale then (Stalemate, board) 
                  else               (Continue, board)
       where mate     = check board && immoble
             stale    = False -- check this
-            immoble  = all (check . apply board) $ movesOpponent board
+            immoble  = all ((== Illegal) . fst . forcePerform board) $ movesColour board colour'
             king     = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
             colour'  = player board
-            
+
+-- this doesn't check of check before performing the move            
 apply :: Board -> Move -> Board
 apply board move = let  king   = fromJust $ find (every [(== player board') . colour, (== King) . piece]) $ pieces board'
                         board' = board { pieces          = commit move $ pieces board, 
@@ -360,7 +363,10 @@ apply board move = let  king   = fromJust $ find (every [(== player board') . co
                            ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
 forcePerform :: Board -> Move -> (Outcome, Board) 
-forcePerform board = evaluate . apply board
+forcePerform board move = let board' = apply board move
+                          in if (not $ check board) then evaluate board'
+                             else if (not $ check board') then evaluate board'
+                             else (Illegal, board)
 
 perform :: Board -> Move -> (Outcome, Board) 
 perform board move = maybe (Illegal, board) (forcePerform board) $ find (== move) $ movesPosition board $ position move
