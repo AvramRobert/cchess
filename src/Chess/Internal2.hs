@@ -41,20 +41,36 @@ data Board = Board { player          :: Colour,
 instance Show Board where
       show board = unlines [whiteView $ pieces board, statistics board] -- make this based on the player? 
 
+-- instance Show Position where
+--       show (Pos Pawn W xy)   = "♙ W" <> show xy
+--       show (Pos Pawn B xy)   = "♟ B" <> show xy
+--       show (Pos Rook W xy)   = "♖ W" <> show xy
+--       show (Pos Rook B xy)   = "♜ B" <> show xy
+--       show (Pos Bishop W xy) = "♗ W" <> show xy
+--       show (Pos Bishop B xy) = "♝ B" <> show xy
+--       show (Pos Knight W xy) = "♘ W" <> show xy
+--       show (Pos Knight B xy) = "♞ B" <> show xy 
+--       show (Pos King W xy)   = "♔ W" <> show xy
+--       show (Pos King B xy)   = "♚ B" <> show xy
+--       show (Pos Queen W xy)  = "♕ W" <> show xy
+--       show (Pos Queen B xy)  = "♛ B" <> show xy
+--       show (Pos Empty _ xy)  = "-  " <> show xy
+
 instance Show Position where
-      show (Pos Pawn W xy)   = "♙ W" <> show xy
-      show (Pos Pawn B xy)   = "♟ B" <> show xy
-      show (Pos Rook W xy)   = "♖ W" <> show xy
-      show (Pos Rook B xy)   = "♜ B" <> show xy
-      show (Pos Bishop W xy) = "♗ W" <> show xy
-      show (Pos Bishop B xy) = "♝ B" <> show xy
-      show (Pos Knight W xy) = "♘ W" <> show xy
-      show (Pos Knight B xy) = "♞ B" <> show xy 
-      show (Pos King W xy)   = "♔ W" <> show xy
-      show (Pos King B xy)   = "♚ B" <> show xy
-      show (Pos Queen W xy)  = "♕ W" <> show xy
-      show (Pos Queen B xy)  = "♛ B" <> show xy
-      show (Pos Empty _ xy)  = "-  " <> show xy
+      show (Pos Pawn W xy)   = "Pawn   W " <> show xy
+      show (Pos Pawn B xy)   = "Pawn   B " <> show xy
+      show (Pos Rook W xy)   = "Rook   W " <> show xy
+      show (Pos Rook B xy)   = "Rook   B " <> show xy
+      show (Pos Bishop W xy) = "Bishop W " <> show xy
+      show (Pos Bishop B xy) = "Bishop B " <> show xy
+      show (Pos Knight W xy) = "Knight W " <> show xy
+      show (Pos Knight B xy) = "Knight B " <> show xy 
+      show (Pos King W xy)   = "King   W " <> show xy
+      show (Pos King B xy)   = "King   B " <> show xy
+      show (Pos Queen W xy)  = "Queen  W " <> show xy
+      show (Pos Queen B xy)  = "Queen  B " <> show xy
+      show (Pos Empty _ xy)  = "-        " <> show xy
+
 
 makeRow :: Show a => [a] -> String
 makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
@@ -98,13 +114,16 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1)
 
+push :: Square -> Position -> Square
+push (c, s) (Pos _ _ e) = (c, e)
+
 lookAhead :: Board -> Dir -> Square -> Maybe Position
 lookAhead board dir = lookAt board . snd . develop dir
 
 follow :: Board -> Dir -> Square -> [(Square, Position)]
-follow board d s = case (lookAhead board d s) of
-      (Just p)  -> (s, p) : (follow board d $ square p)
-      (Nothing) -> []
+follow board d s = gather $ lookAhead board d s
+      where gather (Just p)  = (s, p) : (gather $ lookAhead board d $ push s p)
+            gather (Nothing) = []
 
 follow' :: Board -> [Dir] -> Square -> [(Square, Position)]
 follow' board dirs s0 = if (length dirs == length path) 
@@ -113,11 +132,11 @@ follow' board dirs s0 = if (length dirs == length path)
       where path            = gather dirs s0
             gather [] _     = []
             gather (d:ds) s = case (lookAhead board d s) of
-                  (Just p)  -> (s0, p) : (gather ds (fst s0, coord p))
+                  (Just p)  -> (s0, p) : (gather ds $ push s p)
                   (Nothing) -> []
 
 other :: Colour -> Colour
-other W = B
+other W = B 
 other B = W
 
 position :: Move -> Position
@@ -191,12 +210,12 @@ canCastle board R ((B, _), _) = snd $ kingsideCastle board
 canCastle board _ _           = False
 
 threats :: Board -> ([Square] -> [Move])
-threats board = let moves = pieces board >>= (movesPosition board)
-                in \sqs -> filter (oneOf (fmap attacks sqs)) moves 
-      where attacks (c, s) (Capture   (Pos _ c' _) e)    = c /= c' && s == e
-            attacks (c, s) (Enpassant (Pos _ c' _) _ e)  = c /= c' && s == e
-            attacks (c, s) (Promote   (Pos _ c' _) _ e)  = c /= c' && s == e
-            attacks _ _                                  = False
+threats board sqs = filter attacks $ allMoves board
+      where conflict (Pos _ c _) e      = any (\(c', p) -> c /= c' && e == p) sqs
+            attacks (Capture pos e)     = conflict pos e
+            attacks (Promote pos _ e)   = conflict pos e
+            attacks (Enpassant pos _ e) = conflict pos e
+            attacks _                   = False   
 
 advance :: Piece -> (Square, Position) -> Move
 advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
@@ -213,17 +232,11 @@ promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
 castle :: (Move, Move) -> Move
 castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
-permitted :: Board -> Move -> Bool
-permitted board move = (not $ check board) || (escapes $ forcePerform board move)
-      where escapes (Checkmate _, _) = True
-            escapes (Stalemate, _)   = True
-            escapes (_, board')      = not $ check board' 
-
-compile :: Board -> [Square -> [Move]] -> Square -> [Move]
-compile board moves = filter (permitted board) . conjoin moves
+-- compile :: Board -> [Square -> [Move]] -> Square -> [Move]
+-- compile board moves = filter (permitted board) . conjoin moves
 
 pawnMoves :: Board -> Square -> [Move]
-pawnMoves board = compile board [   keepLast . consume [when (every [started board, empty]) $ advance Pawn]     . follow' board [U, U], -- started is missing from here
+pawnMoves board = conjoin [   keepLast . consume [when (every [started board, empty]) $ advance Pawn]     . follow' board [U, U],
                                     consume [when empty                                     $ advance Pawn]     . follow' board [U],
                                     consume [once opponent                                  $ capture Pawn]     . follow' board [UR],
                                     consume [once opponent                                  $ capture Pawn]     . follow' board [UL],
@@ -243,19 +256,19 @@ pawnMoves board = compile board [   keepLast . consume [when (every [started boa
                                     consume [once (every [backrank, opponent])              $ promoteTo Bishop] . follow' board [UR]]
 
 bishopMoves :: Board -> Square -> [Move]
-bishopMoves board = compile board [ consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UL,
-                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UR,
-                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DR,
-                                    consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DL]
+bishopMoves board = conjoin [ consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UL,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UR,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DR,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DL]
 
 rookMoves :: Board -> Square -> [Move]
-rookMoves board = compile board [   consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board U,
+rookMoves board = conjoin [   consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board U,
                                     consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board D,
                                     consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board L,
                                     consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board R]
 
 knightMoves :: Board -> Square -> [Move]
-knightMoves board = compile board [ consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, L],
+knightMoves board = conjoin  [ consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, L],
                                     consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, R],
                                     consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, L],
                                     consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, R],
@@ -265,18 +278,18 @@ knightMoves board = compile board [ consume [when empty $ advance Knight, once o
                                     consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [R, R, D]]
 
 queenMoves :: Board -> Square -> [Move]
-queenMoves board = compile board [  consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board U,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board D,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board L,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board R,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UL,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UR,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DL,
-                                    consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DR]
+queenMoves board = conjoin [  consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board U,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board D,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board L,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board R,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UL,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UR,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DL,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DR]
 
 
 kingMoves :: Board -> Square -> [Move]
-kingMoves board = compile board [   consume [when empty $ advance King, once opponent $ capture King] . follow' board [U],
+kingMoves board = conjoin [   consume [when empty $ advance King, once opponent $ capture King] . follow' board [U],
                                     consume [when empty $ advance King, once opponent $ capture King] . follow' board [D],
                                     consume [when empty $ advance King, once opponent $ capture King] . follow' board [L],
                                     consume [when empty $ advance King, once opponent $ capture King] . follow' board [R],
@@ -317,6 +330,9 @@ movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pi
 movesColour :: Board -> Colour -> [Move]
 movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPosition board)
 
+findPiece :: Board -> (Piece, Colour) -> [Position]
+findPiece board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ pieces board 
+
 -- reconstruct by telling it which position to add and which coordinates to remove
 reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
 reconstruct ((Pos p c s) : ps) cs ((Pos _ _ r) : rs) | s == r = (Pos p c r) : (reconstruct ps cs rs)
@@ -336,17 +352,14 @@ castled _ (w, b) _                          = (w, b)
 
 -- you have to compute the other states aswell
 -- this already is the opponent
+-- LOOK INTO THIS
 evaluate :: Board -> (Outcome, Board)
-evaluate board = if      mate  then (Checkmate colour', board)
-                 else if stale then (Stalemate, board) 
-                 else               (Continue, board)
-      where mate     = check board && immoble
+evaluate board = (Continue, board)
+      where mate     = False -- && immoble
             stale    = False -- check this
-            immoble  = all ((== Illegal) . fst . forcePerform board) $ movesColour board colour'
-            king     = fromJust $ find (every [(== colour') . colour, (== King) . piece]) $ pieces board
+            king     = findPiece board (King, player board)
             colour'  = player board
 
--- this doesn't check of check before performing the move            
 apply :: Board -> Move -> Board
 apply board move = let  king   = fromJust $ find (every [(== player board') . colour, (== King) . piece]) $ pieces board'
                         board' = board { pieces          = commit move $ pieces board, 
@@ -362,14 +375,14 @@ apply board move = let  king   = fromJust $ find (every [(== player board') . co
             commit (Castle ((Pos k kc ks), ke) 
                            ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
-forcePerform :: Board -> Move -> (Outcome, Board) 
-forcePerform board move = let board' = apply board move
-                          in if (not $ check board) then evaluate board'
-                             else if (not $ check board') then evaluate board'
-                             else (Illegal, board)
+permit :: Board -> Move -> Maybe Board
+permit board move = if      (not $ check board)  then Just board'
+                    else if (not $ check board') then Just board'
+                    else Nothing
+      where board' = apply board move
 
 perform :: Board -> Move -> (Outcome, Board) 
-perform board move = maybe (Illegal, board) (forcePerform board) $ find (== move) $ movesPosition board $ position move
+perform board move = maybe (Illegal, board) evaluate $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
 board = Board { player          = W,
@@ -388,3 +401,10 @@ board = Board { player          = W,
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
                      ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B)]
+
+
+printMoves :: Board -> IO [()]
+printMoves board = do 
+      ps <- return $ pieces board
+      let xs = fmap (\a -> (const $ putStrLn (show a)) $ movesPosition board a) ps
+      sequence xs 
