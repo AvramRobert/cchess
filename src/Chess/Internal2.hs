@@ -84,6 +84,8 @@ blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
 whiteView :: [Position] -> String
 whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
 
+-- These statistics are wrong. Once a side has castled, it shows that the opposite side is still available.
+-- Once a side has castled, this should say it can't
 statistics :: Board -> String
 statistics (Board player check past _ kc qc) = unlines ["Player:     " <> show player,
                                                         "In-Check:   " <> show check,
@@ -291,10 +293,10 @@ kingDevelopmentMoves board = permit board [ consume [when empty $ advance King, 
                                             consume [when empty $ advance King, once opponent $ capture King] . follow' board [DR]]
 
 kingCastlingMoves :: Board -> Square -> [Move]
-kingCastlingMoves board = permit board [map castle . zipped (keepLast . consume [when (every [empty, safeKingside, canCastle board R])  $ advance King] . follow' board [R, R])
-                                                            (keepLast . consume [when (every [empty, canCastle board R])                $ advance Rook] . follow' board [L, L] . kingside),
-                                        map castle . zipped (keepLast . consume [when (every [empty, safeQueenside, canCastle board L]) $ advance King] . follow' board [L, L])
-                                                            (keepLast . consume [when (every [empty, canCastle board L])                $ advance Rook] . follow' board [R, R, R] . queenside)]
+kingCastlingMoves board = permit board [map castle . zipped (keepLast . consume [exactly (every [empty, safeKingside, canCastle board R])  $ advance King] . follow' board [R, R])
+                                                            (keepLast . consume [exactly (every [empty, canCastle board R])                $ advance Rook] . follow' board [L, L] . kingside),
+                                        map castle . zipped (keepLast . consume [exactly (every [empty, safeQueenside, canCastle board L]) $ advance King] . follow' board [L, L])
+                                                            (keepLast . consume [exactly (every [empty, canCastle board L])                $ advance Rook] . follow' board [R, R, R] . queenside)]
       where   safecheck        = safe board
               safeKingside     = safecheck R
               safeQueenside    = safecheck L
@@ -393,7 +395,7 @@ apply board move = let  king   = head $ findPieces board' (King, player board')
             commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
             commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
             commit (Castle ((Pos k kc ks), ke) 
-                            ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
+                           ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
 perform :: Board -> Move -> (Outcome, Board) 
 perform board move = maybe (Illegal, board) (evaluate . apply board) $ find (== move) $ movesPosition board $ position move
