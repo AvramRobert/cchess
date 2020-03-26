@@ -31,12 +31,14 @@ data Outcome = Continue       |
                Forfeit Colour | 
                Checkmate Colour deriving (Show, Eq, Ord)
 
-data Board = Board { player          :: Colour,
-                     check           :: Bool,
-                     past            :: [Move],
-                     pieces          :: [Position],
-                     kingsideCastle  :: (Bool, Bool),
-                     queensideCastle :: (Bool, Bool) } deriving (Eq)
+data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
+
+data Board = Board { player      :: Colour,
+                     check       :: Bool,
+                     past        :: [Move],
+                     pieces      :: [Position],
+                     blackCastle :: Castles,
+                     whiteCastle :: Castles} deriving (Eq)
 
 instance Show Board where
       show board = unlines [whiteView $ pieces board, statistics board] -- make this based on the player? 
@@ -84,18 +86,12 @@ blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
 whiteView :: [Position] -> String
 whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
 
--- These statistics are wrong. Once a side has castled, it shows that the opposite side is still available.
--- Once a side has castled, this should say it can't
 statistics :: Board -> String
 statistics (Board player check past _ kc qc) = unlines ["Player:     " <> show player,
                                                         "In-Check:   " <> show check,
-                                                        "Can castle: " <> (verify $ pickCastle player)]
-      where pickCastle B = (snd kc, snd qc)
-            pickCastle W = (fst kc, fst qc)
-            verify (True, True)  = "Both sides"
-            verify (True, False) = "King-Side"
-            verify (False, True) = "Queen-Side"
-            verify _             = "False" 
+                                                        "Can castle: " <> show (pickCastle player)]
+      where pickCastle B = blackCastle board
+            pickCastle W = whiteCastle board
 
 develop :: Dir -> Square -> Square
 develop dir (colour, (x, y)) = (colour, towards dir colour)
@@ -204,11 +200,12 @@ backrank ((W, (_, 7)), (Pos _ _ (_, 8))) = True
 backrank ((B, (_, 2)), (Pos _ _ (_, 1))) = True
 backrank _                             = False
 
+-- Replace dir with `Castle`
 canCastle :: Board -> Dir -> (Square, Position) -> Bool
-canCastle board L ((W, _), _) = fst $ queensideCastle board
-canCastle board L ((B, _), _) = snd $ queensideCastle board
-canCastle board R ((W, _), _) = fst $ kingsideCastle board
-canCastle board R ((B, _), _) = snd $ kingsideCastle board
+canCastle board L ((W, _), _) = whiteCastle board == Both || whiteCastle board == Long
+canCastle board L ((B, _), _) = blackCastle board == Both || blackCastle board == Long
+canCastle board R ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
+canCastle board R ((B, _), _) = blackCastle board == Both || blackCastle board == Short
 canCastle board _ _           = False
 
 advance :: Piece -> (Square, Position) -> Move
@@ -364,14 +361,33 @@ reconstruct [] [] rs                                          = rs
 reconstruct ps cs (r : rs)                                    = r : (reconstruct ps cs rs)
 reconstruct ps cs []                                          = []
 
-castled :: Dir -> (Bool, Bool) -> Move -> (Bool, Bool)
-castled R (w, b) (Castle (_, d) _)          = (w `xor` (d == (7, 1)), b `xor` (d == (7, 8)))
-castled L (w, b) (Castle (_, d) _)          = (w `xor` (d == (3, 1)), b `xor` (d == (3, 8)))
-castled R (w, b) (Advance (Pos Rook _ s) _) = (w && (s == (8, 1)), b && (s == (8, 8)))
-castled L (w, b) (Capture (Pos Rook _ s) _) = (w && (s == (1, 1)), b && (s == (1, 8)))
-castled _ (w, b) (Advance (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
-castled _ (w, b) (Capture (Pos King _ s) _) = (w && (s == (5, 1)), b && (s == (5, 8)))
-castled _ (w, b) _                          = (w, b)
+castles :: Colour -> Castles -> Move -> Castles
+castles _ None  _                               = None
+castles W _    (Castle (Pos _ W _, _) _)        = None
+castles B _    (Castle (Pos _ B _, _) _)        = None
+
+castles W Both (Advance (Pos King W (5, 1)) _)  = None
+castles B Both (Advance (Pos King B (5, 8)) _)  = None
+castles W Both (Capture (Pos King W (5, 1)) _)  = None
+castles B Both (Capture (Pos King B (5, 8)) _)  = None
+
+castles W Short (Advance (Pos Rook W (8, 1)) _) = None
+castles W Long  (Advance (Pos Rook W (1, 1)) _) = None
+castles B Short (Advance (Pos Rook B (8, 8)) _) = None
+castles B Long  (Advance (Pos Rook B (1, 8)) _) = None
+
+castles W Both (Advance (Pos Rook W (8, 1)) _)  = Long
+castles W Both (Capture (Pos Rook W (8, 1)) _)  = Long
+
+castles W Both (Advance (Pos Rook W (1, 1)) _)  = Short
+castles W Both (Capture (Pos Rook W (1, 1)) _)  = Short
+
+castles B Both (Advance (Pos Rook B (8, 8)) _)  = Long
+castles B Both (Capture (Pos Rook B (8, 8)) _)  = Long
+
+castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
+castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
+
 
 -- you have to compute the other states aswell
 -- this already is the opponent
@@ -384,11 +400,11 @@ evaluate board = (Continue, board)
 
 apply :: Board -> Move -> Board
 apply board move = let  king   = head $ findPieces board' (King, player board')
-                        board' = board { pieces          = commit move $ pieces board, 
-                                         past            = move : (past board),
-                                         kingsideCastle  = castled R (kingsideCastle board) move,
-                                         queensideCastle = castled L (queensideCastle board) move,  
-                                         player          = other $ player board }
+                        board' = board { pieces      = commit move $ pieces board, 
+                                         past        = move : (past board),
+                                         whiteCastle = castles (player board) (whiteCastle board) move,
+                                         blackCastle = castles (player board) (blackCastle board) move,
+                                         player      = other $ player board }
                    in board' { check = not $ null $ threats board' [square king] }
       where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
@@ -401,14 +417,14 @@ perform :: Board -> Move -> (Outcome, Board)
 perform board move = maybe (Illegal, board) (evaluate . apply board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
-board = Board { player          = W,
-                past            = [],
-                check           = False,
-                kingsideCastle  = (True, True),
-                queensideCastle = (True, True),
-                pieces          = do (y, (ps, c)) <- zip [1..] figs 
-                                     (x, p)       <- zip [1..] ps
-                                     return (Pos p c (x, y)) }
+board = Board { player      = W,
+                past        = [],
+                check       = False,
+                blackCastle = Both,
+                whiteCastle = Both,
+                pieces      = do (y, (ps, c)) <- zip [1..] figs 
+                                 (x, p)       <- zip [1..] ps
+                                 return (Pos p c (x, y)) }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
