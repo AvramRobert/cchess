@@ -87,9 +87,9 @@ whiteView :: [Position] -> String
 whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
 
 statistics :: Board -> String
-statistics (Board player check past _ kc qc) = unlines ["Player:     " <> show player,
-                                                        "In-Check:   " <> show check,
-                                                        "Can castle: " <> show (pickCastle player)]
+statistics board = unlines ["Player:     " <> show (player board),
+                            "In-Check:   " <> show (check board),
+                            "Can castle: " <> show (pickCastle $ player board)]
       where pickCastle B = blackCastle board
             pickCastle W = whiteCastle board
 
@@ -205,7 +205,7 @@ canCastle :: Board -> Dir -> (Square, Position) -> Bool
 canCastle board L ((W, _), _) = whiteCastle board == Both || whiteCastle board == Long
 canCastle board L ((B, _), _) = blackCastle board == Both || blackCastle board == Long
 canCastle board R ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
-canCastle board R ((B, _), _) = blackCastle board == Both || blackCastle board == Short
+canCastle board R ((B, _), _) = blackCastle board == Both
 canCastle board _ _           = False
 
 advance :: Piece -> (Square, Position) -> Move
@@ -353,23 +353,24 @@ movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPositi
 findPieces :: Board -> (Piece, Colour) -> [Position]
 findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ pieces board 
 
--- reconstruct by telling it which position to add and which coordinates to remove
+-- reconstruct by stating which pieces should be replaced and which positions removed
 reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
-reconstruct ((Pos p c s) : ps) cs ((Pos _ _ r) : rs) | s == r = (Pos p c r) : (reconstruct ps cs rs)
-reconstruct ps (c : cs) ((Pos _ _ r) : rs)           | c == r = (Pos Empty W r) : (reconstruct ps cs rs)
-reconstruct [] [] rs                                          = rs
-reconstruct ps cs (r : rs)                                    = r : (reconstruct ps cs rs)
-reconstruct ps cs []                                          = []
+reconstruct replacements removals  = foldr rewrite []
+      where replaced (Pos _ _ r) = find ((== r) . coord) replacements
+            removed  (Pos _ _ r) = find (== r) removals
+            rewrite pos acc      = case (replaced pos, removed pos) of
+                  (Just rep, _) -> rep             : acc
+                  (_, Just s)   -> (Pos Empty W s) : acc
+                  (_, _)        -> pos             : acc
 
 castles :: Colour -> Castles -> Move -> Castles
-castles _ None  _                               = None
 castles W _    (Castle (Pos _ W _, _) _)        = None
 castles B _    (Castle (Pos _ B _, _) _)        = None
 
-castles W Both (Advance (Pos King W (5, 1)) _)  = None
-castles B Both (Advance (Pos King B (5, 8)) _)  = None
-castles W Both (Capture (Pos King W (5, 1)) _)  = None
-castles B Both (Capture (Pos King B (5, 8)) _)  = None
+castles W _    (Advance (Pos King W (5, 1)) _)  = None
+castles B _    (Advance (Pos King B (5, 8)) _)  = None
+castles W _    (Capture (Pos King W (5, 1)) _)  = None
+castles B _    (Capture (Pos King B (5, 8)) _)  = None
 
 castles W Short (Advance (Pos Rook W (8, 1)) _) = None
 castles W Long  (Advance (Pos Rook W (1, 1)) _) = None
@@ -387,7 +388,7 @@ castles B Both (Capture (Pos Rook B (8, 8)) _)  = Long
 
 castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
-
+castles _ c _                                   = c
 
 -- you have to compute the other states aswell
 -- this already is the opponent
@@ -402,16 +403,16 @@ apply :: Board -> Move -> Board
 apply board move = let  king   = head $ findPieces board' (King, player board')
                         board' = board { pieces      = commit move $ pieces board, 
                                          past        = move : (past board),
-                                         whiteCastle = castles (player board) (whiteCastle board) move,
-                                         blackCastle = castles (player board) (blackCastle board) move,
+                                         whiteCastle = castles W (whiteCastle board) move,
+                                         blackCastle = castles B (blackCastle board) move,
                                          player      = other $ player board }
                    in board' { check = not $ null $ threats board' [square king] }
       where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
             commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
-            commit (Castle ((Pos k kc ks), ke) 
-                           ((Pos r rc rs), re)) = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
+            commit (Castle (Pos k kc ks, ke) 
+                           (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
 perform :: Board -> Move -> (Outcome, Board) 
 perform board move = maybe (Illegal, board) (evaluate . apply board) $ find (== move) $ movesPosition board $ position move
