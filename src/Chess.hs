@@ -6,11 +6,11 @@ import Data.Set (Set)
 newBoard :: Chess.Board
 newBoard = Chess.board
 
-applyMove :: Chess.Move -> Chess.Board -> Either Chess.Outcome Chess.Board
-applyMove m b = Chess.move m b
+applyMove :: Chess.Board -> Chess.Move -> Either Chess.Outcome Chess.Board
+applyMove = Chess.perform
 
-legalMoves :: Chess.Board -> Set Chess.Move
-legalMoves = Chess.legalMoves'
+legalMoves :: Chess.Board -> [Chess.Move]
+legalMoves = Chess.allMoves
 
 currentPlayer :: Chess.Board -> Chess.Colour
 currentPlayer = Chess.player

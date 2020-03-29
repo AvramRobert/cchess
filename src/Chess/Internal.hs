@@ -1,516 +1,455 @@
-module Chess.Internal where 
+module Chess.Internal where
 
-import Data.Map (Map)
-import Data.Set (Set)
-import Data.Either (Either, isRight)
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Data.List (find, intersperse, any)
-import Control.Monad (mfilter)
-import Control.Monad.Zip (mzip)
-import Control.Applicative ((<|>))
-import Data.Maybe (catMaybes, fromMaybe, isNothing)
+import Data.Tuple (swap)
+import Data.List (find, sortOn)
+import Control.Monad (mfilter, join)
+import Data.Maybe (maybe, isJust, fromJust)
+import Lib.Coll
+import Lib.Scalar
 
-type Pos = (Int, Int)
+type Coord    = (Integer, Integer)
+data Colour   = B | W deriving (Eq, Show, Ord)
+data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
+type Square   = (Colour, Coord)
+data Position = Pos Piece Colour Coord deriving (Eq, Ord)
 
-data Colour = B | W | T deriving (Eq, Show, Ord)
+data Move = Capture   Position Coord       |
+            Advance   Position Coord       | 
+            Enpassant Position Coord Coord |
+            Promote   Position Piece Coord |
+            Castle   (Position, Coord) 
+                     (Position, Coord)
+            deriving (Eq, Show, Ord) 
 
-data Piece = 
-    Pawn Colour Pos   |
-    Rook Colour Pos   |
-    Bishop Colour Pos |
-    Knight Colour Pos |
-    Queen Colour Pos  |
-    King Colour Pos   |
-    Empty Pos
-    deriving (Eq, Ord)
+data Dir = U  | D  | L  | R |
+           UL | UR | DL | DR deriving (Show, Eq, Ord)
 
-data Move =
-    Take    Piece Piece           |
-    Block   Piece Piece           |
-    Jump    Piece Piece           |
-    TakeEP  Piece Piece Piece     |
-    TakePromote Piece Piece Piece |
-    Promote Piece Piece           |
-    CastleK Move Move             |
-    CastleQ Move Move
-    deriving (Show, Eq, Ord)
+data Outcome = Illegal        |
+               Draw           |
+               Stalemate      |
+               Forfeit Colour | 
+               Checkmate Colour deriving (Show, Eq, Ord)
 
-data Outcome =
-    Check     |
-    Checkmate |
-    Stalemate |
-    Draw      |
-    Illegal   
-    deriving (Show, Eq, Ord)
+data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 
-data Dir = U | D | L | R
-
-data Board = Board {positions :: Map Pos Piece,
-                    pastMoves :: [Move],
-                    whiteKing :: Piece,
-                    blackKing :: Piece,
-                    player    :: Colour}
-
-
-instance Show Piece where
-    show piece = (figure piece) <> " " <> (show $ position piece)
+data Board = Board { player      :: Colour,
+                     check       :: Bool,
+                     past        :: [Move],
+                     pieces      :: [Position],
+                     blackCastle :: Castles,
+                     whiteCastle :: Castles} deriving (Eq)
 
 instance Show Board where
-    show board = unlines $ reverse $ fmap row [1..8]
-        where row y = let pieces = catMaybes $ fmap (\x -> fmap show $ lookAt (x, y) board) [1..8] 
-                          rank   = ["| "] ++ (intersperse " | " pieces) ++ [" |"]
-                      in foldl (<>) "" rank
+      show board = unlines [whiteView $ pieces board, statistics board] -- make this based on the player? 
 
-figure :: Piece -> String 
-figure (Pawn W p)   = "♙"
-figure (Pawn B _)   = "♟"
-figure (Rook W _)   = "♖"
-figure (Rook B _)   = "♜"
-figure (Bishop W _) = "♗"
-figure (Bishop B _) = "♝"
-figure (Knight W _) = "♘"
-figure (Knight B _) = "♞"
-figure (Queen W _)  = "♕"
-figure (Queen B _)  = "♛"
-figure (King W _)   = "♔"
-figure (King B _)   = "♚"
-figure (Empty _)    = " "        
-        
-whiteSquare :: Pos -> Bool
-whiteSquare (x, y) = (odd x && even y) || (even x && odd y)
+-- instance Show Position where
+--       show (Pos Pawn W xy)   = "♙ W" <> show xy
+--       show (Pos Pawn B xy)   = "♟ B" <> show xy
+--       show (Pos Rook W xy)   = "♖ W" <> show xy
+--       show (Pos Rook B xy)   = "♜ B" <> show xy
+--       show (Pos Bishop W xy) = "♗ W" <> show xy
+--       show (Pos Bishop B xy) = "♝ B" <> show xy
+--       show (Pos Knight W xy) = "♘ W" <> show xy
+--       show (Pos Knight B xy) = "♞ B" <> show xy 
+--       show (Pos King W xy)   = "♔ W" <> show xy
+--       show (Pos King B xy)   = "♚ B" <> show xy
+--       show (Pos Queen W xy)  = "♕ W" <> show xy
+--       show (Pos Queen B xy)  = "♛ B" <> show xy
+--       show (Pos Empty _ xy)  = "-  " <> show xy
 
-blackSquare :: Pos -> Bool
-blackSquare (x, y) = (odd x && odd y)  || (even x && even y) 
+instance Show Position where
+      show (Pos Pawn W xy)   = "Pawn   W " <> show xy
+      show (Pos Pawn B xy)   = "Pawn   B " <> show xy
+      show (Pos Rook W xy)   = "Rook   W " <> show xy
+      show (Pos Rook B xy)   = "Rook   B " <> show xy
+      show (Pos Bishop W xy) = "Bishop W " <> show xy
+      show (Pos Bishop B xy) = "Bishop B " <> show xy
+      show (Pos Knight W xy) = "Knight W " <> show xy
+      show (Pos Knight B xy) = "Knight B " <> show xy 
+      show (Pos King W xy)   = "King   W " <> show xy
+      show (Pos King B xy)   = "King   B " <> show xy
+      show (Pos Queen W xy)  = "Queen  W " <> show xy
+      show (Pos Queen B xy)  = "Queen  B " <> show xy
+      show (Pos Empty _ xy)  = "-        " <> show xy
 
-rookKing :: Colour -> Piece
-rookKing W = Rook W (8, 1)
-rookKing B = Rook B (8, 8)
 
-rookQueen :: Colour -> Piece
-rookQueen W = Rook W (1, 1)
-rookQueen B = Rook B (1, 8)
+makeRow :: Show a => [a] -> String
+makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
 
-king :: Colour -> Piece
-king W = King W (5, 1)
-king B = King B (5, 8)
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
-kingSideCastle :: Colour -> Move
-kingSideCastle W = CastleK (Block (king W) (Empty (7, 1))) (Block (rookKing W) (Empty (6, 1)))
-kingSideCastle B = CastleK (Block (king B) (Empty (7, 8))) (Block (rookKing B) (Empty (6, 8)))
+blackView :: [Position] -> String
+blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
 
-queenSideCastle :: Colour -> Move
-queenSideCastle W = CastleQ (Block (king W) (Empty (3, 1))) (Block (rookQueen W) (Empty (4, 1)))
-queenSideCastle B = CastleQ (Block (king B) (Empty (3, 8))) (Block (rookQueen B) (Empty (4, 8)))
+whiteView :: [Position] -> String
+whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
 
-kingSideFiles :: Colour -> Set Pos
-kingSideFiles W = S.fromList $ [(6, 1), (7, 1)]
-kingSideFiles B = S.fromList $ [(6, 8), (7, 8)]
+statistics :: Board -> String
+statistics board = unlines ["Player:     " <> show (player board),
+                            "In-Check:   " <> show (check board),
+                            "Can castle: " <> show (pickCastle $ player board)]
+      where pickCastle B = blackCastle board
+            pickCastle W = whiteCastle board
 
-queenSideFiles :: Colour -> Set Pos
-queenSideFiles W = S.fromList $ [(3, 1), (4, 1)]
-queenSideFiles B = S.fromList $ [(3, 8), (4, 8)]
+develop :: Dir -> Square -> Square
+develop dir (colour, (x, y)) = (colour, towards dir colour)
+    where towards L  W = (x - 1, y)
+          towards R  W = (x + 1, y)
+          towards U  W = (x, y + 1)
+          towards D  W = (x, y - 1)
+          towards UL W = (x - 1, y + 1)
+          towards UR W = (x + 1, y + 1)
+          towards DL W = (x - 1, y - 1)
+          towards DR W = (x + 1, y - 1)
+          towards L  B = (x - 1, y)
+          towards R  B = (x + 1, y)
+          towards U  B = (x, y - 1)
+          towards D  B = (x, y + 1)
+          towards UL B = (x - 1, y - 1)
+          towards UR B = (x + 1, y - 1)
+          towards DL B = (x - 1, y + 1)
+          towards DR B = (x + 1, y + 1)
 
-shift' :: Piece -> Pos -> Piece
-shift' (Pawn c _)   = Pawn c
-shift' (Rook c _)   = Rook c
-shift' (King c _)   = King c
-shift' (Queen c _)  = Queen c
-shift' (Bishop c _) = Bishop c
-shift' (Knight c _) = Knight c
-shift' (Empty _)    = Empty
+push :: Square -> Position -> Square
+push (c, s) (Pos _ _ e) = (c, e)
 
-invert :: Colour -> Colour
-invert B = W
-invert W = B
-invert T = T
+lookAhead :: Board -> Dir -> Square -> Maybe Position
+lookAhead board dir = lookAt board . snd . develop dir
 
-colour :: Piece -> Colour
-colour (Pawn c _) = c
-colour (Rook c _) = c
-colour (King c _) = c
-colour (Queen c _) = c
-colour (Bishop c _) = c
-colour (Knight c _) = c
-colour (Empty _) = T
+follow :: Board -> Dir -> Square -> [(Square, Position)]
+follow board d s = gather $ lookAhead board d s
+      where gather (Just p)  = (s, p) : (gather $ lookAhead board d $ push s p)
+            gather (Nothing) = []
 
-position :: Piece -> Pos
-position (Pawn _ p)   = p
-position (King _ p)   = p
-position (Rook _ p)   = p
-position (Queen _ p)  = p
-position (Bishop _ p) = p
-position (Knight _ p) = p
-position (Empty p)    = p
+follow' :: Board -> [Dir] -> Square -> [(Square, Position)]
+follow' board dirs s0 = if (length dirs == length path) 
+                        then path
+                        else []
+      where path            = gather dirs s0
+            gather [] _     = []
+            gather (d:ds) s = case (lookAhead board d s) of
+                  (Just p)  -> (s0, p) : (gather ds $ push s p)
+                  (Nothing) -> []
 
-commit :: Piece -> Piece -> Piece
-commit (Pawn c _)   = Pawn c . position
-commit (King c _)   = King c . position
-commit (Rook c _)   = Rook c . position
-commit (Queen c _)  = Queen c . position 
-commit (Bishop c _) = Bishop c . position
-commit (Knight c _) = Knight c . position
+other :: Colour -> Colour
+other W = B 
+other B = W
 
-perform :: Move -> Piece
-perform (Take p p')          = commit p p'
-perform (Block p p')         = commit p p'
-perform (Jump p p')          = commit p p'
-perform (TakeEP p p' _)      = commit p p'
-perform (TakePromote p _ p')  = p'
-perform (CastleK m _)        = perform m
-perform (CastleQ m _)        = perform m
-perform (Promote p p')       = p'
+position :: Move -> Position
+position (Advance p _)     = p
+position (Capture p _)     = p
+position (Promote p _ _)   = p
+position (Enpassant p _ _) = p
+position (Castle (p, _) _) = p 
 
-pieceFrom :: Move -> Piece
-pieceFrom (Take p _)          = p
-pieceFrom (Block p _)         = p
-pieceFrom (Jump p _)          = p
-pieceFrom (TakeEP p _ _)      = p
-pieceFrom (TakePromote p _ _) = p
-pieceFrom (Promote p _)       = p
-pieceFrom (CastleK m _)       = pieceFrom m
-pieceFrom (CastleQ m _)       = pieceFrom m
+piece :: Position -> Piece
+piece (Pos p _ _) = p
 
-currentKing :: Board -> Piece
-currentKing (Board _ _ wk _ W) = wk
-currentKing (Board _ _ _ bk B) = bk
+colour :: Position -> Colour
+colour (Pos _ c _) = c
 
-black :: Piece -> Bool
-black = (== B) . colour
+coord :: Position -> Coord
+coord (Pos _ _ s) = s
 
-white :: Piece -> Bool
-white = (== W) . colour
+square :: Position -> Square
+square (Pos _ c s) = (c, s)
 
-empty :: Piece -> Bool
-empty (Empty _) = True
-empty _         = False
+set :: Piece -> Square -> Position
+set p (c, s) = Pos p c s
 
-opposite :: Colour -> Piece -> Bool
-opposite B = white
-opposite W = black
-opposite _ = (const False)
+lookAt :: Board -> Coord -> Maybe Position
+lookAt board coord' = find ((== coord') . coord) $ pieces board
 
-steer :: Pos -> Colour -> [Dir] -> Pos
-steer pos colour = foldl (shift colour) pos
-    where shift W (x, y) U = (x, y + 1)
-          shift W (x, y) D = (x, y - 1)
-          shift B (x, y) U = (x, y - 1)
-          shift B (x, y) D = (x, y + 1)
-          shift _ (x, y) L = (x - 1, y)
-          shift _ (x, y) R = (x + 1, y)   
+empty :: (Square, Position) -> Bool
+empty (_, (Pos p _ _)) = p == Empty
 
-lookAt :: Pos -> Board -> Maybe Piece
-lookAt p (Board ps _ _ _ _) = M.lookup p ps
+opposites :: (Square, Position) -> Bool
+opposites ((c, _), (Pos _ c' _)) = c /= c'
 
-lookInto :: [Dir] -> Piece -> Board -> Maybe Piece
-lookInto dir piece = lookAt (steer pos clr dir)
-    where pos = position piece
-          clr = colour piece
+opponent :: (Square, Position) -> Bool
+opponent = every [not . empty, opposites]
 
-enpassant :: [Dir] -> Piece -> Board -> Maybe Move
-enpassant dir piece board = fmap take $ mfilter movable $ mzip newSquare $ mfilter isPassant $ fmap perform $ mfilter isJump $ first $ pastMoves board
-    where (x, y)                     = position piece
-          player                     = colour piece
-          newSquare                  = lookInto dir piece board
-          first (x : xs)             = Just x
-          first _                    = Nothing
-          isJump (Jump _ _)          = True
-          isJump _                   = False
-          isPassant (Pawn c (_, y')) = c /= player && (y == y')
-          movable (Empty pos, piece) = True
-          movable _                  = False 
-          take (e, p)                = TakeEP piece e p
+jumped :: Board -> (Square, Position) -> Bool
+jumped board ((colour, _), (Pos _ _ (x', y'))) = isJust $ mfilter opposed $ first $ past board 
+      where opposed (Advance (Pos p c (xs, ys)) (xe, ye)) = (Pawn          == p) && -- it's a pawn 
+                                                            (colour        /= c) && -- and my opponent
+                                                            (abs (y' - ys) == 1) && -- is behind my new position
+                                                            (x'           == xe)    -- we have the same file
+            opposed _                                     = False
 
-promote :: Piece -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
-promote piece f board = case piece of (Pawn W (x, 7)) -> promoteTo (f W (x, 8)) (x, 8)
-                                      (Pawn B (x, 2)) -> promoteTo (f B (x, 1)) (x, 1) 
-                                      _               -> Nothing
-        where promoteTo piece' pos = fmap (const (Promote piece piece')) $ mfilter empty $ lookAt pos board
 
-takePromote :: Piece -> [Dir] -> (Colour -> Pos -> Piece) -> Board -> Maybe Move
-takePromote piece dir f board = case piece of (Pawn W (x, 7)) -> fmap (promoteTo W) $ capture dir piece board 
-                                              (Pawn B (x, 2)) -> fmap (promoteTo B) $ capture dir piece board
-                                              _               -> Nothing
-            where promoteTo colour (Take p p') = TakePromote p p' (f colour (position p'))
+started :: Board -> (Square, Position) -> Bool
+started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lookAt board coord
+      where pawnOf W (Pos Pawn W (_, 2)) = True
+            pawnOf B (Pos Pawn B (_, 7)) = True
+            pawnOf _ _                   = False
 
-capture :: [Dir] -> Piece -> Board -> Maybe Move
-capture dir piece = fmap (Take piece) . mfilter (opposite $ colour piece) . lookInto dir piece
+safe :: Board -> (Dir -> (Square, Position) -> Bool)
+safe board = let attackers = threats board
+             in \dir s -> case (dir, fst $ fst s) of 
+                               (R, W) -> null $ attackers [(W, (6, 1)), (W, (7, 1))]
+                               (R, B) -> null $ attackers [(B, (6, 8)), (B, (7, 8))]
+                               (L, W) -> null $ attackers [(W, (3, 1)), (W, (4, 1))]
+                               (L, B) -> null $ attackers [(B, (3, 8)), (B, (4, 8))]
+                               (_, _) -> False
 
-block :: [Dir] -> Piece -> Board -> Maybe Move
-block dir piece = fmap (Block piece) . mfilter empty . lookInto dir piece
+backrank :: (Square, Position) -> Bool
+backrank ((W, (_, 7)), (Pos _ _ (_, 8))) = True
+backrank ((B, (_, 2)), (Pos _ _ (_, 1))) = True
+backrank _                             = False
 
-jump :: [Dir] -> Piece -> Board -> Maybe Move
-jump dir piece = fmap (Jump piece) . mfilter empty . mfilter (const atStart) . lookInto dir piece
-    where atStart = case (position piece) of 
-                         (x, 2) -> white piece
-                         (x, 7) -> black piece
-                         (_, _) -> False
+-- Replace dir with `Castle`
+canCastle :: Board -> Dir -> (Square, Position) -> Bool
+canCastle board L ((W, _), _) = whiteCastle board == Both || whiteCastle board == Long
+canCastle board L ((B, _), _) = blackCastle board == Both || blackCastle board == Long
+canCastle board R ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
+canCastle board R ((B, _), _) = blackCastle board == Both || blackCastle board == Short
+canCastle board _ _           = False
 
-attack :: [Dir] -> Piece -> Board -> Maybe Move
-attack dir piece board = (block dir piece board) <|> (capture dir piece board) 
+advance :: Piece -> (Square, Position) -> Move
+advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
 
-attacking :: [Dir] -> Piece  -> Board -> [Move]
-attacking dir piece board = gather $ attack dir piece board
-        where gather (Just m @ (Block _ piece')) = (Block piece piece') : (gather $ attack dir (perform m) board)
-              gather (Just m @ (Take  _ piece')) = (Take piece piece') : (gather Nothing)
-              gather (Nothing)                   = []
+capture :: Piece -> (Square, Position) -> Move
+capture piece ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
 
-castle :: Piece -> Piece -> Move -> Board -> Maybe Move
-castle king rook move board = fmap (const move) $ mfilter (const firstMove) $ mfilter inPlace $ mzip boardKing boardRook 
-        where boardKing        = lookAt (position king) board
-              boardRook        = lookAt (position rook) board
-              firstMove        = any (not . rookOrKing . pieceFrom) $ pastMoves board
-              inPlace (k, r)   = k == king && r == rook
-              rookOrKing p     = p == king || p == rook 
-    
-castleKingSide :: Piece -> Board -> Maybe Move
-castleKingSide piece = castle (king player) (rookKing player) (kingSideCastle player)
-        where player = colour piece
-              
-castleQueenSide :: Piece -> Board -> Maybe Move
-castleQueenSide piece = castle (king player) (rookQueen player) (queenSideCastle player)
-        where player  = colour piece
+enpassant :: (Square, Position) -> Move
+enpassant ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (snd $ develop D (c, e))
 
-pawnMoves :: Piece -> Board -> [Move]
-pawnMoves pawn board = catMaybes [promote pawn Queen board,
-                                  promote pawn Bishop board,
-                                  promote pawn Knight board,
-                                  promote pawn Rook board,
-                                  takePromote pawn [L, U] Queen board,
-                                  takePromote pawn [R, U] Queen board,
-                                  takePromote pawn [L, U] Bishop board,
-                                  takePromote pawn [R, U] Bishop board,
-                                  takePromote pawn [L, U] Knight board,
-                                  takePromote pawn [R, U] Knight board,
-                                  takePromote pawn [L, U] Rook board,
-                                  takePromote pawn [R, U] Rook board,
-                                  block [U] pawn board,
-                                  enpassant [R, U] pawn board,
-                                  enpassant [L, U] pawn board,
-                                  capture [L, U] pawn board,
-                                  capture [R, U] pawn board,
-                                  jump [U, U] pawn board]
-        where c = colour pawn
-              p = position pawn
+promoteTo :: Piece -> (Square, Position) -> Move
+promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
 
-kingMoves :: Piece -> Board -> [Move]
-kingMoves king board = catMaybes [attack [L, U] king board, 
-                                  attack [U, R] king board,
-                                  attack [D, R] king board,
-                                  attack [D, L] king board,
-                                  attack [U] king board,
-                                  attack [R] king board,
-                                  attack [D] king board,
-                                  attack [L] king board,
-                                  castleKingSide king board,
-                                  castleQueenSide king board]
+castle :: (Move, Move) -> Move
+castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
-rookMoves :: Piece -> Board -> [Move]
-rookMoves rook board = (attacking [U] rook board) ++ 
-                       (attacking [L] rook board) ++ 
-                       (attacking [R] rook board) ++
-                       (attacking [D] rook board)
+-- this is a bit insane.
+-- every move forces a check test which basically triggers an application which, in turn, may trigger another check test
+pawnMoves :: Board -> Square -> [Move]
+pawnMoves board = conjoin [ keepLast . consume [when (every [started board, empty]) $ advance Pawn]     . follow' board [U, U],
+                            consume [when empty                                     $ advance Pawn]     . follow' board [U],
+                            consume [once opponent                                  $ capture Pawn]     . follow' board [UR],
+                            consume [once opponent                                  $ capture Pawn]     . follow' board [UL],
+                            consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UR],
+                            consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UL],
+                            consume [once (every [backrank, empty])                 $ promoteTo Queen]  . follow' board [U],
+                            consume [once (every [backrank, empty])                 $ promoteTo Knight] . follow' board [U],
+                            consume [once (every [backrank, empty])                 $ promoteTo Rook]   . follow' board [U],
+                            consume [once (every [backrank, empty])                 $ promoteTo Bishop] . follow' board [U],
+                            consume [once (every [backrank, opponent])              $ promoteTo Queen]  . follow' board [UL],
+                            consume [once (every [backrank, opponent])              $ promoteTo Knight] . follow' board [UL],
+                            consume [once (every [backrank, opponent])              $ promoteTo Rook]   . follow' board [UL],
+                            consume [once (every [backrank, opponent])              $ promoteTo Bishop] . follow' board [UL],
+                            consume [once (every [backrank, opponent])              $ promoteTo Queen]  . follow' board [UR],
+                            consume [once (every [backrank, opponent])              $ promoteTo Knight] . follow' board [UR],
+                            consume [once (every [backrank, opponent])              $ promoteTo Rook]   . follow' board [UR],
+                            consume [once (every [backrank, opponent])              $ promoteTo Bishop] . follow' board [UR]]
 
-                    
-bishopMoves :: Piece -> Board -> [Move]
-bishopMoves bishop board = (attacking [L, U] bishop board) ++
-                           (attacking [R, U] bishop board) ++
-                           (attacking [L, D] bishop board) ++
-                           (attacking [R, D] bishop board)
+bishopMoves :: Board -> Square -> [Move]
+bishopMoves board = conjoin [ consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UL,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board UR,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DR,
+                              consume [when empty $ advance Bishop, once opponent $ capture Bishop] . follow board DL]
 
-queenMoves :: Piece -> Board -> [Move]
-queenMoves queen board = (rookMoves queen board) ++ (bishopMoves queen board)
+rookMoves :: Board -> Square -> [Move]
+rookMoves board = conjoin [ consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board U,
+                            consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board D,
+                            consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board L,
+                            consume [when empty $ advance Rook, once opponent $ capture Rook] . follow board R]
 
-knightMoves :: Piece -> Board -> [Move]
-knightMoves knight board = catMaybes [attack [U, U, R] knight board,
-                                      attack [U, U, L] knight board,
-                                      attack [D, D, R] knight board,
-                                      attack [D, D, L] knight board,
-                                      attack [U, L, L] knight board,
-                                      attack [U, R, R] knight board,
-                                      attack [D, L, L] knight board,
-                                      attack [D, R, R] knight board]
+knightMoves :: Board -> Square -> [Move]
+knightMoves board = conjoin [ consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, L],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [U, U, R],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, L],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [D, D, R],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [L, L, U],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [L, L, D],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [R, R, U],
+                              consume [when empty $ advance Knight, once opponent $ capture Knight] . keepLast . follow' board [R, R, D]]
 
-moves :: Piece -> Board -> Set Move
-moves piece @ (Pawn _ _)   = S.fromList . pawnMoves piece
-moves piece @ (Rook _ _)   = S.fromList . rookMoves piece
-moves piece @ (Bishop _ _) = S.fromList . bishopMoves piece
-moves piece @ (Knight _ _) = S.fromList . knightMoves piece 
-moves piece @ (Queen _ _)  = S.fromList . queenMoves piece
-moves piece @ (King _ _)   = S.fromList . kingMoves piece
-moves piece @ (Empty _)    = const (S.empty)
+queenMoves :: Board -> Square -> [Move]
+queenMoves board = conjoin  [ consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board U,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board D,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board L,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board R,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UL,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board UR,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DL,
+                              consume [when empty $ advance Queen, once opponent $ capture Queen] . follow board DR]
 
-threats :: Board -> Set Pos
-threats board = M.foldl gather S.empty $ M.filter (opposite $ player board) $ positions board
-            where gather set piece = S.union set (S.map (position . perform) $ S.filter threat $ moves piece board)
-                  threat (Take _ _)          = True
-                  threat (Block _ _)         = True
-                  threat (TakeEP _ _ _)      = True
-                  threat (TakePromote _ _ _) = True
-                  threat _                   = False
+kingDevelopmentMoves :: Board -> Square -> [Move]
+kingDevelopmentMoves board = conjoin [ consume [when empty $ advance King, once opponent $ capture King] . follow' board [U],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [D],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [L],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [R],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [UL],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [UR],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [DL],
+                                       consume [when empty $ advance King, once opponent $ capture King] . follow' board [DR]]
+
+kingCastlingMoves :: Board -> Square -> [Move]
+kingCastlingMoves board = conjoin [map castle . zipped (keepLast . consume [exactly (every [empty, safeKingside, canCastle board R])  $ advance King] . follow' board [R, R])
+                                                       (keepLast . consume [exactly (every [empty, canCastle board R])                $ advance Rook] . follow' board [L, L] . kingside),
+                                   map castle . zipped (keepLast . consume [exactly (every [empty, safeQueenside, canCastle board L]) $ advance King] . follow' board [L, L])
+                                                       (keepLast . consume [exactly (every [empty, canCastle board L])                $ advance Rook] . follow' board [R, R, R] . queenside)]
+      where   safecheck        = safe board
+              safeKingside     = safecheck R
+              safeQueenside    = safecheck L
+              kingside  (W, _) = (W, (8, 1))
+              kingside  (B, _) = (B, (8, 8))
+              queenside (W, _) = (W, (1, 1))
+              queenside (B, _) = (B, (1, 8))
+
+kingMoves :: Board -> Square -> [Move]
+kingMoves board = conjoin [kingDevelopmentMoves board, kingCastlingMoves board] 
+
+threats :: Board -> ([Square] -> [Move])
+threats board sqs = filter attacks $ threateningMoves board
+      where conflict (Pos _ c _) e      = any (\(c', p) -> c /= c' && e == p) sqs
+            attacks (Capture pos e)     = conflict pos e
+            attacks (Promote pos _ e)   = conflict pos e
+            attacks (Enpassant pos _ e) = conflict pos e
+            attacks _                   = False
+
+threateningMoves :: Board -> [Move]
+threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ pieces board
+      where opponent                  = other $ player board
+            extract (Pos King c s)    = kingDevelopmentMoves board (c, s)
+            extract (Pos Bishop c s)  = bishopMoves board (c, s)
+            extract (Pos Rook c s)    = rookMoves board (c, s)
+            extract (Pos Pawn c s)    = pawnMoves board (c, s)
+            extract (Pos Queen c s)   = queenMoves board (c, s)
+            extract (Pos Knight c s)  = knightMoves board (c, s)
+            extract _                 = []
+            threat (Capture _ _)      = True
+            threat (Promote _ _ _)    = True
+            threat (Enpassant _ _ _)  = True
+            threat  _                 = False
+            
+allMoves :: Board -> [Move]
+allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ pieces board
+
+movesAt :: Board -> Square -> [Move]
+movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
+
+movesPosition :: Board -> Position -> [Move]
+movesPosition board (Pos Pawn c s)   = pawnMoves board (c, s)
+movesPosition board (Pos King c s)   = kingMoves board (c, s)
+movesPosition board (Pos Rook c s)   = rookMoves board (c, s)
+movesPosition board (Pos Bishop c s) = bishopMoves board (c, s)
+movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
+movesPosition board (Pos Knight c s) = knightMoves board (c, s)
+movesPosition board (Pos Empty _ _)  = []
+
+-- movesPiece :: Board -> (Piece, Colour) -> [Move]
+-- movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
+
+movesPiece :: Board -> (Piece, Colour) -> [Move]
+movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ pieces board
+
+movesColour :: Board -> Colour -> [Move]
+movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPosition board)
+
+findPieces :: Board -> (Piece, Colour) -> [Position]
+findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ pieces board 
+
+-- reconstruct by stating which pieces should be replaced and which positions removed
+reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
+reconstruct replacements removals  = foldr rewrite []
+      where replaced (Pos _ _ r) = find ((== r) . coord) replacements
+            removed  (Pos _ _ r) = find (== r) removals
+            rewrite pos acc      = case (replaced pos, removed pos) of
+                  (Just rep, _) -> rep             : acc
+                  (_, Just s)   -> (Pos Empty W s) : acc
+                  (_, _)        -> pos             : acc
+
+castles :: Colour -> Castles -> Move -> Castles
+castles W _    (Castle (Pos _ W _, _) _)        = None
+castles B _    (Castle (Pos _ B _, _) _)        = None
+
+castles W _    (Advance (Pos King W (5, 1)) _)  = None
+castles B _    (Advance (Pos King B (5, 8)) _)  = None
+castles W _    (Capture (Pos King W (5, 1)) _)  = None
+castles B _    (Capture (Pos King B (5, 8)) _)  = None
+
+castles W Short (Advance (Pos Rook W (8, 1)) _) = None
+castles W Long  (Advance (Pos Rook W (1, 1)) _) = None
+castles B Short (Advance (Pos Rook B (8, 8)) _) = None
+castles B Long  (Advance (Pos Rook B (1, 8)) _) = None
+
+castles W Both (Advance (Pos Rook W (8, 1)) _)  = Long
+castles W Both (Capture (Pos Rook W (8, 1)) _)  = Long
+
+castles W Both (Advance (Pos Rook W (1, 1)) _)  = Short
+castles W Both (Capture (Pos Rook W (1, 1)) _)  = Short
+
+castles B Both (Advance (Pos Rook B (8, 8)) _)  = Long
+castles B Both (Capture (Pos Rook B (8, 8)) _)  = Long
+
+castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
+castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
+castles _ c _                                   = c
+
+-- you have to compute the other states aswell
+-- this already is the opponent
+evaluate :: Board -> Either Outcome Board
+evaluate board = Right board
+      where mate     = False -- && immoble
+            stale    = False -- check this
+            king     = findPieces board (King, player board)
+            colour'  = player board
 
 checked :: Board -> Bool
-checked board = S.member (position king) $ threats board
-        where king = currentKing board
+checked board = not $ null $ threats board [square king]
+      where king = head $ findPieces board (King, player board)
 
-isCheck :: Move -> Board -> Bool 
-isCheck move = checked . attempt move
+apply :: Board -> Move -> Board
+apply board move = let  king   = head $ findPieces board' (King, player board')
+                        board' = board { pieces      = commit move $ pieces board, 
+                                         past        = move : (past board),
+                                         whiteCastle = castles W (whiteCastle board) move,
+                                         blackCastle = castles B (blackCastle board) move,
+                                         player      = other $ player board }
+                   in board' { check = checked board' }
+      where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+            commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+            commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
+            commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
+            commit (Castle (Pos k kc ks, ke) 
+                           (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
-isCheckmate :: Board -> Bool
-isCheckmate board = all inCheck $ allMoves board
-        where inCheck m = isCheck m board
+permit :: Board -> Move -> Maybe Board
+permit board move = let board' = apply board move
+                        colour = player board
+                        tboard = board' { player = colour } 
+                    in case (check board) of True  | not $ checked tboard -> Just board' -- check and can escape
+                                             False | not $ checked tboard -> Just board' -- not in check, but don't move into check
+                                             _                            -> Nothing
 
-checks :: Move -> Board -> Either Outcome Board
-checks move board = case (isCheck move board) of
-            True | isCheckmate board -> Left Checkmate
-            True                     -> Left Check
-            _                        -> Right board 
+performEval :: Board -> Move -> Either Outcome Board
+performEval board move = case (perform board move) of (Right board) -> evaluate board
+                                                      result        -> result
 
-turn :: Move -> Board -> Either Outcome Board
-turn move board = if ((colour $ pieceFrom move) == player board)
-                  then Right board
-                  else Left Illegal
+performPermit :: Board -> Move -> Either Outcome Board
+performPermit board move = maybe (Left Illegal) Right $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
-ruleCheck :: Outcome -> [(Board -> [Piece] -> Bool)] -> Board -> Either Outcome Board
-ruleCheck outcome ps board = if anyRule then Left outcome else Right board
-    where pieces  = M.elems $ positions board
-          anyRule = any (\p -> p board pieces) ps
+-- something here is very slow..
+perform :: Board -> Move -> Either Outcome Board 
+perform board move = maybe (Left Illegal) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
 
-available :: Move -> Board -> Either Outcome Board
-available move board = fromMaybe (Left Illegal) $ fmap (const (Right board)) $ find (== move) $ moves (pieceFrom move) board
-
-castleFiles :: Set Pos -> Board -> Either Outcome Board
-castleFiles path board = if free then (Right board) else (Left Illegal)
-    where free = S.null $ S.intersection path $ threats board 
-
-castles :: Move -> Board -> Either Outcome Board
-castles (CastleK _ _) board = castleFiles (kingSideFiles $ player board) board
-castles (CastleQ _ _) board = castleFiles (queenSideFiles $ player board) board
-
-stalemate :: Board -> Either Outcome Board
-stalemate board = if (noLegalMoves && notInCheck) then Left Stalemate else Right board
-            where notInCheck   = not $ checked board
-                  noLegalMoves = S.null $ allMoves board
-
--- Fifty move rule means that a player can offer a draw.
--- It doesn't mean that it is automatically forced to a draw or automatically
--- I have to think about how I might introduce these "suggestions"
-fiftyMove :: Board -> Either Outcome Board
-fiftyMove board = if (length $ pastMoves board) > 50 then illegal else legal
-        where illegal = fromMaybe (Left Draw) $ fmap (const legal) $ find takeOrPawn $ take 50 $ pastMoves board
-              legal                           = Right board
-              takeOrPawn (Take _ _)           = True
-              takeOrPawn (TakeEP _ _ _)       = True
-              takeOrPawn (TakePromote _ _ _)  = True
-              takeOrPawn (Block (Pawn _ _) _) = True
-              takeOrPawn _                    = False
-
-kingBishopVsKingBishop :: Board -> [Piece] -> Bool
-kingBishopVsKingBishop board pieces = fourPieces && bothKings && twoBishops && sameBishops
-        where bishops     = filter (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
-              fourPieces  = length pieces == 4
-              twoBishops  = length bishops == 2
-              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
-              sameBishops = all (whiteSquare . position) bishops || all (blackSquare . position) bishops
-
-kingKnightVsKing :: Board -> [Piece] -> Bool
-kingKnightVsKing board pieces = threePieces && bothKings && anyKnight
-        where threePieces = length pieces == 3
-              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
-              anyKnight   = any (\x -> case x of (Knight _ _) -> True; _ -> False) pieces
-
-kingBishopVsKing :: Board -> [Piece] -> Bool
-kingBishopVsKing board pieces = threePieces && bothKings && anyBishop
-        where threePieces = length pieces == 3
-              bothKings   = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
-              anyBishop   = any (\x -> case x of (Bishop _ _) -> True; _ -> False) pieces
-
-kingVsKing :: Board -> [Piece] -> Bool
-kingVsKing board pieces = twoPieces && bothKings
-        where twoPieces = length pieces == 2
-              bothKings = any (== (whiteKing board)) pieces && any (== (blackKing board)) pieces
-
-checkmateless :: Board -> Either Outcome Board
-checkmateless = ruleCheck Draw [kingVsKing, kingBishopVsKingBishop, kingKnightVsKing, kingBishopVsKing]
-
-draw :: Board -> Either Outcome Board
---draw board = stalemate board >> fiftyMove board >> checkmateless board
-draw board = stalemate board >> checkmateless board
-
--- Threefold repetition of a position: 
--- If it's the same player's turn to move, and there have been 3 positions throughout the game where he was in the exact same position,
--- with exactly the same possible moves => he can claim a draw (not automatic)
--- HOW
-threeFold :: Board -> Either Outcome Board
-threeFold = Right
-
-changeTurn :: Board -> Board
-changeTurn board = board { player = invert $ player board }
-
-adjustKings :: Piece -> Board -> Board
-adjustKings k @ (King W _) board = board { whiteKing = k }
-adjustKings k @ (King B _) board = board { blackKing = k }
-adjustKings _ board = board 
-
-accumulate :: Move -> Board -> Board
-accumulate move board = board { pastMoves = move : (pastMoves board) }
-
-add :: Piece -> Board -> Board
-add piece board = board { positions = M.insert (position piece) piece $ positions board }
-
-remove :: Piece -> Board -> Board
-remove piece board = board { positions = M.insert pos (Empty pos) $ positions board }
-            where pos = position piece
-
-attempt :: Move -> Board -> Board
-attempt move @ (CastleK m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
-attempt move @ (CastleQ m1 @ (Block king _) m2 @ (Block rook _)) = adjustKings (perform m1) . add (perform m1) . add (perform m2) . remove king . remove rook
-attempt move @ (TakeEP  piece piece' piece'')     = add (perform move) . remove piece'' . remove piece
-attempt move @ (TakePromote piece piece' piece'') = add (perform move) . remove piece'  . remove piece 
-attempt move @ (Jump    piece piece')   = add (perform move) . remove piece
-attempt move @ (Take    piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
-attempt move @ (Block   piece piece')   = adjustKings (perform move) . add (perform move) . remove piece
-attempt move @ (Promote piece piece')   = add (perform move) . remove piece
-
-legality :: Move -> Board -> Either Outcome Board
-legality m @ (Take _ _)     board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (TakeEP _ _ _) board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (TakePromote _ _ _) board = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Block _ _)    board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Jump _ _)     board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (Promote _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board)
-legality m @ (CastleK _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board) 
-legality m @ (CastleQ _ _)  board      = (turn m board) >> (available m board) >> (checks m board) >> (draw board) >> (castles m board)
-
-move :: Move -> Board -> Either Outcome Board
-move m = fmap (changeTurn . accumulate m . attempt m) . legality m
-
-allMoves :: Board -> Set Move
-allMoves board = foldl gather S.empty $ M.elems $ M.filter currentPlayer $ positions board
-    where gather set piece = set <> (moves piece board)
-          currentPlayer p  = (colour p) == (player board)
-
-legalMoves' :: Board -> Set Move
-legalMoves' board = S.filter unchecked $ allMoves board
-        where unchecked m = isRight $ checks m board
-           
-movesFor :: (Piece -> Bool) -> Board -> Set Move
-movesFor p board = S.filter unchecked $ foldl gather S.empty $ M.elems $ M.filter p $ positions board
-    where gather set piece = set <> (moves piece board)
-          unchecked m = isRight $ checks m board
-
-board :: Board 
-board = Board { positions = M.fromList positions,
-                pastMoves = [],
-                whiteKing = (King W (5, 1)), 
-                blackKing = (King B (5, 8)),
-                player    = W }
-    where row c y = zipWith (\x f -> ((x, y), f c (x, y))) [1..8]
-          empties = [((x, y), (Empty (x, y))) | x <- [1..8], y <- [3..6]]
-          pawns   = [Pawn, Pawn,   Pawn,   Pawn,  Pawn, Pawn,   Pawn,   Pawn]
-          pieces  = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
-          positions  = (row B 8 pieces) ++
-                       (row B 7 pawns) ++  
-                        empties ++ 
-                       (row W 2 pawns) ++ 
-                       (row W 1 pieces)
+board :: Board
+board = Board { player      = W,
+                past        = [],
+                check       = False,
+                blackCastle = Both,
+                whiteCastle = Both,
+                pieces      = do (y, (ps, c)) <- zip [1..] figs 
+                                 (x, p)       <- zip [1..] ps
+                                 return (Pos p c (x, y)) }
+      where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
+                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
+                     ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
+                     ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B)]

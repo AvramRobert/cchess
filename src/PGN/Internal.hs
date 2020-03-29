@@ -15,6 +15,7 @@ import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
 import System.IO.Unsafe (unsafePerformIO)
+import Lib.Coll
 
 data ChessResult = WhiteWin | BlackWin | Draw deriving (Show)
 
@@ -33,24 +34,23 @@ data Game = Game {
                   eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show)
 
-data ChessError = TakeError ChessPiece    |
-                  BlockError ChessPiece   |
-                  PromoteError ChessPiece |
-                  MoveError Chess.Move    |
-                  GameError Chess.Outcome
+data ChessError = CaptureError Chess.Position |
+                  AdvanceError Chess.Position |
+                  PromoteError Chess.Position |
+                  CastleError  Chess.Castles  | 
+                  GameError    Chess.Outcome  |
+                  MissingMovesError
                   deriving (Eq, Show, Ord)
-
-data ChessPiece = Pawn | Rook | Bishop | Knight | Queen | King deriving (Show, Eq, Ord)
 
 type ParseError = M.ParseErrorBundle String ChessError
 
+-- This should probably also show the colour
 instance M.ShowErrorComponent ChessError where
-    showErrorComponent (TakeError p)       = "Could not take with: " <> (show p)
-    showErrorComponent (BlockError p)      = "Could not block with: " <> (show p)
-    showErrorComponent (MoveError m)       = "Illegal move: " <> (show m)
-    showErrorComponent (GameError o)       = "Game is in: " <> (show o)
-    showErrorComponent (PromoteError Pawn) = "Could not promote pawn"
-    showErrorComponent (PromoteError p)    = "Could not promote to: " <> (show p)
+    showErrorComponent (CaptureError p) = "Could not capture with: " <> (show p)
+    showErrorComponent (AdvanceError p) = "Could not advance with: " <> (show p)
+    showErrorComponent (PromoteError p) = "Could not promote to: " <> (show p)
+    showErrorComponent (CastleError  c) = "Could not castle: " <> (show c) 
+    showErrorComponent (GameError o)    = "Disallowed due to: " <> (show o)
 
 type Parser a = Parsec ChessError String a
 
@@ -120,7 +120,7 @@ delimitation = void $ many (try newline <|> try spaceChar)
 index :: Parser String
 index = M.someTill numberChar (char '.')
 
-file :: Parser Int
+file :: Parser Integer
 file = M.choice [(char 'a' $> 1),
                  (char 'b' $> 2), 
                  (char 'c' $> 3),
@@ -130,222 +130,260 @@ file = M.choice [(char 'a' $> 1),
                  (char 'g' $> 7),
                  (char 'h' $> 8)]
 
-promotions :: Chess.Pos -> Chess.Board -> Parser Chess.Piece
-promotions pos board = M.choice [(char 'Q' $> (Chess.Queen colour pos)),
-                                 (char 'R' $> (Chess.Rook colour pos)),
-                                 (char 'N' $> (Chess.Knight colour pos)),
-                                 (char 'B' $> (Chess.Bishop colour pos))]
-    where colour = Chess.player board
+promotions :: Chess.Square -> Parser Chess.Position
+promotions (c, s) = M.choice [(char 'Q' $> (Chess.Pos Chess.Queen c s)),
+                              (char 'R' $> (Chess.Pos Chess.Rook c s)),
+                              (char 'N' $> (Chess.Pos Chess.Knight c s)),
+                              (char 'B' $> (Chess.Pos Chess.Bishop c s))]
 
-rank :: Parser Int
-rank = fmap digitToInt $ numberChar
+rank :: Parser Integer
+rank = fmap (toInteger . digitToInt) $ numberChar
 
 check :: Parser ()
 check = void $ M.optional $ M.single '+'
 
-mate :: Parser ()
-mate = void $ M.optional $ M.single '#'
+mate :: Parser Bool
+mate = fmap (maybe False (const True)) $ M.optional $ M.single '#'
 
-taking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
-taking square = find take
-    where take (Chess.Take piece piece')           = (Chess.colour piece /= Chess.colour piece') && (Chess.position piece' == square)
-          take (Chess.TakeEP piece piece' piece'') = (Chess.colour piece /= Chess.colour piece'') && (Chess.position piece' == square)
-          take _ = False
+hasColour :: Chess.Colour -> Chess.Move -> Bool
+hasColour colour = (== colour) . Chess.colour . Chess.position
 
-blocking :: Chess.Pos -> [Chess.Move] -> Maybe Chess.Move
-blocking square = find move
-    where move (Chess.Block piece (Chess.Empty square')) = square == square'
-          move (Chess.Jump piece (Chess.Empty square'))  = square == square'
-          move _ = False
+hasCoord :: Chess.Coord -> Chess.Move -> Bool
+hasCoord coord = (== coord) . Chess.coord . Chess.position
 
-promoting :: Chess.Piece -> [Chess.Move] -> Maybe Chess.Move
-promoting piece = find promotion
-    where promotion (Chess.Promote _ piece')       = piece == piece'
-          promotion (Chess.TakePromote _ _ piece') = piece == piece'
-          promotion _                              = False
+hasPiece :: Chess.Piece -> Chess.Move -> Bool
+hasPiece piece = (== piece) . Chess.piece . Chess.position
 
-unambigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-unambigousTake p board error = do 
+hasX :: Integer -> Chess.Move -> Bool
+hasX x = (== x) . fst . Chess.coord . Chess.position
+
+hasY :: Integer -> Chess.Move -> Bool
+hasY y = (== y) . snd . Chess.coord . Chess.position
+
+-- Can't I abstract over these?
+advancesTo :: Chess.Coord -> Chess.Move -> Bool
+advancesTo s (Chess.Advance _ e) = s == e
+advancesTo _ _                    = False
+
+capturesAt :: Chess.Coord -> Chess.Move -> Bool
+capturesAt s (Chess.Capture _ e)     = s == e
+capturesAt s (Chess.Enpassant _ e _) = s == e
+capturesAt _ _                       = False
+
+promotesAt :: Chess.Coord -> Chess.Move -> Bool
+promotesAt s (Chess.Promote _ _ e) = s == e
+promotesAt _ _                     = False
+
+castlesTowards :: Chess.Dir -> Chess.Move -> Bool
+castlesTowards Chess.R (Chess.Castle (_, e) _) = e == (7, 1) || e == (7, 8)
+castlesTowards Chess.L (Chess.Castle (_, e) _) = e == (3, 1) || e == (3, 8)
+castlesTowards _ _                       = False
+---
+
+-- This may give me the wrong position.
+commonPosition :: [Chess.Move] -> Maybe Chess.Position
+commonPosition []     = Nothing
+commonPosition (a:_)  = case a of (Chess.Capture p _)     -> Just p
+                                  (Chess.Advance p _)     -> Just p
+                                  (Chess.Promote p _ _)   -> Just p
+                                  (Chess.Castle (p, _) _) -> Just p
+                                  (Chess.Enpassant p _ _) -> Just p
+
+captureError :: [Chess.Move] -> ChessError
+captureError = maybe MissingMovesError CaptureError . commonPosition
+
+promoteError :: [Chess.Move] -> ChessError
+promoteError = maybe MissingMovesError PromoteError . commonPosition
+
+advanceError :: [Chess.Move] -> ChessError
+advanceError = maybe MissingMovesError AdvanceError . commonPosition
+
+-- there's only one piece I can capture at `x, y`
+unambigousCapture :: [Chess.Move] -> Parser Chess.Move
+unambigousCapture moves = do 
     _ <- char 'x'
     x <- file
     y <- rank
-    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor p board
+    failWith (captureError moves) $ find (capturesAt (x, y)) moves
 
-fileAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-fileAmbigousTake p board error = do
+-- there's a piece which sits at file `ox` and can capture `x, y`
+fileAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
+fileAmbigousCapture moves = do
     ox <- file
     _  <- char 'x'
     x  <- file
     y  <- rank
-    let fileIs x piece = p piece && (fst $ Chess.position piece) == x
-    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board 
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasX ox]) moves 
 
-rankAmbigousTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-rankAmbigousTake p board error = do
+-- there's a piece which sits at rank `oy` and can capture `x, y`
+rankAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
+rankAmbigousCapture moves = do
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
-    let rankIs y piece = p piece && (snd $ Chess.position piece) == y
-    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasY oy]) moves
 
-explicitTake :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-explicitTake p board error = do
+-- there's a piece which sits exactly at `ox, oy` and can capture `x, y`
+explicitCapture :: [Chess.Move] -> Parser Chess.Move
+explicitCapture moves = do
     ox <- file
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
-    let pieceAt pos piece = p piece && Chess.position piece == pos
-    failWith error $ taking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
 
-takePiece :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-takePiece p board error = M.choice [(try $ unambigousTake p board error),
-                                    (try $ fileAmbigousTake p board error),
-                                    (try $ rankAmbigousTake p board error),
-                                    (try $ explicitTake p board error)]
-
-unambigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-unambigousBlock p board error = do
+-- there's only one piece which can advance to square `x, y`
+unambigousAdvance :: [Chess.Move] -> Parser Chess.Move
+unambigousAdvance moves = do 
     x <- file
     y <- rank
-    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor p board
+    failWith (advanceError moves) $ find (advancesTo (x, y)) moves 
 
-fileAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-fileAmbigousBlock p board error = do
+-- there's a piece which sits at file `ox` and can advance to `x, y`
+fileAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
+fileAmbigousAdvance moves = do
     ox <- file
     x  <- file
     y  <- rank
-    let fileIs x piece = p piece && (fst $ Chess.position piece) == x
-    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (fileIs ox) board
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasX ox]) moves -- I have to extract the position from every move
 
-rankAmbigousBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-rankAmbigousBlock p board error = do
+-- there's a piece which sits at rank `oy` and can advance to `x, y`
+rankAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
+rankAmbigousAdvance moves = do
     oy <- rank
     x  <- file
     y  <- rank
-    let rankIs y piece = p piece && (snd $ Chess.position piece) == y
-    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (rankIs oy) board
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasY oy]) moves
 
-explicitBlock :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-explicitBlock p board error = do
+-- I think I can remove every predicate and replace them with a (Piece, Colour) tuple
+-- there's a piece which sits exactly at `ox, oy` and can advance to `x, y`
+explicitAdvance :: [Chess.Move] -> Parser Chess.Move
+explicitAdvance moves = do
     ox <- file
     oy <- rank
     x  <- file
     y  <- rank
-    let pieceAt pos piece = p piece && Chess.position piece == pos
-    failWith error $ blocking (x, y) $ S.toList $ Chess.movesFor (pieceAt (ox, oy)) board
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasCoord (ox, oy)]) moves
 
-blockPiece :: (Chess.Piece -> Bool) -> Chess.Board -> ChessError -> Parser Chess.Move
-blockPiece p board error = M.choice [(try $ unambigousBlock p board error),
-                                     (try $ fileAmbigousBlock p board error),
-                                     (try $ rankAmbigousBlock p board error),
-                                     (try $ explicitBlock p board error)] 
+advance :: [Chess.Move] -> Parser Chess.Move
+advance moves = M.choice [try $ unambigousAdvance moves,
+                          try $ fileAmbigousAdvance moves,
+                          try $ rankAmbigousAdvance moves,
+                          try $ explicitAdvance moves] 
 
-takeOrBlock :: ChessPiece -> Chess.Board -> (Chess.Piece -> Bool) -> Parser Chess.Move
-takeOrBlock piece board isPiece = takePiece isPiece board (TakeError piece) <|> blockPiece isPiece board (BlockError piece)
+capture :: [Chess.Move] ->  Parser Chess.Move
+capture moves = M.choice [try $ unambigousCapture moves,
+                          try $ fileAmbigousCapture moves,
+                          try $ rankAmbigousCapture moves,
+                          try $ explicitCapture moves]
 
-takePawn :: Chess.Board -> Parser Chess.Move
-takePawn board = do
-            ox <- file
-            _  <- char 'x'
-            x  <- file
-            y  <- rank
-            let colour = Chess.player board
-                pawnAt x' (Chess.Pawn c (x'', _)) = (x' == x'') && (c == colour)
-                pawnAt x' _                       = False
-            failWith (TakeError Pawn) $ taking (x, y) $ S.toList $ Chess.movesFor (pawnAt ox) board
+captureOrAdvance :: [Chess.Move] -> Parser Chess.Move
+captureOrAdvance moves = M.choice [capture moves, advance moves]  
 
-blockPawn :: Chess.Board -> Parser Chess.Move
-blockPawn board = do
-            x <- file
-            y <- rank
-            let colour = Chess.player board
-                isPawn (Chess.Pawn c _) = c == colour
-                isPawn _                = False
-            failWith (BlockError Pawn) $ blocking (x, y) $ S.toList $ Chess.movesFor isPawn board
+-- there's a pawn at file `ox` that can capture `x, y`
+capturePawn :: [Chess.Move] -> Parser Chess.Move
+capturePawn moves = fileAmbigousCapture moves
 
-promotePawn :: Chess.Board -> Parser Chess.Move
-promotePawn board = do
-            x <- file
-            y <- rank
-            _ <- char '='
-            p <- promotions (x, y) board
-            let colour = Chess.player board
-                pos    = case colour of Chess.W -> (x, y - 1)
-                                        Chess.B -> (x, y + 1)
-                pawn (Chess.Pawn c pp) = (pp == pos) && c == colour
-                pawn _                 = False
-            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board 
+-- there's a pawn at file `ox` that can advnace to `x, y`
+advancePawn :: [Chess.Move] -> Parser Chess.Move
+advancePawn moves = unambigousAdvance moves 
 
-takePromotePawn :: Chess.Board -> Parser Chess.Move
-takePromotePawn board = do
-            x  <- file
-            _  <- char 'x'
-            ox <- file
-            oy <- rank
-            _  <- char '='
-            p  <- promotions (ox, oy) board
-            let colour = Chess.player board
-                pos    = case colour of Chess.W -> (x, oy - 1)
-                                        Chess.B -> (x, oy + 1)
-                pawn (Chess.Pawn c pp) = (pp == pos) && (c == colour)
-                pawn _                 = False
-            failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
+-- there's a pawn at promoting position `x, y -+ 1` and can promote at `x, y`
+promotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
+promotePawn colour moves = do
+        x <- file
+        y <- rank
+        _ <- char '='
+        p <- promotions (colour, (x, y))
+        let coord  = pick colour (x, y)
+        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
+    where pick Chess.W (x, y) = (x, y - 1)
+          pick Chess.B (x, y) = (x, y + 1) 
 
+-- there's a pawn at a promoting position `ox, y +- 1` and can take left and promote at `x, y`
+capturePromotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
+capturePromotePawn colour moves = do
+        ox <- file
+        _  <- char 'x'
+        x  <- file
+        y  <- rank
+        _  <- char '='
+        p  <- promotions (colour, (x, y))
+        let coord = pick colour (ox, y)
+        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
+    where pick Chess.W (x, y) = (x, y - 1)
+          pick Chess.B (x, y) = (x, y + 1)
+
+castle :: Chess.Castles -> [Chess.Move] -> Parser Chess.Move
+castle Chess.Long  = failWith (CastleError Chess.Long) . find (castlesTowards Chess.L)
+castle Chess.Short = failWith (CastleError Chess.Short) . find (castlesTowards Chess.R)
+castle _           = const $ failWith MissingMovesError Nothing  
+
+-- takePromotePawn :: Chess.Board -> Parser Chess.Move
+-- takePromotePawn board = do
+--             x  <- file
+--             _  <- char 'x'
+--             ox <- file
+--             oy <- rank
+--             _  <- char '='
+--             p  <- promotions (ox, oy) board
+--             let colour = Chess.player board
+--                 pos    = case colour of Chess.W -> (x, oy - 1)
+--                                         Chess.B -> (x, oy + 1)
+--                 pawn (Chess.Pawn c pp) = (pp == pos) && (c == colour)
+--                 pawn _                 = False
+--             failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
+
+-- there's an ordering problem here aswell
+-- An unambigous advance may be eagerly interpreted as a promotion in certain scenarios
+-- Ex: d1=Q => `d1` by itself is a valid unambigous promotion.
+-- We thus have to start with checking promotions and then the rest.. 
 pawn :: Chess.Board -> Parser Chess.Move
-pawn board = (try $ takePromotePawn board) <|> (try $ takePawn board) <|> (try $ promotePawn board) <|> (try $ blockPawn board)   
+pawn board = M.choice [try $ promotePawn colour moves,
+                       try $ capturePromotePawn colour moves,
+                       try $ capturePawn moves,
+                       try $ advancePawn moves]
+        where moves  = Chess.movesPiece board (Chess.Pawn, colour)
+              colour = Chess.player board 
+                
 
 rook :: Chess.Board -> Parser Chess.Move
-rook board = char 'R' >> takeOrBlock Rook board isRook
-    where isRook (Chess.Rook player _) = player == Chess.player board
-          isRook _                     = False
+rook board = char 'R' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Rook, Chess.player board))
 
 bishop :: Chess.Board -> Parser Chess.Move
-bishop board = char 'B' >> takeOrBlock Bishop board isBishop
-    where isBishop (Chess.Bishop player _) = player == Chess.player board  
-          isBishop _                       = False
+bishop board = char 'B' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Bishop, Chess.player board))
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char 'N' >> takeOrBlock Knight board isKnight
-    where isKnight (Chess.Knight player _) = player == Chess.player board
-          isKnight _                       = False
+knight board = char 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Knight, Chess.player board))
 
 queen :: Chess.Board -> Parser Chess.Move
-queen board = char 'Q' >> takeOrBlock Queen board isQueen
-    where isQueen (Chess.Queen player _) = player == Chess.player board 
-          isQueen _                      = False
+queen board = char 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
 
+-- there's an ordering problem here due to `string`
+-- if `O-O` comes before `O-O-O`, `string` will catch a long castle with it
 king :: Chess.Board -> Parser Chess.Move
-king board = char 'K' >> takeOrBlock King board isKing
-    where isKing (Chess.King player _) = player == Chess.player board
-          isKing _                     = False
-
-kingCastle :: Chess.Board -> Parser Chess.Move
-kingCastle board = string "O-O" $> (Chess.kingSideCastle colour)
-    where colour = Chess.player board
-
-queenCastle :: Chess.Board -> Parser Chess.Move
-queenCastle board = string "O-O-O" $> (Chess.queenSideCastle colour)
-    where colour = Chess.player board
-
-castle :: Chess.Board -> Parser Chess.Move
-castle board = (try $ queenCastle board) <|> (try $ kingCastle board)
+king board = M.choice [try $ char 'K'       >> (captureOrAdvance moves),
+                       try $ string "O-O-O" >> (castle Chess.Long moves),
+                       try $ string "O-O"   >> (castle Chess.Short moves)]
+    where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
 move :: Chess.Board -> Parser Chess.Move
-move board = (try $ pawn board)   <|>
-             (try $ king board)   <|>
-             (try $ rook board)   <|>
-             (try $ bishop board) <|> 
-             (try $ knight board) <|>
-             (try $ queen board)  <|>
-             (try $ castle board)
+move board = M.choice [try $ pawn board,
+                       try $ rook board,
+                       try $ bishop board,
+                       try $ knight board,
+                       try $ queen board,
+                       try $ king board]
 
+-- wait, if i look at each individual move and guarantee that the one that I pick does not lead to check, I don't need perform
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move = either fail return . Chess.move move
-    where fail Chess.Illegal = failWith (MoveError move) Nothing
-          fail outcome       = failWith (GameError outcome) Nothing
+applied move board = case (Chess.perform board move) of (Right board') -> return board'
+                                                        (Left outcome) -> failWith (GameError outcome) Nothing
 
+-- if no mate occurs, but the game stops, then depending on the result, the outcome may be a forfeit, draw, stalemate or checkmate
+-- this however should be part of the in-game parser
 result :: Parser ChessResult
 result = M.choice [(try $ string "1-0") $> WhiteWin,
                    (try $ string "0-1") $> BlackWin,
@@ -398,6 +436,7 @@ moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
     m <- move board
+    _ <- delimitation
     _ <- applied m board
     return m
 
@@ -434,11 +473,14 @@ parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
 parseCompute :: String -> Either ParseError Chess.Board
-parseCompute game = (parseGame game) >>= (either (Left . convert) (Right) . runGame)
-    where convert outcome = either id (const $ error "This never should succeed") $ run (failWith (GameError outcome) Nothing) ""
+parseCompute game = parseGame game >>= (handle . runGame)
+    where handle (Right board)  = Right board 
+          handle (Left outcome) = run (failWith (GameError outcome) Nothing) ""
 
 runGame :: Game -> Either Chess.Outcome Chess.Board
-runGame = foldl (\b m -> b >>= (Chess.move m)) (pure Chess.board) . moves
+runGame = foldl proceed (Right Chess.board) . moves
+    where proceed (Right board) = Chess.perform board
+          proceed a             = const a
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
