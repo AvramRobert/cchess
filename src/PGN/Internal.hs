@@ -44,7 +44,6 @@ data ChessError = CaptureError Chess.Position |
 
 type ParseError = M.ParseErrorBundle String ChessError
 
--- This should probably also show the colour
 instance M.ShowErrorComponent ChessError where
     showErrorComponent (CaptureError p) = "Could not capture with: " <> (show p)
     showErrorComponent (AdvanceError p) = "Could not advance with: " <> (show p)
@@ -247,7 +246,7 @@ fileAmbigousAdvance moves = do
     ox <- file
     x  <- file
     y  <- rank
-    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasX ox]) moves -- I have to extract the position from every move
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasX ox]) moves
 
 -- there's a piece which sits at rank `oy` and can advance to `x, y`
 rankAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
@@ -257,7 +256,6 @@ rankAmbigousAdvance moves = do
     y  <- rank
     failWith (advanceError moves) $ find (every [advancesTo (x, y), hasY oy]) moves
 
--- I think I can remove every predicate and replace them with a (Piece, Colour) tuple
 -- there's a piece which sits exactly at `ox, oy` and can advance to `x, y`
 explicitAdvance :: [Chess.Move] -> Parser Chess.Move
 explicitAdvance moves = do
@@ -321,21 +319,6 @@ castle Chess.Long  = failWith (CastleError Chess.Long) . find (castlesTowards Ch
 castle Chess.Short = failWith (CastleError Chess.Short) . find (castlesTowards Chess.R)
 castle _           = const $ failWith MissingMovesError Nothing  
 
--- takePromotePawn :: Chess.Board -> Parser Chess.Move
--- takePromotePawn board = do
---             x  <- file
---             _  <- char 'x'
---             ox <- file
---             oy <- rank
---             _  <- char '='
---             p  <- promotions (ox, oy) board
---             let colour = Chess.player board
---                 pos    = case colour of Chess.W -> (x, oy - 1)
---                                         Chess.B -> (x, oy + 1)
---                 pawn (Chess.Pawn c pp) = (pp == pos) && (c == colour)
---                 pawn _                 = False
---             failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
-
 -- there's an ordering problem here aswell
 -- An unambigous advance may be eagerly interpreted as a promotion in certain scenarios
 -- Ex: d1=Q => `d1` by itself is a valid unambigous promotion.
@@ -377,7 +360,6 @@ move board = M.choice [try $ pawn board,
                        try $ queen board,
                        try $ king board]
 
--- wait, if i look at each individual move and guarantee that the one that I pick does not lead to check, I don't need perform
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case (Chess.perform board move) of (Right board') -> return board'
                                                         (Left outcome) -> failWith (GameError outcome) Nothing
