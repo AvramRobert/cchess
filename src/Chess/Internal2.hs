@@ -418,14 +418,12 @@ apply board move = let  king   = head $ findPieces board' (King, player board')
             commit (Castle (Pos k kc ks, ke) 
                            (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
--- I shouldn't be allowed the move if, by applying it, I get into check
--- If I apply MY MOVE, will I BE IN CHECK?
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = apply board move
                         colour = player board
                         tboard = board' { player = colour } 
-                    in case (check board) of True  | not $ checked tboard -> Just board' 
-                                             False | not $ checked tboard -> Just board'
+                    in case (check board) of True  | not $ checked tboard -> Just board' -- check and can escape
+                                             False | not $ checked tboard -> Just board' -- not in check, but don't move into check
                                              _                            -> Nothing
 
 performEval :: Board -> Move -> (Outcome, Board)

@@ -37,7 +37,7 @@ data Game = Game {
 data ChessError = CaptureError Chess.Position |
                   AdvanceError Chess.Position |
                   PromoteError Chess.Position |
-                  CastleError  Chess.Dir      | 
+                  CastleError  Chess.Castles  | 
                   GameError    Chess.Outcome  |
                   MissingMovesError
                   deriving (Eq, Show, Ord)
@@ -46,12 +46,11 @@ type ParseError = M.ParseErrorBundle String ChessError
 
 -- This should probably also show the colour
 instance M.ShowErrorComponent ChessError where
-    showErrorComponent (CaptureError p)      = "Could not capture with: " <> (show p)
-    showErrorComponent (AdvanceError p)      = "Could not advance with: " <> (show p)
-    showErrorComponent (PromoteError p)      = "Could not promote to: " <> (show p)
-    showErrorComponent (CastleError Chess.R) = "Could not castle kingside"
-    showErrorComponent (CastleError Chess.L) = "Could not castle queenside"
-    showErrorComponent (GameError o)         = "Disallowed due to: " <> (show o)
+    showErrorComponent (CaptureError p) = "Could not capture with: " <> (show p)
+    showErrorComponent (AdvanceError p) = "Could not advance with: " <> (show p)
+    showErrorComponent (PromoteError p) = "Could not promote to: " <> (show p)
+    showErrorComponent (CastleError  c) = "Could not castle: " <> (show c) 
+    showErrorComponent (GameError o)    = "Disallowed due to: " <> (show o)
 
 type Parser a = Parsec ChessError String a
 
@@ -317,6 +316,11 @@ capturePromotePawn colour moves = do
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1)
 
+castle :: Chess.Castles -> [Chess.Move] -> Parser Chess.Move
+castle Chess.Long  = failWith (CastleError Chess.Long) . find (castlesTowards Chess.L)
+castle Chess.Short = failWith (CastleError Chess.Short) . find (castlesTowards Chess.R)
+castle _           = const $ failWith MissingMovesError Nothing  
+
 -- takePromotePawn :: Chess.Board -> Parser Chess.Move
 -- takePromotePawn board = do
 --             x  <- file
@@ -332,11 +336,15 @@ capturePromotePawn colour moves = do
 --                 pawn _                 = False
 --             failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
 
+-- there's an ordering problem here aswell
+-- An unambigous advance may be eagerly interpreted as a promotion in certain scenarios
+-- Ex: d1=Q => `d1` by itself is a valid unambigous promotion.
+-- We thus have to start with checking promotions and then the rest.. 
 pawn :: Chess.Board -> Parser Chess.Move
-pawn board = M.choice [try $ capturePawn moves,
-                       try $ advancePawn moves,
-                       try $ promotePawn colour moves,
-                       try $ capturePromotePawn colour moves]
+pawn board = M.choice [try $ promotePawn colour moves,
+                       try $ capturePromotePawn colour moves,
+                       try $ capturePawn moves,
+                       try $ advancePawn moves]
         where moves  = Chess.movesPiece board (Chess.Pawn, colour)
               colour = Chess.player board 
                 
@@ -353,10 +361,12 @@ knight board = char 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Kni
 queen :: Chess.Board -> Parser Chess.Move
 queen board = char 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
 
+-- there's an ordering problem here due to `string`
+-- if `O-O` comes before `O-O-O`, `string` will catch a long castle with it
 king :: Chess.Board -> Parser Chess.Move
 king board = M.choice [try $ char 'K'       >> (captureOrAdvance moves),
-                       try $ string "O-O"   >> (failWith (CastleError Chess.R) $ find (castlesTowards Chess.R) moves),
-                       try $ string "O-O-O" >> (failWith (CastleError Chess.L) $ find (castlesTowards Chess.L) moves)]
+                       try $ string "O-O-O" >> (castle Chess.Long moves),
+                       try $ string "O-O"   >> (castle Chess.Short moves)]
     where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
 move :: Chess.Board -> Parser Chess.Move
