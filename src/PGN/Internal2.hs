@@ -34,11 +34,12 @@ data Game = Game {
                   eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show)
 
-data ChessError = CaptureError Chess.Piece |
-                  AdvanceError Chess.Piece |
-                  PromoteError Chess.Piece |
-                  CastleError  Chess.Dir   | 
-                  GameError    Chess.Outcome
+data ChessError = CaptureError Chess.Position |
+                  AdvanceError Chess.Position |
+                  PromoteError Chess.Position |
+                  CastleError  Chess.Dir      | 
+                  GameError    Chess.Outcome  |
+                  MissingMovesError
                   deriving (Eq, Show, Ord)
 
 type ParseError = M.ParseErrorBundle String ChessError
@@ -180,98 +181,115 @@ castlesTowards Chess.L (Chess.Castle (_, e) _) = e == (3, 1) || e == (3, 8)
 castlesTowards _ _                       = False
 ---
 
+-- This may give me the wrong position.
+commonPosition :: [Chess.Move] -> Maybe Chess.Position
+commonPosition []     = Nothing
+commonPosition (a:_)  = case a of (Chess.Capture p _)     -> Just p
+                                  (Chess.Advance p _)     -> Just p
+                                  (Chess.Promote p _ _)   -> Just p
+                                  (Chess.Castle (p, _) _) -> Just p
+                                  (Chess.Enpassant p _ _) -> Just p
+
+captureError :: [Chess.Move] -> ChessError
+captureError = maybe MissingMovesError CaptureError . commonPosition
+
+promoteError :: [Chess.Move] -> ChessError
+promoteError = maybe MissingMovesError PromoteError . commonPosition
+
+advanceError :: [Chess.Move] -> ChessError
+advanceError = maybe MissingMovesError AdvanceError . commonPosition
+
 -- there's only one piece I can capture at `x, y`
-unambigousCapture :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-unambigousCapture (p, c) moves error = do 
+unambigousCapture :: [Chess.Move] -> Parser Chess.Move
+unambigousCapture moves = do 
     _ <- char 'x'
     x <- file
     y <- rank
-    failWith error $ find (every [capturesAt (x, y), hasColour c, hasPiece p]) moves
+    failWith (captureError moves) $ find (capturesAt (x, y)) moves
 
 -- there's a piece which sits at file `ox` and can capture `x, y`
-fileAmbigousCapture :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-fileAmbigousCapture (p, c) moves error = do
+fileAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
+fileAmbigousCapture moves = do
     ox <- file
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith error $ find (every [capturesAt (x, y), hasColour c, hasPiece p, hasX ox]) moves 
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasX ox]) moves 
 
 -- there's a piece which sits at rank `oy` and can capture `x, y`
-rankAmbigousCapture :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-rankAmbigousCapture (p, c) moves error = do
+rankAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
+rankAmbigousCapture moves = do
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith error $ find (every [capturesAt (x, y), hasColour c, hasPiece p, hasY oy]) moves
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasY oy]) moves
 
 -- there's a piece which sits exactly at `ox, oy` and can capture `x, y`
-explicitCapture :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-explicitCapture (p, c) moves error = do
+explicitCapture :: [Chess.Move] -> Parser Chess.Move
+explicitCapture moves = do
     ox <- file
     oy <- rank
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith error $ find (every [capturesAt (x, y), hasColour c, hasPiece p, hasCoord (ox, oy)]) moves
+    failWith (captureError moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
 
 -- there's only one piece which can advance to square `x, y`
-unambigousAdvance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-unambigousAdvance (p, c) moves error = do 
+unambigousAdvance :: [Chess.Move] -> Parser Chess.Move
+unambigousAdvance moves = do 
     x <- file
     y <- rank
-    failWith error $ find (every [advancesTo (x, y), hasColour c, hasPiece p]) moves 
+    failWith (advanceError moves) $ find (advancesTo (x, y)) moves 
 
 -- there's a piece which sits at file `ox` and can advance to `x, y`
-fileAmbigousAdvance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-fileAmbigousAdvance (p, c) moves error = do
+fileAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
+fileAmbigousAdvance moves = do
     ox <- file
     x  <- file
     y  <- rank
-    failWith error $ find (every [advancesTo (x, y), hasColour c, hasPiece p, hasX ox]) moves -- I have to extract the position from every move
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasX ox]) moves -- I have to extract the position from every move
 
 -- there's a piece which sits at rank `oy` and can advance to `x, y`
-rankAmbigousAdvance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-rankAmbigousAdvance (p, c) moves error = do
+rankAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
+rankAmbigousAdvance moves = do
     oy <- rank
     x  <- file
     y  <- rank
-    failWith error $ find (every [advancesTo (x, y), hasColour c, hasPiece p, hasY oy]) moves
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasY oy]) moves
 
 -- I think I can remove every predicate and replace them with a (Piece, Colour) tuple
 -- there's a piece which sits exactly at `ox, oy` and can advance to `x, y`
-explicitAdvance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-explicitAdvance (p, c) moves error = do
+explicitAdvance :: [Chess.Move] -> Parser Chess.Move
+explicitAdvance moves = do
     ox <- file
     oy <- rank
     x  <- file
     y  <- rank
-    failWith error $ find (every [advancesTo (x, y), hasColour c, hasPiece p, hasCoord (ox, oy)]) moves
+    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasCoord (ox, oy)]) moves
 
-advance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError -> Parser Chess.Move
-advance p moves err = M.choice [try $ unambigousAdvance p moves err,
-                                try $ fileAmbigousAdvance p moves err,
-                                try $ rankAmbigousAdvance p moves err,
-                                try $ explicitAdvance p moves err] 
+advance :: [Chess.Move] -> Parser Chess.Move
+advance moves = M.choice [try $ unambigousAdvance moves,
+                          try $ fileAmbigousAdvance moves,
+                          try $ rankAmbigousAdvance moves,
+                          try $ explicitAdvance moves] 
 
-capture :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> ChessError ->  Parser Chess.Move
-capture p moves err  = M.choice [try $ unambigousCapture p moves err,
-                                 try $ fileAmbigousCapture p moves err,
-                                 try $ rankAmbigousCapture p moves err,
-                                 try $ explicitCapture p moves err]
+capture :: [Chess.Move] ->  Parser Chess.Move
+capture moves = M.choice [try $ unambigousCapture moves,
+                          try $ fileAmbigousCapture moves,
+                          try $ rankAmbigousCapture moves,
+                          try $ explicitCapture moves]
 
-captureOrAdvance :: (Chess.Piece, Chess.Colour) -> [Chess.Move] -> Parser Chess.Move
-captureOrAdvance pair moves = M.choice [capture pair moves (CaptureError $ fst pair),
-                                        advance pair moves (AdvanceError $ fst pair)]  
+captureOrAdvance :: [Chess.Move] -> Parser Chess.Move
+captureOrAdvance moves = M.choice [capture moves, advance moves]  
 
 -- there's a pawn at file `ox` that can capture `x, y`
-capturePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-capturePawn colour moves = fileAmbigousCapture (Chess.Pawn, colour) moves (CaptureError Chess.Pawn)
+capturePawn :: [Chess.Move] -> Parser Chess.Move
+capturePawn moves = fileAmbigousCapture moves
 
 -- there's a pawn at file `ox` that can advnace to `x, y`
-advancePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-advancePawn colour moves = unambigousAdvance (Chess.Pawn, colour) moves (AdvanceError Chess.Pawn) 
+advancePawn :: [Chess.Move] -> Parser Chess.Move
+advancePawn moves = unambigousAdvance moves 
 
 -- there's a pawn at promoting position `x, y -+ 1` and can promote at `x, y`
 promotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
@@ -281,7 +299,7 @@ promotePawn colour moves = do
         _ <- char '='
         p <- promotions (colour, (x, y))
         let coord  = pick colour (x, y)
-        failWith (PromoteError Chess.Pawn) $ find (every [promotesAt (x, y), hasCoord coord, hasColour colour]) moves
+        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1) 
 
@@ -295,7 +313,7 @@ capturePromotePawn colour moves = do
         _  <- char '='
         p  <- promotions (colour, (x, y))
         let coord = pick colour (ox, y)
-        failWith (PromoteError Chess.Pawn) $ find (every [promotesAt (x, y), hasCoord coord, hasColour colour]) moves
+        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1)
 
@@ -314,50 +332,40 @@ capturePromotePawn colour moves = do
 --                 pawn _                 = False
 --             failWith (PromoteError Pawn) $ promoting p $ S.toList $ Chess.movesFor pawn board
 
--- theoretically, after this point, I don't need a Chess.Board for every sub-predicate
-pawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-pawn colour moves = M.choice [try $ capturePawn colour moves,
-                              try $ capturePromotePawn colour moves,
-                              try $ promotePawn colour moves,
-                              try $ advancePawn colour moves]   
+pawn :: Chess.Board -> Parser Chess.Move
+pawn board = M.choice [try $ capturePawn moves,
+                       try $ advancePawn moves,
+                       try $ promotePawn colour moves,
+                       try $ capturePromotePawn colour moves]
+        where moves  = Chess.movesPiece board (Chess.Pawn, colour)
+              colour = Chess.player board 
+                
 
-rook :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-rook colour moves = char 'R' >> captureOrAdvance (Chess.Rook, colour) moves
+rook :: Chess.Board -> Parser Chess.Move
+rook board = char 'R' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Rook, Chess.player board))
 
-bishop :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-bishop colour moves = char 'B' >> captureOrAdvance (Chess.Bishop, colour) moves
+bishop :: Chess.Board -> Parser Chess.Move
+bishop board = char 'B' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Bishop, Chess.player board))
 
-knight :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-knight colour moves = char 'N' >> captureOrAdvance (Chess.Knight, colour) moves
+knight :: Chess.Board -> Parser Chess.Move
+knight board = char 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Knight, Chess.player board))
 
-queen :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-queen colour moves = char 'Q' >> captureOrAdvance (Chess.Queen, colour) moves
+queen :: Chess.Board -> Parser Chess.Move
+queen board = char 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
 
-king :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-king colour moves = char 'K' >> captureOrAdvance (Chess.King, colour) moves
+king :: Chess.Board -> Parser Chess.Move
+king board = M.choice [try $ char 'K'       >> (captureOrAdvance moves),
+                       try $ string "O-O"   >> (failWith (CastleError Chess.R) $ find (castlesTowards Chess.R) moves),
+                       try $ string "O-O-O" >> (failWith (CastleError Chess.L) $ find (castlesTowards Chess.L) moves)]
+    where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
-kingCastle :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-kingCastle colour moves = string "O-O" >> (failWith (CastleError Chess.R) $ find (every [castlesTowards Chess.R, hasColour colour]) moves)
-
-queenCastle :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-queenCastle colour moves = string "O-O-O" >> (failWith (CastleError Chess.L) $ find (every [castlesTowards Chess.L, hasColour colour]) moves)
-
-castle :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
-castle colour moves = M.choice [try $ queenCastle colour moves,
-                                try $ kingCastle colour moves]
-
--- It's extremely inefficient to compute all moves for every turn. 
--- I need to go back and just compute the moves locally
--- If I give every function only those moves it needs to look at, I just need to check the move itself, not the piece that does it
 move :: Chess.Board -> Parser Chess.Move
-move board = M.choice [try $ pawn colour   (Chess.movesPiece board (Chess.Pawn, colour)),
-                       try $ king colour   (Chess.movesPiece board (Chess.King, colour)),
-                       try $ rook colour   (Chess.movesPiece board (Chess.Rook, colour)),
-                       try $ bishop colour (Chess.movesPiece board (Chess.Bishop, colour)),
-                       try $ knight colour (Chess.movesPiece board (Chess.Knight, colour)),
-                       try $ queen colour  (Chess.movesPiece board (Chess.Queen, colour))),
-                       try $ castle colour (Chess.movesPiece board (Chess.King, colour))]
-    where colour = Chess.player board
+move board = M.choice [try $ pawn board,
+                       try $ rook board,
+                       try $ bishop board,
+                       try $ knight board,
+                       try $ queen board,
+                       try $ king board]
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = if (outcome == Chess.Continue)

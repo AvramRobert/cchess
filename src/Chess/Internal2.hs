@@ -341,8 +341,11 @@ movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
 movesPosition board (Pos Knight c s) = knightMoves board (c, s)
 movesPosition board (Pos Empty _ _)  = []
 
+-- movesPiece :: Board -> (Piece, Colour) -> [Move]
+-- movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
+
 movesPiece :: Board -> (Piece, Colour) -> [Move]
-movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
+movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ pieces board
 
 movesColour :: Board -> Colour -> [Move]
 movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPosition board)
@@ -429,6 +432,7 @@ performEval :: Board -> Move -> (Outcome, Board)
 performEval board move = case (perform board move) of (Continue, board) -> evaluate board
                                                       result            -> result
 
+-- something here is very slow..
 perform :: Board -> Move -> (Outcome, Board) 
 perform board move = maybe (Illegal, board) (\b -> (Continue, b)) $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
