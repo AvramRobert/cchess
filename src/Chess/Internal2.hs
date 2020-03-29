@@ -172,13 +172,13 @@ opponent :: (Square, Position) -> Bool
 opponent = every [not . empty, opposites]
 
 jumped :: Board -> (Square, Position) -> Bool
-jumped board ((colour, (x, y)), _)  = isJust $ mfilter opposed $ first $ past board 
+jumped board ((colour, _), (Pos _ _ (x', y'))) = isJust $ mfilter opposed $ first $ past board 
       where opposed (Advance (Pos p c (xs, ys)) (xe, ye)) = (Pawn          == p) && -- it's a pawn 
                                                             (colour        /= c) && -- and my opponent
-                                                            (abs (ye - ys) == 2) && -- has jumped two squares
-                                                            (abs (xe - x)  == 1) && -- is next to me  
-                                                            (ye == y)               -- is on my rank!
+                                                            (abs (y' - ys) == 1) && -- is behind my new position
+                                                            (x'           == xe)    -- we have the same file
             opposed _                                     = False
+
 
 started :: Board -> (Square, Position) -> Bool
 started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lookAt board coord
@@ -205,7 +205,7 @@ canCastle :: Board -> Dir -> (Square, Position) -> Bool
 canCastle board L ((W, _), _) = whiteCastle board == Both || whiteCastle board == Long
 canCastle board L ((B, _), _) = blackCastle board == Both || blackCastle board == Long
 canCastle board R ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
-canCastle board R ((B, _), _) = blackCastle board == Both
+canCastle board R ((B, _), _) = blackCastle board == Both || blackCastle board == Short
 canCastle board _ _           = False
 
 advance :: Piece -> (Square, Position) -> Move
@@ -327,7 +327,7 @@ threateningMoves board = filter threat $ join $ map extract $ filter ((== oppone
             threat  _                 = False
             
 allMoves :: Board -> [Move]
-allMoves board = pieces board >>= (movesPosition board)
+allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ pieces board
 
 movesAt :: Board -> Square -> [Move]
 movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
@@ -396,6 +396,10 @@ evaluate board = (Continue, board)
             king     = findPieces board (King, player board)
             colour'  = player board
 
+checked :: Board -> Bool
+checked board = not $ null $ threats board [square king]
+      where king = head $ findPieces board (King, player board)
+
 apply :: Board -> Move -> Board
 apply board move = let  king   = head $ findPieces board' (King, player board')
                         board' = board { pieces      = commit move $ pieces board, 
@@ -403,7 +407,7 @@ apply board move = let  king   = head $ findPieces board' (King, player board')
                                          whiteCastle = castles W (whiteCastle board) move,
                                          blackCastle = castles B (blackCastle board) move,
                                          player      = other $ player board }
-                   in board' { check = not $ null $ threats board' [square king] }
+                   in board' { check = checked board' }
       where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
             commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
@@ -411,18 +415,22 @@ apply board move = let  king   = head $ findPieces board' (King, player board')
             commit (Castle (Pos k kc ks, ke) 
                            (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
-permit :: Board -> Maybe Move -> Maybe Board
-permit board (Just move) = let board' = apply board move
-                           in case (check board) of True | not $ check board' -> Just board' 
-                                                    False                     -> Just board' 
-                                                    _                         -> Nothing
+-- I shouldn't be allowed the move if, by applying it, I get into check
+-- If I apply MY MOVE, will I BE IN CHECK?
+permit :: Board -> Move -> Maybe Board
+permit board move = let board' = apply board move
+                        colour = player board
+                        tboard = board' { player = colour } 
+                    in case (check board) of True  | not $ checked tboard -> Just board' 
+                                             False | not $ checked tboard -> Just board'
+                                             _                            -> Nothing
 
 performEval :: Board -> Move -> (Outcome, Board)
 performEval board move = case (perform board move) of (Continue, board) -> evaluate board
                                                       result            -> result
 
 perform :: Board -> Move -> (Outcome, Board) 
-perform board move = maybe (Illegal, board) (\b -> (Continue, b)) $ permit board $ find (== move) $ movesPosition board $ position move
+perform board move = maybe (Illegal, board) (\b -> (Continue, b)) $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
 board = Board { player      = W,

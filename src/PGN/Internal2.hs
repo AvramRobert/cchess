@@ -166,8 +166,9 @@ advancesTo s (Chess.Advance _ e) = s == e
 advancesTo _ _                    = False
 
 capturesAt :: Chess.Coord -> Chess.Move -> Bool
-capturesAt s (Chess.Capture _ e) = s == e
-capturesAt _ _                   = False
+capturesAt s (Chess.Capture _ e)     = s == e
+capturesAt s (Chess.Enpassant _ e _) = s == e
+capturesAt _ _                       = False
 
 promotesAt :: Chess.Coord -> Chess.Move -> Bool
 promotesAt s (Chess.Promote _ _ e) = s == e
@@ -316,8 +317,8 @@ capturePromotePawn colour moves = do
 -- theoretically, after this point, I don't need a Chess.Board for every sub-predicate
 pawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
 pawn colour moves = M.choice [try $ capturePawn colour moves,
-                              --try $ capturePromotePawn colour moves,
-                              --try $ promotePawn colour moves,
+                              try $ capturePromotePawn colour moves,
+                              try $ promotePawn colour moves,
                               try $ advancePawn colour moves]   
 
 rook :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
@@ -345,16 +346,18 @@ castle :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
 castle colour moves = M.choice [try $ queenCastle colour moves,
                                 try $ kingCastle colour moves]
 
+-- It's extremely inefficient to compute all moves for every turn. 
+-- I need to go back and just compute the moves locally
+-- If I give every function only those moves it needs to look at, I just need to check the move itself, not the piece that does it
 move :: Chess.Board -> Parser Chess.Move
-move board = M.choice [try $ pawn colour moves,
-                       try $ king colour moves,
-                       try $ rook colour moves,
-                       try $ bishop colour moves,
-                       try $ knight colour moves,
-                       try $ queen colour moves,
-                       try $ castle colour moves]
-    where moves  = Chess.allMoves board
-          colour = Chess.player board
+move board = M.choice [try $ pawn colour   (Chess.movesPiece board (Chess.Pawn, colour)),
+                       try $ king colour   (Chess.movesPiece board (Chess.King, colour)),
+                       try $ rook colour   (Chess.movesPiece board (Chess.Rook, colour)),
+                       try $ bishop colour (Chess.movesPiece board (Chess.Bishop, colour)),
+                       try $ knight colour (Chess.movesPiece board (Chess.Knight, colour)),
+                       try $ queen colour  (Chess.movesPiece board (Chess.Queen, colour))),
+                       try $ castle colour (Chess.movesPiece board (Chess.King, colour))]
+    where colour = Chess.player board
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = if (outcome == Chess.Continue)
