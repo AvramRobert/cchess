@@ -1,14 +1,14 @@
-module GameSpec (pgnFileSpec) where
+module GameSpec (pgnFileSpec, pgnGames) where
 
 import Test.Hspec
 import qualified PGN as P
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (all)
 import Data.Either (isRight)
-import qualified PGN.Internal2 as PN
 
 data Result = Game String deriving (Show)
 
+-- put this somewhere else
 pgnGames :: [String]
 pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn" 
 
