@@ -6,6 +6,7 @@ import Control.Monad (mfilter, join)
 import Data.Maybe (maybe, isJust, fromJust)
 import Lib.Coll
 import Lib.Scalar
+import Lib.Bench
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show, Ord)
@@ -389,6 +390,16 @@ castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
+
+commit :: Move -> [Position]  -> [Position]
+commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
+commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
+commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
+commit (Castle (Pos k kc ks, ke) 
+               (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
+
+
 -- you have to compute the other states aswell
 -- this already is the opponent
 evaluate :: Board -> Either Outcome Board
@@ -410,12 +421,6 @@ apply board move = let  king   = head $ findPieces board' (King, player board')
                                          blackCastle = castles B (blackCastle board) move,
                                          player      = other $ player board }
                    in board' { check = checked board' }
-      where commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
-            commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
-            commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
-            commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
-            commit (Castle (Pos k kc ks, ke) 
-                           (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
 
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = apply board move

@@ -25,6 +25,7 @@ dependencies:
 - QuickCheck
 - megaparsec
 - bytestring
+- time
 
 library:
   source-dirs: src
