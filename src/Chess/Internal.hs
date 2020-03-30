@@ -1,7 +1,7 @@
 module Chess.Internal where
 
 import Data.Tuple (swap)
-import Data.List (find, sortOn)
+import Data.List (find, sortOn, groupBy)
 import Control.Monad (mfilter, join)
 import Data.Maybe (maybe, isJust, fromJust)
 import Lib.Coll
@@ -10,12 +10,13 @@ import Lib.Bench
 import Data.Map (Map)
 import qualified Data.Map as M
 
-type Coord    = (Integer, Integer)
-data Colour   = B | W deriving (Eq, Show, Ord)
-data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
-type Square   = (Colour, Coord)
-data Position = Pos Piece Colour Coord deriving (Eq, Ord)
-type Pieces   = Map Coord Position
+type Coord       = (Integer, Integer)
+data Colour      = B | W deriving (Eq, Show, Ord)
+data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
+type Square      = (Colour, Coord)
+data Position    = Pos Piece Colour Coord deriving (Eq, Ord)
+type Coordinates = Map Coord Position
+data Pieces      = Pieces { white :: Map Piece [Position], black :: Map Piece [Position] }
 
 data Move = Capture   Position Coord       |
             Advance   Position Coord       | 
@@ -39,12 +40,13 @@ data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 data Board = Board { player      :: Colour,
                      check       :: Bool,
                      past        :: [Move],
-                     pieces      :: Map Coord Position,
+                     coordinates :: Map Coord Position,
+                     pieces      :: Pieces, 
                      blackCastle :: Castles,
-                     whiteCastle :: Castles} deriving (Eq)
+                     whiteCastle :: Castles}
 
 instance Show Board where
-      show board = unlines [whiteView $ pieces board, statistics board] -- make this based on the player? 
+      show board = unlines [whiteView $ coordinates board, statistics board] -- make this based on the player? 
 
 -- instance Show Position where
 --       show (Pos Pawn W xy)   = "♙ W" <> show xy
@@ -83,10 +85,10 @@ makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
-blackView :: Pieces -> String
+blackView :: Coordinates -> String
 blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . M.elems
 
-whiteView :: Pieces -> String
+whiteView :: Coordinates -> String
 whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord) . M.elems
 
 statistics :: Board -> String
@@ -163,7 +165,7 @@ set :: Piece -> Square -> Position
 set p (c, s) = Pos p c s
 
 lookAt :: Board -> Coord -> Maybe Position
-lookAt board coord = M.lookup coord $ pieces board
+lookAt board coord = M.lookup coord $ coordinates board
 
 empty :: (Square, Position) -> Bool
 empty (_, (Pos p _ _)) = p == Empty
@@ -313,7 +315,7 @@ threats board sqs = filter attacks $ threateningMoves board
             attacks _                   = False
 
 threateningMoves :: Board -> [Move]
-threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ M.elems $ pieces board
+threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ M.elems $ coordinates board
       where opponent                  = other $ player board
             extract (Pos King c s)    = kingDevelopmentMoves board (c, s)
             extract (Pos Bishop c s)  = bishopMoves board (c, s)
@@ -328,7 +330,7 @@ threateningMoves board = filter threat $ join $ map extract $ filter ((== oppone
             threat  _                 = False
             
 allMoves :: Board -> [Move]
-allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ M.elems $ pieces board
+allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ M.elems $ coordinates board
 
 movesAt :: Board -> Square -> [Move]
 movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
@@ -344,13 +346,13 @@ movesPosition board (Pos Empty _ _)  = []
 
 -- I could keep another map with some sort of association: Map Colour (Map Piece [Coord])
 movesPiece :: Board -> (Piece, Colour) -> [Move]
-movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ pieces board
+movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ coordinates board
 
 findPieces :: Board -> (Piece, Colour) -> [Position]
-findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ pieces board 
+findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ coordinates board 
 
 -- reconstruct by stating which pieces should be replaced and which positions removed
-reconstruct :: [Either Coord Position] -> Pieces -> Pieces
+reconstruct :: [Either Coord Position] -> Coordinates -> Coordinates
 reconstruct updates pieces = foldr rewrite pieces updates
       where rewrite (Right pos @ (Pos _ _ r)) = M.insert r pos 
             rewrite (Left r)                  = M.insert r (Pos Empty W r)
@@ -382,14 +384,13 @@ castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
-commit :: Move -> Pieces  -> Pieces
+commit :: Move -> Coordinates -> Coordinates
 commit (Capture (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
 commit (Advance (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
 commit (Enpassant (Pos p c s) e r)  = reconstruct [Right (Pos p c e),  Left s, Left r]
 commit (Promote (Pos p c s) p' e)   = reconstruct [Right (Pos p' c e), Left s] 
 commit (Castle (Pos k kc ks, ke) 
                (Pos r rc rs, re))   = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left ks, Left rs]
-
 
 -- you have to compute the other states aswell
 -- this already is the opponent
@@ -406,7 +407,7 @@ checked board = not $ null $ threats board [square king]
 
 apply :: Board -> Move -> Board
 apply board move = let  king   = head $ findPieces board' (King, player board')
-                        board' = board { pieces      = commit move $ pieces board, 
+                        board' = board { coordinates = commit move $ coordinates board, 
                                          past        = move : (past board),
                                          whiteCastle = castles W (whiteCastle board) move,
                                          blackCastle = castles B (blackCastle board) move,
@@ -432,13 +433,16 @@ performPermit board move = maybe (Left Illegal) Right $ join $ fmap (permit boar
 perform :: Board -> Move -> Either Outcome Board 
 perform board move = maybe (Left Illegal) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
 
+-- HINT: THE SECONDARY MAP SHOULD NOT KEEP EMPTY -> ONLY PERFORM NECESSARY UPDATES
 board :: Board
 board = Board { player      = W,
                 past        = [],
                 check       = False,
                 blackCastle = Both,
                 whiteCastle = Both,
-                pieces      = M.fromList indexedFigs }
+                coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
+                pieces      = Pieces { white = M.fromList $ groupOn piece $ filter ((== W) . colour) $ positions, 
+                                       black = M.fromList $ groupOn piece $ filter ((== B) . colour) $ positions }}
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
@@ -447,6 +451,6 @@ board = Board { player      = W,
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
                      ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B)]
-            indexedFigs = do (y, (ps, c)) <- zip [1..] figs 
-                             (x, p)       <- zip [1..] ps
-                             return ((x, y) , (Pos p c (x, y)))
+            positions = do (y, (ps, c)) <- zip [1..] figs 
+                           (x, p)       <- zip [1..] ps
+                           return (Pos p c (x, y))

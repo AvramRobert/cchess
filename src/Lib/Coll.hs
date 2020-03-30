@@ -1,9 +1,15 @@
-module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, gobble) where
+module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn) where
 
-import Data.List (find)
+import Data.List (find, groupBy)
 import Data.Maybe (isJust)
 
 data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
+
+groupOn :: Eq a => (b -> a) -> [b] -> [(a, [b])]
+groupOn f = keep . groupBy (\a b -> f a == f b)
+    where keep [] = []
+          keep ([]:as) = keep as
+          keep (a:as)  = (f $ head a, a) : keep as
 
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]

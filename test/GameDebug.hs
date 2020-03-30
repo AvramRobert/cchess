@@ -20,6 +20,4 @@ faultyMove = Advance (Pos Rook B (7, 6)) (7, 8)
 
 faultyBoard = apply testBoard faultyMove
 
-kingFor c = fromJust . find (every [(== King) . piece, (== c) . colour]) . pieces
-
 run = runPrint gameParser
