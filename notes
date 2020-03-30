@@ -3,11 +3,13 @@ Problems:
 1. Performance: 
     => Something is slow. Either the API or the Parser. Possible culprits:
         a) `permit`    -> check for every individual move 
-        b) `commit`    -> applied on a list instead of map
+         * b) `commit`    -> applied on a list instead of map -> this was apparently a bulk of the performance overhead
         c) `find move` -> when searching for moves, looking through a list instead of a set
         d) `consume`   -> the traversal is expensive because i always have to reverse
 
-    -> implement a naive version of `time` to pint-point the outliers
+    -> keep a separate map for looking up colour and pieces
+    
+    -> implement a naive version of `time` to pint-point the outliers * NOPE
     -> use `criterion` in the end to test overall Performance
     => the new implementation should be faster than the old
 

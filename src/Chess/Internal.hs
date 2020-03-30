@@ -7,12 +7,15 @@ import Data.Maybe (maybe, isJust, fromJust)
 import Lib.Coll
 import Lib.Scalar
 import Lib.Bench
+import Data.Map (Map)
+import qualified Data.Map as M
 
 type Coord    = (Integer, Integer)
 data Colour   = B | W deriving (Eq, Show, Ord)
 data Piece    = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square   = (Colour, Coord)
 data Position = Pos Piece Colour Coord deriving (Eq, Ord)
+type Pieces   = Map Coord Position
 
 data Move = Capture   Position Coord       |
             Advance   Position Coord       | 
@@ -36,7 +39,7 @@ data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 data Board = Board { player      :: Colour,
                      check       :: Bool,
                      past        :: [Move],
-                     pieces      :: [Position],
+                     pieces      :: Map Coord Position,
                      blackCastle :: Castles,
                      whiteCastle :: Castles} deriving (Eq)
 
@@ -80,11 +83,11 @@ makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
-blackView :: [Position] -> String
-blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord)
+blackView :: Pieces -> String
+blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . M.elems
 
-whiteView :: [Position] -> String
-whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord)
+whiteView :: Pieces -> String
+whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord) . M.elems
 
 statistics :: Board -> String
 statistics board = unlines ["Player:     " <> show (player board),
@@ -160,7 +163,7 @@ set :: Piece -> Square -> Position
 set p (c, s) = Pos p c s
 
 lookAt :: Board -> Coord -> Maybe Position
-lookAt board coord' = find ((== coord') . coord) $ pieces board
+lookAt board coord = M.lookup coord $ pieces board
 
 empty :: (Square, Position) -> Bool
 empty (_, (Pos p _ _)) = p == Empty
@@ -223,8 +226,6 @@ promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
 castle :: (Move, Move) -> Move
 castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
 
--- this is a bit insane.
--- every move forces a check test which basically triggers an application which, in turn, may trigger another check test
 pawnMoves :: Board -> Square -> [Move]
 pawnMoves board = conjoin [ keepLast . consume [when (every [started board, empty]) $ advance Pawn]     . follow' board [U, U],
                             consume [when empty                                     $ advance Pawn]     . follow' board [U],
@@ -312,7 +313,7 @@ threats board sqs = filter attacks $ threateningMoves board
             attacks _                   = False
 
 threateningMoves :: Board -> [Move]
-threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ pieces board
+threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ M.elems $ pieces board
       where opponent                  = other $ player board
             extract (Pos King c s)    = kingDevelopmentMoves board (c, s)
             extract (Pos Bishop c s)  = bishopMoves board (c, s)
@@ -327,7 +328,7 @@ threateningMoves board = filter threat $ join $ map extract $ filter ((== oppone
             threat  _                 = False
             
 allMoves :: Board -> [Move]
-allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ pieces board
+allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ M.elems $ pieces board
 
 movesAt :: Board -> Square -> [Move]
 movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
@@ -341,27 +342,18 @@ movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
 movesPosition board (Pos Knight c s) = knightMoves board (c, s)
 movesPosition board (Pos Empty _ _)  = []
 
--- movesPiece :: Board -> (Piece, Colour) -> [Move]
--- movesPiece board (p, c) = (filter (every [(== p) . piece, (== c) . colour]) $ pieces board) >>= (movesPosition board)
-
+-- I could keep another map with some sort of association: Map Colour (Map Piece [Coord])
 movesPiece :: Board -> (Piece, Colour) -> [Move]
-movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ pieces board
-
-movesColour :: Board -> Colour -> [Move]
-movesColour board c = (filter ((== c) . colour) $ pieces board) >>= (movesPosition board)
+movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ pieces board
 
 findPieces :: Board -> (Piece, Colour) -> [Position]
-findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ pieces board 
+findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ pieces board 
 
 -- reconstruct by stating which pieces should be replaced and which positions removed
-reconstruct :: [Position] -> [Coord] -> [Position] -> [Position]
-reconstruct replacements removals  = foldr rewrite []
-      where replaced (Pos _ _ r) = find ((== r) . coord) replacements
-            removed  (Pos _ _ r) = find (== r) removals
-            rewrite pos acc      = case (replaced pos, removed pos) of
-                  (Just rep, _) -> rep             : acc
-                  (_, Just s)   -> (Pos Empty W s) : acc
-                  (_, _)        -> pos             : acc
+reconstruct :: [Either Coord Position] -> Pieces -> Pieces
+reconstruct updates pieces = foldr rewrite pieces updates
+      where rewrite (Right pos @ (Pos _ _ r)) = M.insert r pos 
+            rewrite (Left r)                  = M.insert r (Pos Empty W r)
 
 castles :: Colour -> Castles -> Move -> Castles
 castles W _    (Castle (Pos _ W _, _) _)        = None
@@ -390,14 +382,13 @@ castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
-
-commit :: Move -> [Position]  -> [Position]
-commit (Capture (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
-commit (Advance (Pos p c s) e)      = reconstruct [(Pos p c e)] [s]
-commit (Enpassant (Pos p c s) e r)  = reconstruct [(Pos p c e)] [s, r]
-commit (Promote (Pos p c s) p' e)   = reconstruct [(Pos p' c e)] [s] 
+commit :: Move -> Pieces  -> Pieces
+commit (Capture (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
+commit (Advance (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
+commit (Enpassant (Pos p c s) e r)  = reconstruct [Right (Pos p c e),  Left s, Left r]
+commit (Promote (Pos p c s) p' e)   = reconstruct [Right (Pos p' c e), Left s] 
 commit (Castle (Pos k kc ks, ke) 
-               (Pos r rc rs, re))   = reconstruct [(Pos k kc ke), (Pos r rc re)] [ks, rs]
+               (Pos r rc rs, re))   = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left ks, Left rs]
 
 
 -- you have to compute the other states aswell
@@ -447,9 +438,7 @@ board = Board { player      = W,
                 check       = False,
                 blackCastle = Both,
                 whiteCastle = Both,
-                pieces      = do (y, (ps, c)) <- zip [1..] figs 
-                                 (x, p)       <- zip [1..] ps
-                                 return (Pos p c (x, y)) }
+                pieces      = M.fromList indexedFigs }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
@@ -458,3 +447,6 @@ board = Board { player      = W,
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], B),
                      ([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], B)]
+            indexedFigs = do (y, (ps, c)) <- zip [1..] figs 
+                             (x, p)       <- zip [1..] ps
+                             return ((x, y) , (Pos p c (x, y)))
