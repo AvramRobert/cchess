@@ -26,6 +26,7 @@ dependencies:
 - megaparsec
 - bytestring
 - time
+- criterion
 
 library:
   source-dirs: src

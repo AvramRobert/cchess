@@ -1,12 +1,12 @@
 module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn) where
 
-import Data.List (find, groupBy)
+import Data.List (find, groupBy, sortOn)
 import Data.Maybe (isJust)
 
 data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
 
-groupOn :: Eq a => (b -> a) -> [b] -> [(a, [b])]
-groupOn f = keep . groupBy (\a b -> f a == f b)
+groupOn :: (Eq a, Ord a) => (b -> a) -> [b] -> [(a, [b])]
+groupOn f = keep . groupBy (\a b -> f a == f b) . sortOn f
     where keep [] = []
           keep ([]:as) = keep as
           keep (a:as)  = (f $ head a, a) : keep as

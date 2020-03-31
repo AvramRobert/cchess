@@ -8,7 +8,9 @@ import Lib.Coll
 import Lib.Scalar
 import Lib.Bench
 import Data.Map (Map)
+import Data.Set (Set)
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 type Coord       = (Integer, Integer)
 data Colour      = B | W deriving (Eq, Show, Ord)
@@ -16,7 +18,12 @@ data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving
 type Square      = (Colour, Coord)
 data Position    = Pos Piece Colour Coord deriving (Eq, Ord)
 type Coordinates = Map Coord Position
-data Pieces      = Pieces { white :: Map Piece [Position], black :: Map Piece [Position] }
+data Pieces      = Pieces { white :: Map Piece (Set Coord), black :: Map Piece (Set Coord) }
+
+instance Show Pieces where
+      show (Pieces whites blacks) = unlines ["W :: ", makeLine whites, "B :: ", makeLine blacks]
+            where draw (piece, coords) = "    " <> show piece <> " - " <> (show $ S.toList coords)
+                  makeLine             = unlines . map draw . M.toList
 
 data Move = Capture   Position Position       |
             Advance   Position Coord          | 
@@ -345,18 +352,26 @@ movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
 movesPosition board (Pos Knight c s) = knightMoves board (c, s)
 movesPosition board (Pos Empty _ _)  = []
 
--- I could keep another map with some sort of association: Map Colour (Map Piece [Coord])
 movesPiece :: Board -> (Piece, Colour) -> [Move]
-movesPiece board (p, c) = filter (isJust . permit board) $ join $ map (movesPosition board) $ filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ coordinates board
+movesPiece board (p, c) =  filter (isJust . permit board) $ join $ map (movesPosition board . Pos p c) $ maybe [] S.toList $ M.lookup p $ piecesFor c
+      where piecesFor W  = white $ pieces board
+            piecesFor B  = black $ pieces board
+
 
 findPieces :: Board -> (Piece, Colour) -> [Position]
-findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ coordinates board 
+findPieces board (p, W) = maybe [] (map (Pos p W) . S.toList) $ M.lookup p $ white $ pieces board
+findPieces board (p, B) = maybe [] (map (Pos p B) . S.toList) $ M.lookup p $ black $ pieces board 
 
--- reconstruct by stating which pieces should be replaced and which positions removed
-reconstruct :: [Either Position Position] -> Coordinates -> Coordinates
-reconstruct updates pieces = foldr rewrite pieces updates
-      where rewrite (Right pos @ (Pos _ _ r)) = M.insert r pos 
-            rewrite (Left  pos @ (Pos _ _ r)) = M.insert r (Pos Empty W r)
+-- reconstruct by stating which positions should be replaced (Right) and which positions removed (Left)
+reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
+reconstruct updates placement = foldr rewrite placement updates
+      where detach (Pos Empty _ _) cs = cs
+            detach (Pos _ _ c) cs     = S.delete c cs
+            attach (Pos _ _ c) cs     = S.insert c cs
+            rewrite (Right pos @ (Pos p W r)) (coordinates, pieces) = (M.insert r pos coordinates, pieces { white = M.adjust (attach pos) p $ white pieces})
+            rewrite (Right pos @ (Pos p B r)) (coordinates, pieces) = (M.insert r pos coordinates, pieces { black = M.adjust (attach pos) p $ black pieces})
+            rewrite (Left  pos @ (Pos p W r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates,  pieces { white = M.adjust (detach pos) p $ white pieces})
+            rewrite (Left  pos @ (Pos p B r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates,  pieces { black = M.adjust (detach pos) p $ black pieces})
 
 castles :: Colour -> Castles -> Move -> Castles
 castles W _    (Castle (Pos _ W _, _) _)        = None
@@ -385,7 +400,7 @@ castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
-commit :: Move -> Coordinates -> Coordinates
+commit :: Move -> (Coordinates, Pieces) -> (Coordinates, Pieces)
 commit (Capture (Pos p c s) (Pos p' c' e))      = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' e)]
 commit (Advance (Pos p c s) e)                  = reconstruct [Right (Pos p c e), Left (Pos p c s)]
 commit (Enpassant (Pos p c s) e (Pos p' c' s')) = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' s')]
@@ -407,12 +422,14 @@ checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
 
 apply :: Board -> Move -> Board
-apply board move = let  king   = head $ findPieces board' (King, player board')
-                        board' = board { coordinates = commit move $ coordinates board, 
-                                         past        = move : (past board),
-                                         whiteCastle = castles W (whiteCastle board) move,
-                                         blackCastle = castles B (blackCastle board) move,
-                                         player      = other $ player board }
+apply board move = let  king     = head $ findPieces board' (King, player board')
+                        (cs, ps) = commit move (coordinates board, pieces board)
+                        board'   = board { coordinates = cs,
+                                           pieces      = ps, 
+                                           past        = move : (past board),
+                                           whiteCastle = castles W (whiteCastle board) move,
+                                           blackCastle = castles B (blackCastle board) move,
+                                           player      = other $ player board }
                    in board' { check = checked board' }
 
 permit :: Board -> Move -> Maybe Board
@@ -430,11 +447,9 @@ performEval board move = case (perform board move) of (Right board) -> evaluate 
 performPermit :: Board -> Move -> Either Outcome Board
 performPermit board move = maybe (Left Illegal) Right $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
--- something here is very slow..
 perform :: Board -> Move -> Either Outcome Board 
 perform board move = maybe (Left Illegal) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
 
--- HINT: THE SECONDARY MAP SHOULD NOT KEEP EMPTY -> ONLY PERFORM NECESSARY UPDATES
 board :: Board
 board = Board { player      = W,
                 past        = [],
@@ -442,8 +457,8 @@ board = Board { player      = W,
                 blackCastle = Both,
                 whiteCastle = Both,
                 coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
-                pieces      = Pieces { white = M.fromList $ groupOn piece $ filter ((== W) . colour) $ positions, 
-                                       black = M.fromList $ groupOn piece $ filter ((== B) . colour) $ positions }}
+                pieces      = Pieces { white = M.fromList $ map set $ groupOn piece $ filter (every [not . (== Empty) . piece, (== W) . colour]) $ positions, 
+                                       black = M.fromList $ map set $ groupOn piece $ filter (every [not . (== Empty) . piece, (== B) . colour]) $ positions }}
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
@@ -455,3 +470,4 @@ board = Board { player      = W,
             positions = do (y, (ps, c)) <- zip [1..] figs 
                            (x, p)       <- zip [1..] ps
                            return (Pos p c (x, y))
+            set (p, es) = (p, S.fromList $ map coord es)
