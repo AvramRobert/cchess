@@ -18,12 +18,7 @@ data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving
 type Square      = (Colour, Coord)
 data Position    = Pos Piece Colour Coord deriving (Eq, Ord)
 type Coordinates = Map Coord Position
-data Pieces      = Pieces { white :: Map Piece (Set Coord), black :: Map Piece (Set Coord) }
-
-instance Show Pieces where
-      show (Pieces whites blacks) = unlines ["W :: ", makeLine whites, "B :: ", makeLine blacks]
-            where draw (piece, coords) = "    " <> show piece <> " - " <> (show $ S.toList coords)
-                  makeLine             = unlines . map draw . M.toList
+type Pieces      = Map Colour (Map Piece (Set Coord))
 
 data Move = Capture   Position Position       |
             Advance   Position Coord          | 
@@ -55,21 +50,6 @@ data Board = Board { player      :: Colour,
 instance Show Board where
       show board = unlines [whiteView $ coordinates board, statistics board] -- make this based on the player? 
 
--- instance Show Position where
---       show (Pos Pawn W xy)   = "♙ W" <> show xy
---       show (Pos Pawn B xy)   = "♟ B" <> show xy
---       show (Pos Rook W xy)   = "♖ W" <> show xy
---       show (Pos Rook B xy)   = "♜ B" <> show xy
---       show (Pos Bishop W xy) = "♗ W" <> show xy
---       show (Pos Bishop B xy) = "♝ B" <> show xy
---       show (Pos Knight W xy) = "♘ W" <> show xy
---       show (Pos Knight B xy) = "♞ B" <> show xy 
---       show (Pos King W xy)   = "♔ W" <> show xy
---       show (Pos King B xy)   = "♚ B" <> show xy
---       show (Pos Queen W xy)  = "♕ W" <> show xy
---       show (Pos Queen B xy)  = "♛ B" <> show xy
---       show (Pos Empty _ xy)  = "-  " <> show xy
-
 instance Show Position where
       show (Pos Pawn W xy)   = "Pawn   W " <> show xy
       show (Pos Pawn B xy)   = "Pawn   B " <> show xy
@@ -85,6 +65,10 @@ instance Show Position where
       show (Pos Queen B xy)  = "Queen  B " <> show xy
       show (Pos Empty _ xy)  = "-        " <> show xy
 
+showPieces :: Board -> IO ()
+showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
+      where fanOut (c, ps) = [(show c) <> " :: "] <> (map row $ M.toList ps)
+            row (p, cos)   = "     " <> (show p) <> " - " <> (show $ S.toList cos)
 
 makeRow :: Show a => [a] -> String
 makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
@@ -353,14 +337,23 @@ movesPosition board (Pos Knight c s) = knightMoves board (c, s)
 movesPosition board (Pos Empty _ _)  = []
 
 movesPiece :: Board -> (Piece, Colour) -> [Move]
-movesPiece board (p, c) =  filter (isJust . permit board) $ join $ map (movesPosition board . Pos p c) $ maybe [] S.toList $ M.lookup p $ piecesFor c
-      where piecesFor W  = white $ pieces board
-            piecesFor B  = black $ pieces board
+movesPiece board (p, c) =  filter (isJust . permit board) 
+                         $ join 
+                         $ map (movesPosition board . Pos p c) 
+                         $ maybe [] S.toList 
+                         $ M.lookup p
+                         $ maybe M.empty id 
+                         $ M.lookup c
+                         $ pieces board
 
 
 findPieces :: Board -> (Piece, Colour) -> [Position]
-findPieces board (p, W) = maybe [] (map (Pos p W) . S.toList) $ M.lookup p $ white $ pieces board
-findPieces board (p, B) = maybe [] (map (Pos p B) . S.toList) $ M.lookup p $ black $ pieces board 
+findPieces board (p, c) = map (Pos p c)
+                        $ maybe [] S.toList
+                        $ M.lookup p
+                        $ maybe M.empty id
+                        $ M.lookup c
+                        $ pieces board 
 
 -- reconstruct by stating which positions should be replaced (Right) and which positions removed (Left)
 reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
@@ -368,10 +361,8 @@ reconstruct updates placement = foldr rewrite placement updates
       where detach (Pos Empty _ _) cs = cs
             detach (Pos _ _ c) cs     = S.delete c cs
             attach (Pos _ _ c) cs     = S.insert c cs
-            rewrite (Right pos @ (Pos p W r)) (coordinates, pieces) = (M.insert r pos coordinates, pieces { white = M.adjust (attach pos) p $ white pieces})
-            rewrite (Right pos @ (Pos p B r)) (coordinates, pieces) = (M.insert r pos coordinates, pieces { black = M.adjust (attach pos) p $ black pieces})
-            rewrite (Left  pos @ (Pos p W r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates,  pieces { white = M.adjust (detach pos) p $ white pieces})
-            rewrite (Left  pos @ (Pos p B r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates,  pieces { black = M.adjust (detach pos) p $ black pieces})
+            rewrite (Right pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r pos coordinates, M.adjust (M.adjust (attach pos) p) c pieces)
+            rewrite (Left  pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates, M.adjust (M.adjust (detach pos) p) c pieces)
 
 castles :: Colour -> Castles -> Move -> Castles
 castles W _    (Castle (Pos _ W _, _) _)        = None
@@ -457,8 +448,7 @@ board = Board { player      = W,
                 blackCastle = Both,
                 whiteCastle = Both,
                 coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
-                pieces      = Pieces { white = M.fromList $ map set $ groupOn piece $ filter (every [not . (== Empty) . piece, (== W) . colour]) $ positions, 
-                                       black = M.fromList $ map set $ groupOn piece $ filter (every [not . (== Empty) . piece, (== B) . colour]) $ positions }}
+                pieces      = M.fromList $ map byPiece $ groupOn colour $ positions }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
@@ -471,3 +461,4 @@ board = Board { player      = W,
                            (x, p)       <- zip [1..] ps
                            return (Pos p c (x, y))
             set (p, es) = (p, S.fromList $ map coord es)
+            byPiece (c, ps) = (c, M.fromList $ map set $ groupOn piece $ filter (not . (== Empty) . piece) ps)
