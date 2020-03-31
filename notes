@@ -3,20 +3,14 @@ Problems:
 1. Performance: 
     => Something is slow. Either the API or the Parser. Possible culprits:
         a) `permit`    -> check for every individual move 
-         * b) `commit`    -> applied on a list instead of map -> this was apparently a bulk of the performance overhead
-        c) `find move` -> when searching for moves, looking through a list instead of a set
+        b) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
         d) `consume`   -> the traversal is expensive because i always have to reverse
 
-    -> keep a separate map for looking up colour and pieces
-    
-    -> implement a naive version of `time` to pint-point the outliers * NOPE
-    -> use `criterion` in the end to test overall Performance
-    => the new implementation should be faster than the old
+    -> use `criterion` in the end to test overall performance
 
 2. Optimisations:
     a) `consume`                 -> If i make follow put things at the beginning instead of the end, I needn't reverse every consumption
     b) `movesPosition`           -> pre-calculate the threats of a move and pass it to every move-function
     c) `captureError` et. al     -> I've pushed down every failure to its most local. Find a way to extract better information from the move set and display a better error
     d) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
-    
     

@@ -16,9 +16,10 @@ type Coord       = (Integer, Integer)
 data Colour      = B | W deriving (Eq, Show, Ord)
 data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square      = (Colour, Coord)
+type Figure      = (Piece, Colour)
 data Position    = Pos Piece Colour Coord deriving (Eq, Ord)
 type Coordinates = Map Coord Position
-type Pieces      = Map Colour (Map Piece (Set Coord))
+type Pieces      = Map Figure (Set Coord)
 
 data Move = Capture   Position Position       |
             Advance   Position Coord          | 
@@ -42,7 +43,7 @@ data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 data Board = Board { player      :: Colour,
                      check       :: Bool,
                      past        :: [Move],
-                     coordinates :: Map Coord Position,
+                     coordinates :: Coordinates,
                      pieces      :: Pieces, 
                      blackCastle :: Castles,
                      whiteCastle :: Castles}
@@ -66,9 +67,8 @@ instance Show Position where
       show (Pos Empty _ xy)  = "-        " <> show xy
 
 showPieces :: Board -> IO ()
-showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
-      where fanOut (c, ps) = [(show c) <> " :: "] <> (map row $ M.toList ps)
-            row (p, cos)   = "     " <> (show p) <> " - " <> (show $ S.toList cos)
+showPieces = putStrLn . unlines . map fanOut . M.toList . pieces
+      where fanOut (fig, ps) = (show fig) <> " :: " <> (show $ S.toList ps)
 
 makeRow :: Show a => [a] -> String
 makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
@@ -341,28 +341,15 @@ movesPiece board (p, c) =  filter (isJust . permit board)
                          $ join 
                          $ map (movesPosition board . Pos p c) 
                          $ maybe [] S.toList 
-                         $ M.lookup p
-                         $ maybe M.empty id 
-                         $ M.lookup c
+                         $ M.lookup (p, c)
                          $ pieces board
 
 
 findPieces :: Board -> (Piece, Colour) -> [Position]
 findPieces board (p, c) = map (Pos p c)
                         $ maybe [] S.toList
-                        $ M.lookup p
-                        $ maybe M.empty id
-                        $ M.lookup c
+                        $ M.lookup (p, c)
                         $ pieces board 
-
--- reconstruct by stating which positions should be replaced (Right) and which positions removed (Left)
-reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
-reconstruct updates placement = foldr rewrite placement updates
-      where detach (Pos Empty _ _) cs = cs
-            detach (Pos _ _ c) cs     = S.delete c cs
-            attach (Pos _ _ c) cs     = S.insert c cs
-            rewrite (Right pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r pos coordinates, M.adjust (M.adjust (attach pos) p) c pieces)
-            rewrite (Left  pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates, M.adjust (M.adjust (detach pos) p) c pieces)
 
 castles :: Colour -> Castles -> Move -> Castles
 castles W _    (Castle (Pos _ W _, _) _)        = None
@@ -390,6 +377,20 @@ castles B Both (Capture (Pos Rook B (8, 8)) _)  = Long
 castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
+
+
+-- reconstruct by stating which positions should be replaced (Right) and which positions removed (Left)
+-- question: can i keep Empty?
+-- If I do, then this representation should be isomorphic to the `coordinates` one.
+-- If I remove a piece, I have two actions that need to happen: Insert Empty at the old piece's position in coordinates, remove the old piece's position in pieces
+-- As Long as I can guarantee that `commit` will give me the old piece to remove, I can use empty and keep a `Set Position`
+reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
+reconstruct updates placement = foldr rewrite placement updates
+      where detach (Pos Empty _ _) cs = cs
+            detach (Pos _ _ c) cs     = S.delete c cs
+            attach (Pos _ _ c) cs     = S.insert c cs
+            rewrite (Right pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r pos coordinates, M.adjust (attach pos) (p, c) pieces)
+            rewrite (Left  pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates, M.adjust (detach pos) (p, c) pieces)
 
 commit :: Move -> (Coordinates, Pieces) -> (Coordinates, Pieces)
 commit (Capture (Pos p c s) (Pos p' c' e))      = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' e)]
@@ -448,7 +449,7 @@ board = Board { player      = W,
                 blackCastle = Both,
                 whiteCastle = Both,
                 coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
-                pieces      = M.fromList $ map byPiece $ groupOn colour $ positions }
+                pieces      = M.fromList $ map set $ groupOn (\p -> (piece p, colour p)) $ filter (not . (== Empty) . piece) $ positions }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
@@ -461,4 +462,3 @@ board = Board { player      = W,
                            (x, p)       <- zip [1..] ps
                            return (Pos p c (x, y))
             set (p, es) = (p, S.fromList $ map coord es)
-            byPiece (c, ps) = (c, M.fromList $ map set $ groupOn piece $ filter (not . (== Empty) . piece) ps)
