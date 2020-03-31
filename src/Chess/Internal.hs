@@ -378,12 +378,7 @@ castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
 castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
-
--- reconstruct by stating which positions should be replaced (Right) and which positions removed (Left)
--- question: can i keep Empty?
--- If I do, then this representation should be isomorphic to the `coordinates` one.
--- If I remove a piece, I have two actions that need to happen: Insert Empty at the old piece's position in coordinates, remove the old piece's position in pieces
--- As Long as I can guarantee that `commit` will give me the old piece to remove, I can use empty and keep a `Set Position`
+-- If I keep `Empty`, it will be slower
 reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
 reconstruct updates placement = foldr rewrite placement updates
       where detach (Pos Empty _ _) cs = cs
