@@ -18,10 +18,10 @@ data Position    = Pos Piece Colour Coord deriving (Eq, Ord)
 type Coordinates = Map Coord Position
 data Pieces      = Pieces { white :: Map Piece [Position], black :: Map Piece [Position] }
 
-data Move = Capture   Position Coord       |
-            Advance   Position Coord       | 
-            Enpassant Position Coord Coord |
-            Promote   Position Piece Coord |
+data Move = Capture   Position Position       |
+            Advance   Position Coord          | 
+            Enpassant Position Coord Position |
+            Promote   Position Piece Position | 
             Castle   (Position, Coord) 
                      (Position, Coord)
             deriving (Eq, Show, Ord) 
@@ -217,13 +217,14 @@ advance :: Piece -> (Square, Position) -> Move
 advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
 
 capture :: Piece -> (Square, Position) -> Move
-capture piece ((c, s), (Pos _ _ e)) = Capture (Pos piece c s) e
+capture piece ((c, s), enemy) = Capture (Pos piece c s) enemy
 
-enpassant :: (Square, Position) -> Move
-enpassant ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e (snd $ develop D (c, e))
+enpassant :: Board -> (Square, Position) -> Move
+enpassant board ((c, s), (Pos _ _ e)) = Enpassant (Pos Pawn c s) e enemy
+      where enemy = fromJust $ lookAt board $ snd $ develop D (c, e)
 
 promoteTo :: Piece -> (Square, Position) -> Move
-promoteTo piece ((c, s), (Pos _ _ e)) = Promote (Pos Pawn c s) piece e
+promoteTo piece ((c, s), square) = Promote (Pos Pawn c s) piece square
 
 castle :: (Move, Move) -> Move
 castle (Advance k kp, Advance r rp) = Castle (k, kp) (r, rp)
@@ -233,8 +234,8 @@ pawnMoves board = conjoin [ keepLast . consume [when (every [started board, empt
                             consume [when empty                                     $ advance Pawn]     . follow' board [U],
                             consume [once opponent                                  $ capture Pawn]     . follow' board [UR],
                             consume [once opponent                                  $ capture Pawn]     . follow' board [UL],
-                            consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UR],
-                            consume [once (every [jumped board, empty])             $ enpassant]        . follow' board [UL],
+                            consume [once (every [jumped board, empty])             $ enpassant board]  . follow' board [UR],
+                            consume [once (every [jumped board, empty])             $ enpassant board]  . follow' board [UL],
                             consume [once (every [backrank, empty])                 $ promoteTo Queen]  . follow' board [U],
                             consume [once (every [backrank, empty])                 $ promoteTo Knight] . follow' board [U],
                             consume [once (every [backrank, empty])                 $ promoteTo Rook]   . follow' board [U],
@@ -308,11 +309,11 @@ kingMoves board = conjoin [kingDevelopmentMoves board, kingCastlingMoves board]
 
 threats :: Board -> ([Square] -> [Move])
 threats board sqs = filter attacks $ threateningMoves board
-      where conflict (Pos _ c _) e      = any (\(c', p) -> c /= c' && e == p) sqs
-            attacks (Capture pos e)     = conflict pos e
-            attacks (Promote pos _ e)   = conflict pos e
-            attacks (Enpassant pos _ e) = conflict pos e
-            attacks _                   = False
+      where conflict (Pos _ c _) (Pos p _ e) = any (\(c', s) -> p /= Empty && c /= c' && e == s) sqs
+            attacks (Capture pos enemy)      = conflict pos enemy
+            attacks (Promote pos _ enemy)    = conflict pos enemy
+            attacks (Enpassant pos _ enemy)  = conflict pos enemy 
+            attacks _                        = False
 
 threateningMoves :: Board -> [Move]
 threateningMoves board = filter threat $ join $ map extract $ filter ((== opponent) . colour) $ M.elems $ coordinates board
@@ -352,10 +353,10 @@ findPieces :: Board -> (Piece, Colour) -> [Position]
 findPieces board (p, c) = filter (every [(== p) . piece, (== c) . colour]) $ M.elems $ coordinates board 
 
 -- reconstruct by stating which pieces should be replaced and which positions removed
-reconstruct :: [Either Coord Position] -> Coordinates -> Coordinates
+reconstruct :: [Either Position Position] -> Coordinates -> Coordinates
 reconstruct updates pieces = foldr rewrite pieces updates
       where rewrite (Right pos @ (Pos _ _ r)) = M.insert r pos 
-            rewrite (Left r)                  = M.insert r (Pos Empty W r)
+            rewrite (Left  pos @ (Pos _ _ r)) = M.insert r (Pos Empty W r)
 
 castles :: Colour -> Castles -> Move -> Castles
 castles W _    (Castle (Pos _ W _, _) _)        = None
@@ -385,12 +386,12 @@ castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
 castles _ c _                                   = c
 
 commit :: Move -> Coordinates -> Coordinates
-commit (Capture (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
-commit (Advance (Pos p c s) e)      = reconstruct [Right (Pos p c e),  Left s]
-commit (Enpassant (Pos p c s) e r)  = reconstruct [Right (Pos p c e),  Left s, Left r]
-commit (Promote (Pos p c s) p' e)   = reconstruct [Right (Pos p' c e), Left s] 
+commit (Capture (Pos p c s) (Pos p' c' e))      = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' e)]
+commit (Advance (Pos p c s) e)                  = reconstruct [Right (Pos p c e), Left (Pos p c s)]
+commit (Enpassant (Pos p c s) e (Pos p' c' s')) = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' s')]
+commit (Promote (Pos p c s) p'' (Pos p' c' e))  = reconstruct [Right (Pos p'' c e), Left (Pos p c s), Left (Pos p' c' e)] 
 commit (Castle (Pos k kc ks, ke) 
-               (Pos r rc rs, re))   = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left ks, Left rs]
+               (Pos r rc rs, re))               = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left (Pos k kc ks), Left (Pos r rc rs)]
 
 -- you have to compute the other states aswell
 -- this already is the opponent

@@ -165,13 +165,13 @@ advancesTo s (Chess.Advance _ e) = s == e
 advancesTo _ _                    = False
 
 capturesAt :: Chess.Coord -> Chess.Move -> Bool
-capturesAt s (Chess.Capture _ e)     = s == e
+capturesAt s (Chess.Capture _ enemy) = s == (Chess.coord enemy)
 capturesAt s (Chess.Enpassant _ e _) = s == e
 capturesAt _ _                       = False
 
 promotesAt :: Chess.Coord -> Chess.Move -> Bool
-promotesAt s (Chess.Promote _ _ e) = s == e
-promotesAt _ _                     = False
+promotesAt s (Chess.Promote _ _ enemy) = s == (Chess.coord enemy)
+promotesAt _ _                         = False
 
 castlesTowards :: Chess.Dir -> Chess.Move -> Bool
 castlesTowards Chess.R (Chess.Castle (_, e) _) = e == (7, 1) || e == (7, 8)
