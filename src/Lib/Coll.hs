@@ -1,9 +1,12 @@
-module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn) where
+module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf) where
 
 import Data.List (find, groupBy, sortOn)
 import Data.Maybe (isJust)
 
 data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
+
+asListOf :: Foldable f => (a -> b) -> f a -> [b]
+asListOf f = foldr (\a xs -> (f a) : xs) []
 
 groupOn :: (Eq a, Ord a) => (b -> a) -> [b] -> [(a, [b])]
 groupOn f = keep . groupBy (\a b -> f a == f b) . sortOn f
