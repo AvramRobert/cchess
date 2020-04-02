@@ -177,14 +177,14 @@ started board ((colour, coord), _)       = isJust $ mfilter (pawnOf colour) $ lo
             pawnOf B (Pos Pawn B (_, 7)) = True
             pawnOf _ _                   = False
 
-safe :: Board -> (Dir -> (Square, Position) -> Bool)
+safe :: Board -> (Castles -> (Square, Position) -> Bool)
 safe board = let attackers = threats board
-             in \dir s -> case (dir, fst $ fst s) of 
-                               (R, W) -> null $ attackers [(W, (6, 1)), (W, (7, 1))]
-                               (R, B) -> null $ attackers [(B, (6, 8)), (B, (7, 8))]
-                               (L, W) -> null $ attackers [(W, (3, 1)), (W, (4, 1))]
-                               (L, B) -> null $ attackers [(B, (3, 8)), (B, (4, 8))]
-                               (_, _) -> False
+             in \castle s -> case (castle, fst $ fst s) of 
+                                  (Short, W) -> null $ attackers [(W, (6, 1)), (W, (7, 1))]
+                                  (Short, B) -> null $ attackers [(B, (6, 8)), (B, (7, 8))]
+                                  (Long, W)  -> null $ attackers [(W, (3, 1)), (W, (4, 1))]
+                                  (Long, B)  -> null $ attackers [(B, (3, 8)), (B, (4, 8))]
+                                  (_, _)     -> False
 
 backrank :: (Square, Position) -> Bool
 backrank ((W, (_, 7)), (Pos _ _ (_, 8))) = True
@@ -192,12 +192,12 @@ backrank ((B, (_, 2)), (Pos _ _ (_, 1))) = True
 backrank _                             = False
 
 -- Replace dir with `Castle`
-canCastle :: Board -> Dir -> (Square, Position) -> Bool
-canCastle board L ((W, _), _) = whiteCastle board == Both || whiteCastle board == Long
-canCastle board L ((B, _), _) = blackCastle board == Both || blackCastle board == Long
-canCastle board R ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
-canCastle board R ((B, _), _) = blackCastle board == Both || blackCastle board == Short
-canCastle board _ _           = False
+canCastle :: Board -> Castles -> (Square, Position) -> Bool
+canCastle board Long ((W, _), _)  = whiteCastle board == Both || whiteCastle board == Long
+canCastle board Long ((B, _), _)  = blackCastle board == Both || blackCastle board == Long
+canCastle board Short ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
+canCastle board Short ((B, _), _) = blackCastle board == Both || blackCastle board == Short
+canCastle board _ _               = False
 
 advance :: Piece -> (Square, Position) -> Move
 advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
@@ -278,17 +278,15 @@ kingDevelopmentMoves board = conjoin [ consume [when empty $ advance King, once 
                                        consume [when empty $ advance King, once opponent $ capture King] . follow' board [DR]]
 
 kingCastlingMoves :: Board -> Square -> [Move]
-kingCastlingMoves board = conjoin [map castle . zipped (keepLast . consume [exactly (every [empty, safeKingside, canCastle board R])  $ advance King] . follow' board [R, R])
-                                                       (keepLast . consume [exactly (every [empty, canCastle board R])                $ advance Rook] . follow' board [L, L] . kingside),
-                                   map castle . zipped (keepLast . consume [exactly (every [empty, safeQueenside, canCastle board L]) $ advance King] . follow' board [L, L])
-                                                       (keepLast . consume [exactly (every [empty, canCastle board L])                $ advance Rook] . follow' board [R, R, R] . queenside)]
-      where   safecheck        = safe board
-              safeKingside     = safecheck R
-              safeQueenside    = safecheck L
-              kingside  (W, _) = (W, (8, 1))
-              kingside  (B, _) = (B, (8, 8))
-              queenside (W, _) = (W, (1, 1))
-              queenside (B, _) = (B, (1, 8))
+kingCastlingMoves board = conjoin [map castle . zipped (keepLast . consume [exactly (every [empty, isSafe Short, canCastle board Short]) $ advance King] . follow' board [R, R])
+                                                       (keepLast . consume [exactly (every [empty, canCastle board Short])               $ advance Rook] . follow' board [L, L] . kingside),
+                                   map castle . zipped (keepLast . consume [exactly (every [empty, isSafe Long, canCastle board Long])   $ advance King] . follow' board [L, L])
+                                                       (keepLast . consume [exactly (every [empty, canCastle board Long])                $ advance Rook] . follow' board [R, R, R] . queenside)]
+      where isSafe           = safe board
+            kingside  (W, _) = (W, (8, 1))
+            kingside  (B, _) = (B, (8, 8))
+            queenside (W, _) = (W, (1, 1))
+            queenside (B, _) = (B, (1, 8))
 
 kingMoves :: Board -> Square -> [Move]
 kingMoves board = conjoin [kingDevelopmentMoves board, kingCastlingMoves board] 
