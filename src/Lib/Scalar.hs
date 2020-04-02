@@ -1,4 +1,4 @@
 module Lib.Scalar (cmap) where
 
 cmap :: [a -> a] -> a -> a
-cmap xs = (foldl (.) id xs)  
+cmap fs a = foldl (\a' f -> f a') a fs

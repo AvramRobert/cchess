@@ -107,11 +107,11 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DR B = (x + 1, y + 1)
 
 -- A function that can follow any number of directions on the board and accepts a handler `h` that applies when it goes outside the board's bounds
--- `h` can be used to short-circuit the result
+-- By returning `[]`, `h` can be used to short-circuit the result
 followWith :: Board -> Square -> ([(Square, Position)] -> [(Square, Position)]) -> [Dir] -> [(Square, Position)]
 followWith board s0 h dirs = fst $ foldr gather id dirs ([], s0)
       where gather dir f (xs, square) = case (lookAhead dir square) of
-                        (Just position) -> (xs, square) `seq` f ( (s0, position) : xs, push square position)
+                        (Just position) -> (xs, square) `seq` f ((s0, position) : xs, push square position)
                         (Nothing)       -> (h xs, square)
             push (c, s) (Pos _ _ e)   = (c, e)
             lookAhead dir square      = lookAt board $ snd $ develop dir square 
@@ -386,6 +386,8 @@ checked :: Board -> Bool
 checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
 
+-- It's better to make this a single function instead of a list of functions
+-- Causes composition confusion
 apply :: Board -> Move -> Board
 apply board move = cmap [\b -> b { coordinates = cs, pieces = ps },
                          \b -> b { player = other $ player board },

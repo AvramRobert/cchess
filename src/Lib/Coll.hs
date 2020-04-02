@@ -38,24 +38,23 @@ once p f = (p, f, Interrupt)
 exactly :: (a -> Bool) -> (a -> b) -> (a -> Bool, a -> b, Action)
 exactly p f = (p, f, Dismiss)
 
-gobble :: Show a => [(a -> Bool, a -> b, Action)] -> a -> (Action, Maybe b)
+gobble :: [(a -> Bool, a -> b, Action)] -> a -> (Action, Maybe b)
 gobble [] a     = (Interrupt, Nothing)
-gobble (g:gs) a = perform 
-    where perform = case g of
+gobble (g:gs) a = case g of
             (p, f, Continue)  | p a -> (Continue,  Just $ f a)
             (p, f, Interrupt) | p a -> (Interrupt, Just $ f a)
             (p, f, Dismiss)   | p a -> (Dismiss,   Just $ f a)
             (p, f, Dismiss)         -> (Dismiss,   Nothing)
             _                       -> gobble gs a
 
-consume :: Show a => [(a -> Bool, a -> b, Action)] -> [a] -> [b]
+consume :: [(a -> Bool, a -> b, Action)] -> [a] -> [b]
 consume conds as = foldl gather id as [] 
     where gather f a xs = case (gobble conds a) of
             (Continue, Just x)  -> xs `seq` f (x : xs)  
             (Interrupt, Just x) -> x : xs
             (Dismiss, Just x)   -> xs `seq` f (x : xs) 
             (Dismiss, Nothing)  -> []
-            _                   -> xs `seq` f xs 
+            _                   -> xs 
 
 zipped :: (a -> [b]) -> (a -> [c]) -> a -> [(b, c)]
 zipped f g a = zip (f a) (g a)  
