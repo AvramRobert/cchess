@@ -106,26 +106,23 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1)
 
-lookAhead :: Board -> Dir -> Square -> Maybe Position
-lookAhead board dir = lookAt board . snd . develop dir
+-- A function that can follow any number of directions on the board and accepts a handler `h` that applies when it goes outside the board's bounds
+-- `h` can be used to short-circuit the result
+followWith :: Board -> Square -> ([(Square, Position)] -> [(Square, Position)]) -> [Dir] -> [(Square, Position)]
+followWith board s0 h dirs = fst $ foldr gather id dirs ([], s0)
+      where gather dir f (xs, square) = case (lookAhead dir square) of
+                        (Just position) -> (xs, square) `seq` f ( (s0, position) : xs, push square position)
+                        (Nothing)       -> (h xs, square)
+            push (c, s) (Pos _ _ e)   = (c, e)
+            lookAhead dir square      = lookAt board $ snd $ develop dir square 
 
-push :: Square -> Position -> Square
-push (c, s) (Pos _ _ e) = (c, e)
-
+-- Follows the board in that `Dir` until the board ends
 follow :: Board -> Dir -> Square -> [(Square, Position)]
-follow board d s = gather $ lookAhead board d s
-      where gather (Just p)  = (s, p) : (gather $ lookAhead board d $ push s p)
-            gather (Nothing) = []
+follow board dir s0 = followWith board s0 id $ repeat dir
 
+-- Strictly follows the board for as many `[Dir]`s and short-circuits with `[]` if it can't
 follow' :: Board -> [Dir] -> Square -> [(Square, Position)]
-follow' board dirs s0 = if (length dirs == length path) 
-                        then path
-                        else []
-      where path            = gather dirs s0
-            gather [] _     = []
-            gather (d:ds) s = case (lookAhead board d s) of
-                  (Just p)  -> (s0, p) : (gather ds $ push s p)
-                  (Nothing) -> []
+follow' board dirs s0 = followWith board s0 (const []) dirs 
 
 other :: Colour -> Colour
 other W = B 
