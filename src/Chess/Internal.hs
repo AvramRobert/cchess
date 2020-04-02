@@ -1,5 +1,6 @@
 module Chess.Internal where
 
+import Data.Function (fix)
 import Data.Tuple (swap)
 import Data.List (find, sortOn, groupBy)
 import Control.Monad (mfilter, join)
@@ -65,21 +66,13 @@ instance Show Position where
       show (Pos Queen B xy)  = "Queen  B " <> show xy
       show (Pos Empty _ xy)  = "-        " <> show xy
 
--- showPieces :: Board -> IO ()
--- showPieces = putStrLn . unlines . map fanOut . M.toList . pieces
---       where fanOut (fig, ps) = (show fig) <> " :: " <> (show $ S.toList ps)
-
 showPieces :: Board -> IO ()
 showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
       where fanOut (c, pmap) = [show c <> " :: "] <> (map row $ M.toList pmap)
             row (p, cs) = "     " <> (show p) <> " - " <> (show cs)
 
-
 makeRow :: Show a => [a] -> String
 makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
-
-chunksOf :: Int -> [a] -> [[a]]
-chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
 blackView :: Coordinates -> String
 blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . M.elems
@@ -113,11 +106,11 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1)
 
-push :: Square -> Position -> Square
-push (c, s) (Pos _ _ e) = (c, e)
-
 lookAhead :: Board -> Dir -> Square -> Maybe Position
 lookAhead board dir = lookAt board . snd . develop dir
+
+push :: Square -> Position -> Square
+push (c, s) (Pos _ _ e) = (c, e)
 
 follow :: Board -> Dir -> Square -> [(Square, Position)]
 follow board d s = gather $ lookAhead board d s
@@ -392,6 +385,19 @@ commit (Promote (Pos p c s) p'' (Pos p' c' e))  = reconstruct [Right (Pos p'' c 
 commit (Castle (Pos k kc ks, ke) 
                (Pos r rc rs, re))               = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left (Pos k kc ks), Left (Pos r rc rs)]
 
+checked :: Board -> Bool
+checked board = not $ null $ threats board [square king]
+      where king = head $ findPieces board (King, player board)
+
+apply :: Board -> Move -> Board
+apply board move = cmap [\b -> b { coordinates = cs, pieces = ps },
+                         \b -> b { player = other $ player board },
+                         \b -> b { blackCastle = castles B (blackCastle b) move,
+                                   whiteCastle = castles W (whiteCastle b) move },
+                         \b -> b { past = move : (past b) },
+                         \b -> b { check = checked b } ] board
+      where (cs, ps) = commit move (coordinates board, pieces board)  
+
 -- you have to compute the other states aswell
 -- this already is the opponent
 evaluate :: Board -> Either Outcome Board
@@ -400,21 +406,6 @@ evaluate board = Right board
             stale    = False -- check this
             king     = findPieces board (King, player board)
             colour'  = player board
-
-checked :: Board -> Bool
-checked board = not $ null $ threats board [square king]
-      where king = head $ findPieces board (King, player board)
-
-apply :: Board -> Move -> Board
-apply board move = let  king     = head $ findPieces board' (King, player board')
-                        (cs, ps) = commit move (coordinates board, pieces board)
-                        board'   = board { coordinates = cs,
-                                           pieces      = ps, 
-                                           past        = move : (past board),
-                                           whiteCastle = castles W (whiteCastle board) move,
-                                           blackCastle = castles B (blackCastle board) move,
-                                           player      = other $ player board }
-                   in board' { check = checked board' }
 
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = apply board move

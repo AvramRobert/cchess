@@ -1,9 +1,10 @@
-module Lib.Coll (first, spread, every, oneOf, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf) where
+module Lib.Coll (first, spread, every, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf, chunksOf) where
 
 import Data.List (find, groupBy, sortOn)
 import Data.Maybe (isJust)
 
-data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)
 
 asListOf :: Foldable f => (a -> b) -> f a -> [b]
 asListOf f = foldr (\a xs -> (f a) : xs) []
@@ -14,6 +15,8 @@ groupOn f = keep . groupBy (\a b -> f a == f b) . sortOn f
           keep ([]:as) = keep as
           keep (a:as)  = (f $ head a, a) : keep as
 
+data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
+
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]
 
@@ -23,10 +26,6 @@ conjoin fs a = fs >>= (\f -> f a)
 every :: [a -> Bool] -> a -> Bool
 every (p : ps) a = p a && every ps a
 every [] _       = True
-
-oneOf :: [(a -> Bool)] -> a -> Bool
-oneOf [] a = True
-oneOf fs a = isJust $ find (\f -> f a) fs
 
 when :: (a -> Bool) -> (a -> b) -> (a -> Bool, a -> b, Action) 
 when p f = (p, f, Continue)

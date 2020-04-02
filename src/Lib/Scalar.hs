@@ -1,4 +1,4 @@
-module Lib.Scalar (xor) where
+module Lib.Scalar (cmap) where
 
-xor :: Bool -> Bool -> Bool
-xor a b = a /= b
+cmap :: [a -> a] -> a -> a
+cmap xs = (foldl (.) id xs)  
