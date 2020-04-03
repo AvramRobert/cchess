@@ -1,12 +1,11 @@
 module Chess.Internal where
 
-import Data.Function (fix)
+import Data.Function (flip)
 import Data.Tuple (swap)
 import Data.List (find, sortOn, groupBy)
 import Control.Monad (mfilter, join)
 import Data.Maybe (maybe, isJust, fromJust)
 import Lib.Coll
-import Lib.Scalar
 import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
@@ -106,8 +105,11 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1)
 
--- A function that can follow any number of directions on the board and accepts a handler `h` that applies when it goes outside the board's bounds
--- By returning `[]`, `h` can be used to short-circuit the result
+
+{- 
+   A function that can follow any number of directions on the board and accepts a handler `h` that applies when it goes outside the board's bounds.
+   By returning `[]`, `h` can be used to short-circuit the result
+-}
 followWith :: Board -> Square -> ([(Square, Position)] -> [(Square, Position)]) -> [Dir] -> [(Square, Position)]
 followWith board s0 h dirs = fst $ foldr gather id dirs ([], s0)
       where gather dir f (xs, square) = case (lookAhead dir square) of
@@ -191,13 +193,16 @@ backrank ((W, (_, 7)), (Pos _ _ (_, 8))) = True
 backrank ((B, (_, 2)), (Pos _ _ (_, 1))) = True
 backrank _                             = False
 
--- Replace dir with `Castle`
-canCastle :: Board -> Castles -> (Square, Position) -> Bool
-canCastle board Long ((W, _), _)  = whiteCastle board == Both || whiteCastle board == Long
-canCastle board Long ((B, _), _)  = blackCastle board == Both || blackCastle board == Long
-canCastle board Short ((W, _), _) = whiteCastle board == Both || whiteCastle board == Short
-canCastle board Short ((B, _), _) = blackCastle board == Both || blackCastle board == Short
-canCastle board _ _               = False
+castleable :: Board -> Castles -> (Square, Position) -> Bool
+castleable board = let attackers = threats board
+                       wcastle   = whiteCastle board
+                       bcastle   = blackCastle board
+                  in \castle (s, p) -> case (castle, fst s) of
+                         (Short, W) -> (wcastle == Both || wcastle == Short) && (null $ attackers [(W, (6, 1)), (W, (7, 1))])
+                         (Short, B) -> (bcastle == Both || bcastle == Short) && (null $ attackers [(B, (6, 8)), (B, (7, 8))])
+                         (Long,  W) -> (wcastle == Both || wcastle == Long)  && (null $ attackers [(W, (3, 1)), (W, (4, 1))])
+                         (Long,  B) -> (bcastle == Both || bcastle == Long)  && (null $ attackers [(B, (3, 8)), (B, (4, 8))])
+                         _          -> False
 
 advance :: Piece -> (Square, Position) -> Move
 advance piece ((c, s), (Pos _ _ e)) = Advance (Pos piece c s) e
@@ -278,11 +283,11 @@ kingDevelopmentMoves board = conjoin [ consume [when empty $ advance King, once 
                                        consume [when empty $ advance King, once opponent $ capture King] . follow' board [DR]]
 
 kingCastlingMoves :: Board -> Square -> [Move]
-kingCastlingMoves board = conjoin [map castle . zipped (keepLast . consume [exactly (every [empty, isSafe Short, canCastle board Short]) $ advance King] . follow' board [R, R])
-                                                       (keepLast . consume [exactly (every [empty, canCastle board Short])               $ advance Rook] . follow' board [L, L] . kingside),
-                                   map castle . zipped (keepLast . consume [exactly (every [empty, isSafe Long, canCastle board Long])   $ advance King] . follow' board [L, L])
-                                                       (keepLast . consume [exactly (every [empty, canCastle board Long])                $ advance Rook] . follow' board [R, R, R] . queenside)]
-      where isSafe           = safe board
+kingCastlingMoves board = conjoin [map castle . zipped (keepLast . consume [exactly (every [empty, canCastle Short]) $ advance King] . follow' board [R, R])
+                                                       (keepLast . consume [exactly empty                            $ advance Rook] . follow' board [L, L] . kingside),
+                                   map castle . zipped (keepLast . consume [exactly (every [empty, canCastle Long])  $ advance King] . follow' board [L, L])
+                                                       (keepLast . consume [exactly empty                            $ advance Rook] . follow' board [R, R, R] . queenside)]
+      where canCastle        = castleable board
             kingside  (W, _) = (W, (8, 1))
             kingside  (B, _) = (B, (8, 8))
             queenside (W, _) = (W, (1, 1))
@@ -336,64 +341,65 @@ movesPiece board = filter (isJust . permit board) . join . map (movesPosition bo
 findPieces :: Board -> Figure -> [Position]
 findPieces board (p, c) = maybe [] (asListOf (Pos p c)) $ M.lookup p $ maybe M.empty id $ M.lookup c $ pieces board
 
-castles :: Colour -> Castles -> Move -> Castles
-castles W _    (Castle (Pos _ W _, _) _)        = None
-castles B _    (Castle (Pos _ B _, _) _)        = None
-
-castles W _    (Advance (Pos King W (5, 1)) _)  = None
-castles B _    (Advance (Pos King B (5, 8)) _)  = None
-castles W _    (Capture (Pos King W (5, 1)) _)  = None
-castles B _    (Capture (Pos King B (5, 8)) _)  = None
-
-castles W Short (Advance (Pos Rook W (8, 1)) _) = None
-castles W Long  (Advance (Pos Rook W (1, 1)) _) = None
-castles B Short (Advance (Pos Rook B (8, 8)) _) = None
-castles B Long  (Advance (Pos Rook B (1, 8)) _) = None
-
-castles W Both (Advance (Pos Rook W (8, 1)) _)  = Long
-castles W Both (Capture (Pos Rook W (8, 1)) _)  = Long
-
-castles W Both (Advance (Pos Rook W (1, 1)) _)  = Short
-castles W Both (Capture (Pos Rook W (1, 1)) _)  = Short
-
-castles B Both (Advance (Pos Rook B (8, 8)) _)  = Long
-castles B Both (Capture (Pos Rook B (8, 8)) _)  = Long
-
-castles B Both (Advance (Pos Rook B (1, 8)) _)  = Short
-castles B Both (Capture (Pos Rook B (1, 8)) _)  = Short
-castles _ c _                                   = c
+computeCastles :: Move -> Board -> Board
+computeCastles move board = case move of
+      (Castle (Pos _ W _, _) _)       -> board { whiteCastle = None }
+      (Castle (Pos _ B _, _) _)       -> board { blackCastle = None }
+      (Advance (Pos King W (5, 1)) _) -> board { whiteCastle = None }
+      (Advance (Pos King B (5, 8)) _) -> board { blackCastle = None }
+      (Advance (Pos Rook W (8, 1)) _) -> board { whiteCastle = longOrNone  $ whiteCastle board }
+      (Advance (Pos Rook B (8, 8)) _) -> board { blackCastle = longOrNone  $ blackCastle board }
+      (Capture (Pos Rook W (8, 1)) _) -> board { whiteCastle = longOrNone  $ whiteCastle board }
+      (Capture (Pos Rook B (8, 8)) _) -> board { blackCastle = longOrNone  $ blackCastle board }
+      (Advance (Pos Rook W (1, 1)) _) -> board { whiteCastle = shortOrNone $ whiteCastle board }
+      (Advance (Pos Rook B (1, 8)) _) -> board { blackCastle = shortOrNone $ blackCastle board }
+      (Capture (Pos Rook W (1, 1)) _) -> board { whiteCastle = shortOrNone $ whiteCastle board }
+      (Capture (Pos Rook B (1, 8)) _) -> board { blackCastle = shortOrNone $ blackCastle board }
+      _                               -> board
+      where longOrNone Both    = Long
+            longOrNone Short   = None
+            longOrNone castle  = castle
+            shortOrNone Both   = Short
+            shortOrNone Long   = None
+            shortOrNone castle = castle
 
 -- If I keep `Empty`, it will be slower
-reconstruct :: [Either Position Position] -> (Coordinates, Pieces) -> (Coordinates, Pieces)
-reconstruct updates placement = foldr rewrite placement updates
-      where detach (Pos Empty _ _) cs = cs
-            detach (Pos _ _ c) cs     = S.delete c cs
-            attach (Pos _ _ c) cs     = S.insert c cs
+reconstruct :: Board -> [Either Position Position] -> Board
+reconstruct board updates = patch $ foldr rewrite (coordinates board, pieces board) updates
+      where patch (coordinates, pieces) = board { coordinates = coordinates, pieces = pieces }
+            detach (Pos Empty _ _) cs   = cs
+            detach (Pos _ _ c) cs       = S.delete c cs
+            attach (Pos _ _ c) cs       = S.insert c cs
             rewrite (Right pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r pos coordinates, M.adjust (M.adjust (attach pos) p) c pieces)
             rewrite (Left  pos @ (Pos p c r)) (coordinates, pieces) = (M.insert r (Pos Empty W r) coordinates, M.adjust (M.adjust (detach pos) p) c pieces)
 
-commit :: Move -> (Coordinates, Pieces) -> (Coordinates, Pieces)
-commit (Capture (Pos p c s) (Pos p' c' e))      = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' e)]
-commit (Advance (Pos p c s) e)                  = reconstruct [Right (Pos p c e), Left (Pos p c s)]
-commit (Enpassant (Pos p c s) e (Pos p' c' s')) = reconstruct [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' s')]
-commit (Promote (Pos p c s) p'' (Pos p' c' e))  = reconstruct [Right (Pos p'' c e), Left (Pos p c s), Left (Pos p' c' e)] 
-commit (Castle (Pos k kc ks, ke) 
-               (Pos r rc rs, re))               = reconstruct [Right (Pos k kc ke), Right (Pos r rc re), Left (Pos k kc ks), Left (Pos r rc rs)]
+changePlacement :: Move -> Board -> Board
+changePlacement move board = case move of
+      (Capture (Pos p c s) (Pos p' c' e))          -> reconstruct board [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' e)]
+      (Advance (Pos p c s) e)                      -> reconstruct board [Right (Pos p c e), Left (Pos p c s)]
+      (Enpassant (Pos p c s) e (Pos p' c' s'))     -> reconstruct board [Right (Pos p c e), Left (Pos p c s), Left (Pos p' c' s')]
+      (Promote (Pos p c s) p'' (Pos p' c' e))      -> reconstruct board [Right (Pos p'' c e), Left (Pos p c s), Left (Pos p' c' e)]
+      (Castle (Pos k kc ks, ke) (Pos r rc rs, re)) -> reconstruct board [Right (Pos k kc ke), Right (Pos r rc re), Left (Pos k kc ks), Left (Pos r rc rs)]
+ 
+changePlayers :: Board -> Board
+changePlayers board = board { player = other $ player board }
+
+trackMove :: Move -> Board ->  Board
+trackMove move board = board { past = move : (past board) } 
+
+computeChecks :: Board -> Board
+computeChecks board = board { check = checked board }
+
+apply :: Board -> Move -> Board
+apply board move = changePlayers 
+                 $ computeChecks 
+                 $ computeCastles move 
+                 $ trackMove move 
+                 $ changePlacement move board
 
 checked :: Board -> Bool
 checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
-
--- It's better to make this a single function instead of a list of functions
--- Causes composition confusion
-apply :: Board -> Move -> Board
-apply board move = cmap [\b -> b { coordinates = cs, pieces = ps },
-                         \b -> b { player = other $ player board },
-                         \b -> b { blackCastle = castles B (blackCastle b) move,
-                                   whiteCastle = castles W (whiteCastle b) move },
-                         \b -> b { past = move : (past b) },
-                         \b -> b { check = checked b } ] board
-      where (cs, ps) = commit move (coordinates board, pieces board)  
 
 -- you have to compute the other states aswell
 -- this already is the opponent

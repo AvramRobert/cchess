@@ -1,16 +1,9 @@
 Problems:
 
 1. Performance: 
-    => Something is slow. Either the API or the Parser. Possible culprits:
-        a) `permit`    -> check for every individual move 
-        b) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
-    (X) d) `consume`   -> the traversal is expensive because i always have to reverse
-
-    -> use `criterion` in the end to test overall performance
+    a) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
 
 2. Optimisations:
-    (X) a) `consume`                 -> If i make follow put things at the beginning instead of the end, I needn't reverse every consumption
-    b) `movesPosition`           -> pre-calculate the threats of a move and pass it to every move-function
-    c) `captureError` et. al     -> I've pushed down every failure to its most local. Find a way to extract better information from the move set and display a better error
-    d) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
+    a) `captureError` et. al     -> I've pushed down every failure to its most local. Find a way to extract better information from the move set and display a better error
+    b) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
     
