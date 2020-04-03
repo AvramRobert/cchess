@@ -1,6 +1,5 @@
 module Chess.Internal where
 
-import Data.Function (flip)
 import Data.Tuple (swap)
 import Data.List (find, sortOn, groupBy)
 import Control.Monad (mfilter, join)

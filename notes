@@ -1,9 +1,15 @@
 Problems:
 
-1. Performance: 
+Optimisations:
     a) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
-
-2. Optimisations:
-    a) `captureError` et. al     -> I've pushed down every failure to its most local. Find a way to extract better information from the move set and display a better error
-    b) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
+    b) `captureError` et. al     -> I've pushed down every failure to its most local. Find a way to extract better information from the move set and display a better error
+    c) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
     
+To Do:
+    1. Add proper checkmate/stalemate checks
+    2. Add in-game draw suggestions checks
+    3. Implement proper rendering for the board
+    4. Implement a game interface
+    5. Refine the API
+    6. Write a read-me, documentation and release
+    7. Add some more tests
