@@ -17,8 +17,6 @@ groupOn f = keep . groupBy (\a b -> f a == f b) . sortOn f
           keep ([]:as) = keep as
           keep (a:as)  = (f $ head a, a) : keep as
 
-data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
-
 spread :: [a -> b] -> a -> [b]
 spread fs a = [f a | f <- fs]
 
@@ -28,6 +26,20 @@ conjoin fs a = fs >>= (\f -> f a)
 every :: [a -> Bool] -> a -> Bool
 every (p : ps) a = p a && every ps a
 every [] _       = True
+
+first :: [a] -> Maybe a
+first []    = Nothing
+first (a:_) = Just a
+
+zipped :: (a -> [b]) -> (a -> [c]) -> a -> [(b, c)]
+zipped f g a = zip (f a) (g a)  
+
+-- This function expects the list to be reversed, i.e. the last element to be the head
+keepLast :: [a] -> [a]
+keepLast []    = []
+keepLast (a:_) = a:[]
+
+data Action = Continue | Interrupt | Dismiss deriving (Show, Eq)
 
 when :: (a -> Bool) -> (a -> b) -> (a -> Bool, a -> b, Action) 
 when p f = (p, f, Continue)
@@ -55,14 +67,3 @@ consume conds as = foldl gather id as []
             (Dismiss, Just x)   -> xs `seq` f (x : xs) 
             (Dismiss, Nothing)  -> []
             _                   -> xs 
-
-zipped :: (a -> [b]) -> (a -> [c]) -> a -> [(b, c)]
-zipped f g a = zip (f a) (g a)  
-
-keepLast :: [a] -> [a]
-keepLast []    = []
-keepLast (a:_) = a:[]
-
-first :: [a] -> Maybe a
-first []    = Nothing
-first (a:_) = Just a
