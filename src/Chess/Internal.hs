@@ -304,20 +304,11 @@ threats board sqs = filter attacks $ threateningMoves board
             attacks _                        = False
 
 threateningMoves :: Board -> [Move]
-threateningMoves board = filter threat $ M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup opponent $ pieces board
-      where opponent                        = other $ player board
-            accumulateWith f coord moves    = foldr (:) moves $ f board (opponent, coord) 
-            gatherMoves King coords moves   = foldr (accumulateWith kingDevelopmentMoves) moves coords 
-            gatherMoves Queen coords moves  = foldr (accumulateWith queenMoves) moves coords
-            gatherMoves Bishop coords moves = foldr (accumulateWith bishopMoves) moves coords
-            gatherMoves Rook coords moves   = foldr (accumulateWith rookMoves) moves coords
-            gatherMoves Knight coords moves = foldr (accumulateWith knightMoves) moves coords
-            gatherMoves Pawn coords moves   = foldr (accumulateWith pawnMoves) moves coords
-            gatherMoves _    _ moves        = moves
-            threat (Capture _ _)            = True
-            threat (Promote _ _ e)          = (colour e == player board) && (piece e /= Empty) 
-            threat (Enpassant _ _ _)        = True
-            threat  _                       = False
+threateningMoves board = filter threat $ movesFor board (other $ player board)
+      where threat (Capture _ _)      = True
+            threat (Promote _ _ e)    = (colour e == player board) && (piece e /= Empty) 
+            threat (Enpassant _ _ _)  = True
+            threat  _                 = False
 
 allMoves :: Board -> [Move]
 allMoves board = join $ fmap (filter (isJust . permit board) .  movesPosition board) $ M.elems $ coordinates board
@@ -333,6 +324,17 @@ movesPosition board (Pos Bishop c s) = bishopMoves board (c, s)
 movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
 movesPosition board (Pos Knight c s) = knightMoves board (c, s)
 movesPosition board (Pos Empty _ _)  = []
+
+movesFor :: Board -> Colour -> [Move]
+movesFor board colour = M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup colour $ pieces board
+      where accumulateWith f coord moves    = foldr (:) moves $ f board (colour, coord) 
+            gatherMoves King coords moves   = foldr (accumulateWith kingDevelopmentMoves) moves coords 
+            gatherMoves Queen coords moves  = foldr (accumulateWith queenMoves) moves coords
+            gatherMoves Bishop coords moves = foldr (accumulateWith bishopMoves) moves coords
+            gatherMoves Rook coords moves   = foldr (accumulateWith rookMoves) moves coords
+            gatherMoves Knight coords moves = foldr (accumulateWith knightMoves) moves coords
+            gatherMoves Pawn coords moves   = foldr (accumulateWith pawnMoves) moves coords
+            gatherMoves _    _ moves        = moves
 
 movesPiece :: Board -> Figure -> [Move]
 movesPiece board = filter (isJust . permit board) . join . map (movesPosition board) . findPieces board 
@@ -401,13 +403,13 @@ checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
 
 -- you have to compute the other states aswell
--- this already is the opponent
 evaluate :: Board -> Either Outcome Board
-evaluate board = Right board
-      where mate     = False -- && immoble
-            stale    = False -- check this
-            king     = findPieces board (King, player board)
-            colour'  = player board
+evaluate board = if (check board && mate) then Left (Checkmate $ other $ player board)
+                 else if stale            then Left Stalemate
+                 else                          Right board
+      where mate    = all (checked . reset . apply board) $ movesFor board (player board)
+            reset b = b { player = player board } 
+            stale   = False -- check this
 
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = apply board move

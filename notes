@@ -5,11 +5,12 @@ Optimisations:
     b) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
     
 To Do:
-    1. Add proper checkmate/stalemate checks
-    2. Add in-game draw suggestions checks
-    3. Implement proper rendering for the board
-    4. Implement a game interface
-    5. Implement parsing of game outcomes
-    6. Refine the API
-    7. Write a read-me, documentation and release
-    8. Add some more tests
+     * 1. Add proper checkmate verification
+    2. Implement proper rendering for the board
+    3. Implement a game interface
+    4. Implement parsing of game outcomes
+    5. Add stalemate checks
+    6. Add in-game draw suggestions checks
+    7. Refine the API
+    8. Write a read-me, documentation and release
+    9. Add some more tests
