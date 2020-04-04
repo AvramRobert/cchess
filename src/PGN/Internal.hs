@@ -34,9 +34,9 @@ data Game = Game {
                   eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show)
 
-data ChessError = CaptureError Chess.Position |
-                  AdvanceError Chess.Position |
-                  PromoteError Chess.Position |
+data ChessError = CaptureError Chess.Coord Chess.Piece |
+                  AdvanceError Chess.Coord Chess.Piece |
+                  PromoteError Chess.Coord Chess.Piece |
                   CastleError  Chess.Castles  | 
                   GameError    Chess.Outcome  |
                   MissingMovesError
@@ -45,11 +45,11 @@ data ChessError = CaptureError Chess.Position |
 type ParseError = M.ParseErrorBundle String ChessError
 
 instance M.ShowErrorComponent ChessError where
-    showErrorComponent (CaptureError p) = "Could not capture with: " <> (show p)
-    showErrorComponent (AdvanceError p) = "Could not advance with: " <> (show p)
-    showErrorComponent (PromoteError p) = "Could not promote to: " <> (show p)
-    showErrorComponent (CastleError  c) = "Could not castle: " <> (show c) 
-    showErrorComponent (GameError o)    = "Disallowed due to: " <> (show o)
+    showErrorComponent (CaptureError coord piece) = "Could not capture at " <> (show coord) <> " with " <> (show piece)
+    showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)
+    showErrorComponent (PromoteError coord piece) = "Could not promote at " <> (show coord) <> " to "   <> (show piece)
+    showErrorComponent (CastleError c)            = "Could not castle: " <> (show c) 
+    showErrorComponent (GameError o)              = "Disallowed due to: " <> (show o)
 
 type Parser a = Parsec ChessError String a
 
@@ -159,7 +159,6 @@ hasX x = (== x) . fst . Chess.coord . Chess.position
 hasY :: Integer -> Chess.Move -> Bool
 hasY y = (== y) . snd . Chess.coord . Chess.position
 
--- Can't I abstract over these?
 advancesTo :: Chess.Coord -> Chess.Move -> Bool
 advancesTo s (Chess.Advance _ e) = s == e
 advancesTo _ _                    = False
@@ -169,33 +168,26 @@ capturesAt s (Chess.Capture _ enemy) = s == (Chess.coord enemy)
 capturesAt s (Chess.Enpassant _ e _) = s == e
 capturesAt _ _                       = False
 
-promotesAt :: Chess.Coord -> Chess.Move -> Bool
-promotesAt s (Chess.Promote _ _ enemy) = s == (Chess.coord enemy)
-promotesAt _ _                         = False
+promotesAs :: Chess.Position -> Chess.Move -> Bool
+promotesAs newPos (Chess.Promote _ newPiece enemy) = (Chess.piece newPos) == newPiece && (Chess.coord newPos) == (Chess.coord enemy)
+promotesAs _ _                              = False
 
 castlesTowards :: Chess.Dir -> Chess.Move -> Bool
 castlesTowards Chess.R (Chess.Castle (_, e) _) = e == (7, 1) || e == (7, 8)
 castlesTowards Chess.L (Chess.Castle (_, e) _) = e == (3, 1) || e == (3, 8)
 castlesTowards _ _                       = False
----
 
--- This may give me the wrong position.
-commonPosition :: [Chess.Move] -> Maybe Chess.Position
-commonPosition []     = Nothing
-commonPosition (a:_)  = case a of (Chess.Capture p _)     -> Just p
-                                  (Chess.Advance p _)     -> Just p
-                                  (Chess.Promote p _ _)   -> Just p
-                                  (Chess.Castle (p, _) _) -> Just p
-                                  (Chess.Enpassant p _ _) -> Just p
+captureError :: Chess.Coord -> [Chess.Move] -> ChessError
+captureError _ []    = MissingMovesError
+captureError c (p:_) = CaptureError c (Chess.piece $ Chess.position p)
 
-captureError :: [Chess.Move] -> ChessError
-captureError = maybe MissingMovesError CaptureError . commonPosition
+promoteError :: Chess.Position -> [Chess.Move] -> ChessError
+promoteError _ []    = MissingMovesError
+promoteError p _     = PromoteError (Chess.coord p) (Chess.piece p)
 
-promoteError :: [Chess.Move] -> ChessError
-promoteError = maybe MissingMovesError PromoteError . commonPosition
-
-advanceError :: [Chess.Move] -> ChessError
-advanceError = maybe MissingMovesError AdvanceError . commonPosition
+advanceError :: Chess.Coord -> [Chess.Move] -> ChessError
+advanceError _ []    = MissingMovesError
+advanceError c (p:_) = AdvanceError c (Chess.piece $ Chess.position p)
 
 -- there's only one piece I can capture at `x, y`
 unambigousCapture :: [Chess.Move] -> Parser Chess.Move
@@ -203,7 +195,7 @@ unambigousCapture moves = do
     _ <- char 'x'
     x <- file
     y <- rank
-    failWith (captureError moves) $ find (capturesAt (x, y)) moves
+    failWith (captureError (x, y) moves) $ find (capturesAt (x, y)) moves
 
 -- there's a piece which sits at file `ox` and can capture `x, y`
 fileAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
@@ -212,7 +204,7 @@ fileAmbigousCapture moves = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith (captureError moves) $ find (every [capturesAt (x, y), hasX ox]) moves 
+    failWith (captureError (x, y) moves) $ find (every [capturesAt (x, y), hasX ox]) moves 
 
 -- there's a piece which sits at rank `oy` and can capture `x, y`
 rankAmbigousCapture :: [Chess.Move] -> Parser Chess.Move
@@ -221,7 +213,7 @@ rankAmbigousCapture moves = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith (captureError moves) $ find (every [capturesAt (x, y), hasY oy]) moves
+    failWith (captureError (x, y) moves) $ find (every [capturesAt (x, y), hasY oy]) moves
 
 -- there's a piece which sits exactly at `ox, oy` and can capture `x, y`
 explicitCapture :: [Chess.Move] -> Parser Chess.Move
@@ -231,14 +223,14 @@ explicitCapture moves = do
     _  <- char 'x'
     x  <- file
     y  <- rank
-    failWith (captureError moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
+    failWith (captureError (x, y) moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
 
 -- there's only one piece which can advance to square `x, y`
 unambigousAdvance :: [Chess.Move] -> Parser Chess.Move
 unambigousAdvance moves = do 
     x <- file
     y <- rank
-    failWith (advanceError moves) $ find (advancesTo (x, y)) moves 
+    failWith (advanceError (x, y) moves) $ find (advancesTo (x, y)) moves 
 
 -- there's a piece which sits at file `ox` and can advance to `x, y`
 fileAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
@@ -246,7 +238,7 @@ fileAmbigousAdvance moves = do
     ox <- file
     x  <- file
     y  <- rank
-    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasX ox]) moves
+    failWith (advanceError (x, y) moves) $ find (every [advancesTo (x, y), hasX ox]) moves
 
 -- there's a piece which sits at rank `oy` and can advance to `x, y`
 rankAmbigousAdvance :: [Chess.Move] -> Parser Chess.Move
@@ -254,7 +246,7 @@ rankAmbigousAdvance moves = do
     oy <- rank
     x  <- file
     y  <- rank
-    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasY oy]) moves
+    failWith (advanceError (x, y) moves) $ find (every [advancesTo (x, y), hasY oy]) moves
 
 -- there's a piece which sits exactly at `ox, oy` and can advance to `x, y`
 explicitAdvance :: [Chess.Move] -> Parser Chess.Move
@@ -263,7 +255,7 @@ explicitAdvance moves = do
     oy <- rank
     x  <- file
     y  <- rank
-    failWith (advanceError moves) $ find (every [advancesTo (x, y), hasCoord (ox, oy)]) moves
+    failWith (advanceError (x, y) moves) $ find (every [advancesTo (x, y), hasCoord (ox, oy)]) moves
 
 advance :: [Chess.Move] -> Parser Chess.Move
 advance moves = M.choice [try $ unambigousAdvance moves,
@@ -296,7 +288,7 @@ promotePawn colour moves = do
         _ <- char '='
         p <- promotions (colour, (x, y))
         let coord  = pick colour (x, y)
-        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
+        failWith (promoteError p moves) $ find (promotesAs p) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1) 
 
@@ -310,7 +302,7 @@ capturePromotePawn colour moves = do
         _  <- char '='
         p  <- promotions (colour, (x, y))
         let coord = pick colour (ox, y)
-        failWith (promoteError moves) $ find (promotesAt (x, y)) moves
+        failWith (promoteError p moves) $ find (promotesAs p) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1)
 
@@ -321,7 +313,7 @@ castle _           = const $ failWith MissingMovesError Nothing
 
 -- there's an ordering problem here aswell
 -- An unambigous advance may be eagerly interpreted as a promotion in certain scenarios
--- Ex: d1=Q => `d1` by itself is a valid unambigous promotion.
+-- Ex: d1=Q => `d1` by itself is a valid unambigous advance.
 -- We thus have to start with checking promotions and then the rest.. 
 pawn :: Chess.Board -> Parser Chess.Move
 pawn board = M.choice [try $ promotePawn colour moves,
