@@ -136,6 +136,9 @@ position (Promote p _ _)   = p
 position (Enpassant p _ _) = p
 position (Castle (p, _) _) = p 
 
+figure :: Position -> Figure
+figure (Pos piece colour _) = (piece, colour)
+
 piece :: Position -> Piece
 piece (Pos p _ _) = p
 
