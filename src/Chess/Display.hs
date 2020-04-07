@@ -2,7 +2,7 @@ module Chess.Display where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty), 
                        Colour(W, B), Position (Pos), 
-                       Square, Figure, Coord, Board, lookAt, figure)
+                       Square, Figure, Coord, Board, lookAt, figure, coordinates)
 import Data.Maybe (maybe)
 import Data.List (maximumBy, intersperse)
 import Lib.Coll
@@ -28,18 +28,18 @@ gameFigure (Queen, W)  = "♕"
 gameFigure (Queen, B)  = "♛"
 gameFigure (Empty, _)  = "-"
 
-gameLabel :: Square -> String
-gameLabel (_, (1, _)) = "A"
-gameLabel (_, (2, _)) = "B"
-gameLabel (_, (3, _)) = "C"
-gameLabel (_, (4, _)) = "D"
-gameLabel (_, (5, _)) = "E"
-gameLabel (_, (6, _)) = "F"
-gameLabel (_, (7, _)) = "G"
-gameLabel (_, (8, _)) = "H"
+gameLabel :: Int -> String
+gameLabel 1 = "A"
+gameLabel 2 = "B"
+gameLabel 3 = "C"
+gameLabel 4 = "D"
+gameLabel 5 = "E"
+gameLabel 6 = "F"
+gameLabel 7 = "G"
+gameLabel 8 = "H"
 
-debugLabel :: Square -> String
-debugLabel = show . fst . snd
+debugLabel :: Int -> String
+debugLabel = show
 
 debugFigure :: Figure -> String
 debugFigure (Pawn, W)   = "Pawn (W)"
@@ -56,17 +56,19 @@ debugFigure (Queen, W)  = "Queen (W)"
 debugFigure (Queen, B)  = "Queen (B)"
 debugFigure (Empty, _)  = "-" 
 
-showLabel :: DisplayMode -> Square -> String
-showLabel mode square = case mode of GameMode  -> gameLabel square
-                                     DebugMode -> debugLabel square
+showLabel :: DisplayMode -> Int -> String
+showLabel mode x = case mode of GameMode  -> gameLabel x
+                                DebugMode -> debugLabel x
 
-showIndex :: Square -> String
-showIndex = show. snd . boardCoord
+showIndex :: Colour -> Int -> String
+showIndex c i = show $ snd $ boardCoord $ (c, (1, i))
 
-showPiece :: DisplayMode -> Board -> Square -> String
-showPiece mode board square = case mode of GameMode  -> display gameFigure
-                                           DebugMode -> display debugFigure 
-        where display f = maybe (show Empty) (f . figure) $ lookAt board $ boardCoord square
+showPiece :: DisplayMode -> Figure -> String
+showPiece GameMode  = gameFigure
+showPiece DebugMode = debugFigure
+
+showPosition :: DisplayMode -> Board -> Square -> String
+showPosition mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
 
 
 -- it would be nice to have a display function that has variable width
@@ -117,7 +119,7 @@ grid = unlines . bottomOut . fmap (enclose . foldr (<>) "|" . intersperse "|") .
 
 boardFor' :: DisplayMode -> Board -> Colour -> String
 boardFor' mode board colour = grid $ chunksOf 8 pieces 
-    where p s = showPiece mode board (colour, s)
+    where p s = showPosition mode board (colour, s)
           pieces =  do x <- [8,7..1] -- because we foldr
                        y <- [8,7..1] -- because we foldr
                        return $ p (x, y)
@@ -125,82 +127,76 @@ boardFor' mode board colour = grid $ chunksOf 8 pieces
 boardFor :: Board -> Colour -> String
 boardFor board colour = unlines $ 
     [" "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "    ",
-     " "      <>     "      "<> l (1, 8) <>"     "<> l (2, 8) <>"     "<> l (3, 8) <>"     "<> l (4, 8) <>"     "<> l (5, 8) <>"     "<> l (6, 8) <>"     "<> l (7, 8) <>"     "<> l (8, 8) <>"   ",
+     " "      <>     "      "<>   l 1   <>"     "<>    l 2   <>"     "<>    l 3   <>"     "<>    l 4   <>"     "<>    l 5   <>"     "<>    l 6   <>"     "<>    l 7   <>"     "<>    l 8   <>"   ",
      " "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "    ",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 8) <>"  |  "<> p (1, 8) <>"  |  "<> p (2, 8) <>"  |  "<> p (3, 8) <>"  |  "<> p (4, 8) <>"  |  "<> p (5, 8) <>"  |  "<> p (6, 8) <>"  |  "<> p (7, 8) <>"  |  "<> p (8, 8) <>"  |",
+     " "<>    i 8   <>"  |  "<> p (1, 8) <>"  |  "<> p (2, 8) <>"  |  "<> p (3, 8) <>"  |  "<> p (4, 8) <>"  |  "<> p (5, 8) <>"  |  "<> p (6, 8) <>"  |  "<> p (7, 8) <>"  |  "<> p (8, 8) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 7) <>"  |  "<> p (1, 7) <>"  |  "<> p (2, 7) <>"  |  "<> p (3, 7) <>"  |  "<> p (4, 7) <>"  |  "<> p (5, 7) <>"  |  "<> p (6, 7) <>"  |  "<> p (7, 7) <>"  |  "<> p (8, 7) <>"  |",
+     " "<>    i 7  <>"  |  "<> p (1, 7) <>"  |  "<> p (2, 7) <>"  |  "<> p (3, 7) <>"  |  "<> p (4, 7) <>"  |  "<> p (5, 7) <>"  |  "<> p (6, 7) <>"  |  "<> p (7, 7) <>"  |  "<> p (8, 7) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 6) <>"  |  "<> p (1, 6) <>"  |  "<> p (2, 6) <>"  |  "<> p (3, 6) <>"  |  "<> p (4, 6) <>"  |  "<> p (5, 6) <>"  |  "<> p (6, 6) <>"  |  "<> p (7, 6) <>"  |  "<> p (8, 6) <>"  |",
+     " "<>    i 6  <>"  |  "<> p (1, 6) <>"  |  "<> p (2, 6) <>"  |  "<> p (3, 6) <>"  |  "<> p (4, 6) <>"  |  "<> p (5, 6) <>"  |  "<> p (6, 6) <>"  |  "<> p (7, 6) <>"  |  "<> p (8, 6) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 5) <>"  |  "<> p (1, 5) <>"  |  "<> p (2, 5) <>"  |  "<> p (3, 5) <>"  |  "<> p (4, 5) <>"  |  "<> p (5, 5) <>"  |  "<> p (6, 5) <>"  |  "<> p (7, 5) <>"  |  "<> p (8, 5) <>"  |",
+     " "<>    i 5  <>"  |  "<> p (1, 5) <>"  |  "<> p (2, 5) <>"  |  "<> p (3, 5) <>"  |  "<> p (4, 5) <>"  |  "<> p (5, 5) <>"  |  "<> p (6, 5) <>"  |  "<> p (7, 5) <>"  |  "<> p (8, 5) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 4) <>"  |  "<> p (1, 4) <>"  |  "<> p (2, 4) <>"  |  "<> p (3, 4) <>"  |  "<> p (4, 4) <>"  |  "<> p (5, 4) <>"  |  "<> p (6, 4) <>"  |  "<> p (7, 4) <>"  |  "<> p (8, 4) <>"  |",
+     " "<>    i 4  <>"  |  "<> p (1, 4) <>"  |  "<> p (2, 4) <>"  |  "<> p (3, 4) <>"  |  "<> p (4, 4) <>"  |  "<> p (5, 4) <>"  |  "<> p (6, 4) <>"  |  "<> p (7, 4) <>"  |  "<> p (8, 4) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 3) <>"  |  "<> p (1, 3) <>"  |  "<> p (2, 3) <>"  |  "<> p (3, 3) <>"  |  "<> p (4, 3) <>"  |  "<> p (5, 3) <>"  |  "<> p (6, 3) <>"  |  "<> p (7, 3) <>"  |  "<> p (8, 3) <>"  |",
+     " "<>    i 3  <>"  |  "<> p (1, 3) <>"  |  "<> p (2, 3) <>"  |  "<> p (3, 3) <>"  |  "<> p (4, 3) <>"  |  "<> p (5, 3) <>"  |  "<> p (6, 3) <>"  |  "<> p (7, 3) <>"  |  "<> p (8, 3) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 2) <>"  |  "<> p (1, 2) <>"  |  "<> p (2, 2) <>"  |  "<> p (3, 2) <>"  |  "<> p (4, 2) <>"  |  "<> p (5, 2) <>"  |  "<> p (6, 2) <>"  |  "<> p (7, 2) <>"  |  "<> p (8, 2) <>"  |",
+     " "<>    i 2  <>"  |  "<> p (1, 2) <>"  |  "<> p (2, 2) <>"  |  "<> p (3, 2) <>"  |  "<> p (4, 2) <>"  |  "<> p (5, 2) <>"  |  "<> p (6, 2) <>"  |  "<> p (7, 2) <>"  |  "<> p (8, 2) <>"  |",
      " "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |  "      <>     "   |",
      " "      <>     "   |‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|‾‾"      <>     "‾‾‾|",
-     " "<> i (1, 1) <>"  |  "<> p (1, 1) <>"  |  "<> p (2, 1) <>"  |  "<> p (3, 1) <>"  |  "<> p (4, 1) <>"  |  "<> p (5, 1) <>"  |  "<> p (6, 1) <>"  |  "<> p (7, 1) <>"  |  "<> p (8, 1) <>"  |",
+     " "<>    i 1  <>"  |  "<> p (1, 1) <>"  |  "<> p (2, 1) <>"  |  "<> p (3, 1) <>"  |  "<> p (4, 1) <>"  |  "<> p (5, 1) <>"  |  "<> p (6, 1) <>"  |  "<> p (7, 1) <>"  |  "<> p (8, 1) <>"  |",
      " "      <>     "   |__"      <>     "___|__"      <>     "___|__"      <>     "___|__"      <>     "___|__"      <>     "___|__"      <>     "___|__"      <>     "___|__"      <>     "___|",
      " "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "    ",
-     " "      <>     "      "<> l (1, 8) <>"     "<> l (2, 8) <>"     "<> l (3, 8) <>"     "<> l (4, 8) <>"     "<> l (5, 8) <>"     "<> l (6, 8) <>"     "<> l (7, 8) <>"     "<> l (8, 8) <>"   ",
+     " "      <>     "      "<>   l 1   <>"     "<>    l 2   <>"     "<>    l 3   <>"     "<>    l 4   <>"     "<>    l 5   <>"     "<>    l 6   <>"     "<>    l 7   <>"     "<>    l 8   <>"   ",
      " "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "      "      <>     "    "]
-     where p s = showPiece GameMode board (colour, s)
-           l s = showLabel GameMode (colour, s)
-           i s = showIndex (colour, s)
+     where p s = showPosition GameMode board (colour, s)
+           l i = showLabel GameMode i
+           i i = showIndex colour i
 
 
-template :: Board -> Colour -> String
-template board colour = unlines $ 
-    [a <> s <> p <> p <> p <> p <> p <> p <> p <> p <> p <> p <> p <> p <> p <> p,
-     a <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s,
-     a <> s <> p <> s <> p <> s <> p <> s <> p <> s <> p <> s <> p <> s <> p <> s,
+template :: DisplayMode -> Board -> Colour -> String
+template mode board colour = unlines $ 
+    [a   <> s <> p        <> p <> p        <> p <> p        <> p <> p        <> p <> p        <> p <> p        <> p <> p        <> p <> p        <> p,
+     a   <> s <> l 1      <> s <> l 2      <> s <> l 3      <> s <> l 4      <> s <> l 5      <> s <> l 6      <> s <> l 7      <> s <> l 8      <> s,
+     a   <> s <> p        <> s <> p        <> s <> p        <> s <> p        <> s <> p        <> s <> p        <> s <> p        <> s <> p        <> s,
      
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
+     a   <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m,
+     i 8 <> m <> e (1, 8) <> m <> e (2, 8) <> m <> e (3, 8) <> m <> e (4, 8) <> m <> e (5, 8) <> m <> e (6, 8) <> m <> e (7, 8) <> m <> e (8, 8) <> m,
+     a   <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m,
 
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m <> t <> m,
-     i <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m <> e <> m,
-     a <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m <> b <> m,
-     
-     a <> s <> t <> s <> t <> s <> t <> s <> t <> s <> t <> s <> t <> s <> t <> s,
-     a <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s <> l <> s]
-    where e = " P " -- piece entry
-          t = string $ map (const "‾") e -- top line => dependent on entry size
-          b = string $ map (const " ") e -- bottom pad => dependent on entry size
-          i = " 1  " -- index entry
-          a = string $ map (const " ") i -- index pad => dependent on index entry size
-          m = "|" -- delimiter entry
-          s = string $ map (const " ") m -- stub pad => dependent on delimiter entry size
-          l = " A " -- label entry => should actually pe put in the moddile of a list, whose size is dependent on `entry`
-          p = string $ map (const " ") l -- label pad => dependent on the label size
+     a   <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m,
+     i 7 <> m <> e (1, 7) <> m <> e (2, 7) <> m <> e (3, 7) <> m <> e (4, 7) <> m <> e (5, 7) <> m <> e (6, 7) <> m <> e (7, 7) <> m <> e (8, 7) <> m,
+     a   <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m,
+
+     a   <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m,
+     i 6 <> m <> e (1, 6) <> m <> e (2, 6) <> m <> e (3, 6) <> m <> e (4, 6) <> m <> e (5, 6) <> m <> e (6, 6) <> m <> e (7, 6) <> m <> e (8, 6) <> m,
+     a   <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m,
+
+     a   <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m <> t        <> m,
+     i 5 <> m <> e (1, 5) <> m <> e (2, 5) <> m <> e (3, 5) <> m <> e (4, 5) <> m <> e (5, 5) <> m <> e (6, 5) <> m <> e (7, 5) <> m <> e (8, 5) <> m,
+     a   <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m <> b        <> m,
+
+     a   <> s <> t        <> s <> t        <> s <> t        <> s <> t        <> s <> t        <> s <> t        <> s <> t        <> s <> t        <> s,
+     a   <> s <> l 1      <> s <> l 2      <> s <> l 3      <> s <> l 4      <> s <> l 5      <> s <> l 6      <> s <> l 7      <> s <> l 8      <> s]
+    where le = maybe 0 (length . showPiece mode . figure)
+             $ maxBy (length . showPiece mode . figure) 
+             $ coordinates board                                         -- largest string entry
+          ll = length $ showLabel mode 1                                 -- largest string label
+          li = length $ showIndex colour 1                               -- largest string index
+          m = "|"                                                        -- delimiter entry
+          e s = showPosition mode board (colour, s)                      -- lookup entry
+          l  = centerOn le $ showLabel mode                              -- lookup label => center and pad it based on the largest string entry
+          i  = showIndex colour                                          -- lookup index
+          t  = stringOf "‾" le                                           -- top line => dependent on largest string entry
+          b  = stringOf " " le                                           -- bottom pad => dependent on largest string entry
+          a  = stringOf " " li                                           -- index pad => dependent on largest string index
+          p = stringOf " "  ll                                           -- label pad => dependent on the largest string label
+          s = stringOf " " $ length m                                    -- stub pad => dependent on string delimiter size
+          centerOn max l = l

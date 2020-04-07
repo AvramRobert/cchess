@@ -10,7 +10,7 @@ import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-type Coord       = (Integer, Integer)
+type Coord       = (Int, Int)
 data Colour      = B | W deriving (Eq, Show, Ord)
 data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square      = (Colour, Coord)

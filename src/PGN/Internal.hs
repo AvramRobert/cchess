@@ -119,7 +119,7 @@ delimitation = void $ many (try newline <|> try spaceChar)
 index :: Parser String
 index = M.someTill numberChar (char '.')
 
-file :: Parser Integer
+file :: Parser Int
 file = M.choice [(char 'a' $> 1),
                  (char 'b' $> 2), 
                  (char 'c' $> 3),
@@ -135,8 +135,8 @@ promotions (c, s) = M.choice [(char 'Q' $> (Chess.Pos Chess.Queen c s)),
                               (char 'N' $> (Chess.Pos Chess.Knight c s)),
                               (char 'B' $> (Chess.Pos Chess.Bishop c s))]
 
-rank :: Parser Integer
-rank = fmap (toInteger . digitToInt) $ numberChar
+rank :: Parser Int
+rank = fmap digitToInt $ numberChar
 
 check :: Parser ()
 check = void $ M.optional $ M.single '+'
@@ -153,10 +153,10 @@ hasCoord coord = (== coord) . Chess.coord . Chess.position
 hasPiece :: Chess.Piece -> Chess.Move -> Bool
 hasPiece piece = (== piece) . Chess.piece . Chess.position
 
-hasX :: Integer -> Chess.Move -> Bool
+hasX :: Int -> Chess.Move -> Bool
 hasX x = (== x) . fst . Chess.coord . Chess.position
 
-hasY :: Integer -> Chess.Move -> Bool
+hasY :: Int -> Chess.Move -> Bool
 hasY y = (== y) . snd . Chess.coord . Chess.position
 
 advancesTo :: Chess.Coord -> Chess.Move -> Bool
