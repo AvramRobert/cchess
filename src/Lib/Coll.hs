@@ -1,4 +1,4 @@
-module Lib.Coll (first, spread, every, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf, chunksOf, maxBy, stringOf) where
+module Lib.Coll (first, spread, every, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf, chunksOf, maxBy) where
 
 import Debug.Trace (trace)
 import Control.Monad (foldM)
@@ -37,11 +37,8 @@ zipped f g a = zip (f a) (g a)
 maxBy :: (Ord c, Foldable f) => (b -> c) -> f b -> Maybe b
 maxBy f = foldr compare Nothing
     where compare b Nothing                = Just b
-          compare b (Just b') | f b > f b' = Just b'
+          compare b (Just b') | f b > f b' = Just b
           compare b b'                     = b' 
-
-stringOf :: Show a => a -> Int -> String
-stringOf a i = foldr (<>) "" $ take i $ repeat $ show a 
 
 -- This function expects the list to be reversed, i.e. the last element to be the head
 keepLast :: [a] -> [a]
