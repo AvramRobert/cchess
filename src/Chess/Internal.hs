@@ -25,7 +25,7 @@ data Move = Capture   Position Position       |
             Promote   Position Piece Position | 
             Castle   (Position, Coord) 
                      (Position, Coord)
-            deriving (Eq, Show, Ord) 
+            deriving (Eq, Ord) 
 
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
@@ -46,37 +46,10 @@ data Board = Board { player      :: Colour,
                      blackCastle :: Castles,
                      whiteCastle :: Castles}
 
-instance Show Board where
-      show board = unlines [whiteView $ coordinates board, statistics board] -- make this based on the player? 
-
-instance Show Position where
-      show (Pos Pawn W xy)   = "Pawn   W " <> show xy
-      show (Pos Pawn B xy)   = "Pawn   B " <> show xy
-      show (Pos Rook W xy)   = "Rook   W " <> show xy
-      show (Pos Rook B xy)   = "Rook   B " <> show xy
-      show (Pos Bishop W xy) = "Bishop W " <> show xy
-      show (Pos Bishop B xy) = "Bishop B " <> show xy
-      show (Pos Knight W xy) = "Knight W " <> show xy
-      show (Pos Knight B xy) = "Knight B " <> show xy 
-      show (Pos King W xy)   = "King   W " <> show xy
-      show (Pos King B xy)   = "King   B " <> show xy
-      show (Pos Queen W xy)  = "Queen  W " <> show xy
-      show (Pos Queen B xy)  = "Queen  B " <> show xy
-      show (Pos Empty _ xy)  = "-        " <> show xy
-
 showPieces :: Board -> IO ()
 showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
       where fanOut (c, pmap) = [show c <> " :: "] <> (map row $ M.toList pmap)
             row (p, cs) = "     " <> (show p) <> " - " <> (show cs)
-
-makeRow :: Show a => [a] -> String
-makeRow = foldl (\l c -> l <> (show c) <> " | ") "| "
-
-blackView :: Coordinates -> String
-blackView = unlines . map makeRow . chunksOf 8 . sortOn (swap . coord) . M.elems
-
-whiteView :: Coordinates -> String
-whiteView = unlines . map makeRow . reverse . chunksOf 8 . sortOn (swap . coord) . M.elems
 
 statistics :: Board -> String
 statistics board = unlines ["Player:     " <> show (player board),

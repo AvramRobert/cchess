@@ -1,8 +1,9 @@
 module Chess.Display where
 
-import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty), 
+import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
+                       Move (Capture, Advance, Enpassant, Promote, Castle),  
                        Colour(W, B), Position (Pos), 
-                       Square, Figure, Coord, Board, lookAt, figure, coordinates)
+                       Square, Figure, Coord, Board, player, lookAt, figure, coordinates)
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
 
@@ -44,19 +45,19 @@ debugLabel :: Int -> String
 debugLabel = show
 
 debugFigure :: Figure -> String
-debugFigure (Pawn, W)   = "Pawn (W)"
-debugFigure (Pawn, B)   = "Pawn (B)"
-debugFigure (Bishop, W) = "Bishop (W)"
-debugFigure (Bishop, B) = "Bishop (B)"
-debugFigure (King, W)   = "King (W)"
-debugFigure (King, B)   = "King (B)"
-debugFigure (Rook, W)   = "Rook (W)"
-debugFigure (Rook, B)   = "Rook (B)"
-debugFigure (Knight, W) = "Knight (W)"
-debugFigure (Knight, B) = "Knight (B)"
-debugFigure (Queen, W)  = "Queen (W)"
-debugFigure (Queen, B)  = "Queen (B)"
-debugFigure (Empty, _)  = "Empty (-)" 
+debugFigure (Pawn, W)   = "P (W)"
+debugFigure (Pawn, B)   = "P (B)"
+debugFigure (Bishop, W) = "B (W)"
+debugFigure (Bishop, B) = "B (B)"
+debugFigure (King, W)   = "K (W)"
+debugFigure (King, B)   = "K (B)"
+debugFigure (Rook, W)   = "R (W)"
+debugFigure (Rook, B)   = "R (B)"
+debugFigure (Knight, W) = "N (W)"
+debugFigure (Knight, B) = "N (B)"
+debugFigure (Queen, W)  = "Q (W)"
+debugFigure (Queen, B)  = "Q (B)"
+debugFigure (Empty, _)  = "E (-)" 
 
 showLabel :: DisplayMode -> Int -> String
 showLabel mode x = case mode of GameMode  -> gameLabel x
@@ -71,6 +72,21 @@ showPiece DebugMode = debugFigure
 
 showPosition :: DisplayMode -> Board -> Square -> String
 showPosition mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
+
+padBy :: Int -> String -> String
+padBy i s = halves <> s <> halves
+    where half   = round $ (fromIntegral i / 2)
+          halves = manyOf " " half
+
+centerOn :: Int -> String -> String
+centerOn width s = if (even delta) 
+                    then halves <> s <> halves
+                    else halves <> s <> thirds
+    where delta  = width - (length s)
+          half   = round $ (fromIntegral delta / 2)
+          third  = delta - half
+          halves = manyOf " " half
+          thirds = manyOf " " third
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 
@@ -129,17 +145,16 @@ template mode board colour = unlines $
           pad   = padBy 4
           pos s = showPosition mode board (colour, s)
 
-padBy :: Int -> String -> String
-padBy i s = halves <> s <> halves
-    where half   = round $ (fromIntegral i / 2)
-          halves = manyOf " " half
+instance Show Board where
+      show board = template DebugMode board (player board)
 
-centerOn :: Int -> String -> String
-centerOn width s = if (even delta) 
-                    then halves <> s <> halves
-                    else halves <> s <> thirds
-    where delta  = width - (length s)
-          half   = round $ (fromIntegral delta / 2)
-          third  = delta - half
-          halves = manyOf " " half
-          thirds = manyOf " " third
+instance Show Position where
+      show (Pos p c s) = showPiece DebugMode (p, c) <> show s
+
+instance Show Move where
+      show (Capture pos s)                      = show pos <> " x " <> show s
+      show (Advance pos s)                      = show pos <> " -> " <> show s
+      show (Enpassant pos e enm)                = "(" <> show pos <> " -> "<> show e <> ")" <> " x " <> show enm
+      show (Promote pos np (Pos Empty _ e))     = "(" <> show pos <> " -> " <> show e <> ")" <> " = " <> show np
+      show (Promote pos np (Pos p c s))         = "(" <> show pos <> " x " <> (show (Pos p c s)) <> ")" <> " = " <> show np
+      show (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "O-O" else "O-O-O"

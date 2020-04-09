@@ -16,6 +16,7 @@ import Data.Functor (($>))
 import Data.List (find)
 import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
+import Chess.Display
 
 data ChessResult = WhiteWin | BlackWin | Draw deriving (Show)
 
