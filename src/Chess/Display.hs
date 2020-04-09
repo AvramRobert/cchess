@@ -57,7 +57,7 @@ debugFigure (Knight, W) = "N (W)"
 debugFigure (Knight, B) = "N (B)"
 debugFigure (Queen, W)  = "Q (W)"
 debugFigure (Queen, B)  = "Q (B)"
-debugFigure (Empty, _)  = "E (-)" 
+debugFigure (Empty, _)  = "-" 
 
 showLabel :: DisplayMode -> Int -> String
 showLabel mode x = case mode of GameMode  -> gameLabel x
