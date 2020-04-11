@@ -1,39 +1,18 @@
-module PGN.Internal where
+module Parser.Internal where
 
 import qualified Chess.Internal as Chess
-import qualified Text.Megaparsec as M
 import qualified Data.Set as S
-import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Lazy.Char8 as C
+import qualified Text.Megaparsec as M
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
-import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void)
 import Data.Functor (($>))
 import Data.List (find)
-import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
 import Chess.Display
-
-data ChessResult = WhiteWin | BlackWin | Draw deriving (Show, Ord, Eq)
-
-data Game = Game {
-                  event       :: String, 
-                  site        :: String, 
-                  date        :: String,
-                  gameRound   :: String,
-                  whitePlayer :: String,
-                  blackPlayer :: String,
-                  endResult   :: ChessResult,
-                  -- These upper 7 are mandatory, the lower 4 aren't
-                  whiteElo    :: Maybe Int,
-                  blackElo    :: Maybe Int, 
-                  eco         :: Maybe String,
-                  eventDate   :: Maybe String,
-                  moves       :: [Chess.Move] } deriving (Show, Eq, Ord)
 
 data ChessError = CaptureError Chess.Coord Chess.Piece |
                   AdvanceError Chess.Coord Chess.Piece |
@@ -54,65 +33,9 @@ instance M.ShowErrorComponent ChessError where
 
 type Parser a = Parsec ChessError String a
 
-data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, Eq)
-
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
 failWith error (Just a)  = return a
-
-merge :: [ByteString] -> String
-merge = foldl combine ""
-    where combine s b = s <> C.unpack b
-
-extractGame :: [ByteString] -> (String, [ByteString])
-extractGame lines = (merge (header <> gameLines), remaining)
-        where header    = takeWhile headline lines
-              headless  = dropWhile headline lines
-              gameLines = takeWhile (not . headline) headless
-              remaining = dropWhile (not . headline) headless
-              headline string = (not $ C.null string) && C.head string == '['
-
--- apparently there's no sane way to consume any arbitrary ascii characters between two quotes, without forcing the user to lookAhead for the quote
--- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
--- so it has to be this: between (char '"') (char '"') (manyTill asciiChar (lookAhead (char '"')))
-headline :: String -> Parser a -> Parser a
-headline header p = do
-        _ <- delimitation
-        _ <- char '['
-        _ <- string header
-        _ <- delimitation
-        a <- M.between (char '"') (char '"') p
-        _ <- char ']'
-        _ <- delimitation
-        return a
-
-headerParser :: Parser Game
-headerParser = do
-    event   <- headline "Event" characters
-    site    <- headline "Site" characters
-    date    <- headline "Date" characters
-    ground  <- headline "Round" characters
-    whitep  <- headline "White" characters
-    blackp  <- headline "Black" characters
-    outcome <- headline "Result" result
-    whitee  <- headline "WhiteElo" numbers
-    blacke  <- headline "BlackElo" numbers
-    eco     <- M.optional $ headline "ECO" characters
-    eventd  <- M.optional $ headline "EventDate" characters
-    return $ Game  {event       = event,
-                    site        = site,
-                    date        = date,
-                    gameRound   = ground,
-                    whitePlayer = whitep,
-                    blackPlayer = blackp,
-                    endResult   = outcome,
-                    whiteElo    = whitee,
-                    blackElo    = blacke,
-                    eco         = eco,
-                    eventDate   = eventd,
-                    moves       = []}
-    where characters          = M.manyTill asciiChar (M.lookAhead $ char '"')
-          numbers             = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
 delimitation :: Parser ()
 delimitation = void $ many (try newline <|> try spaceChar)
@@ -357,56 +280,6 @@ applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case (Chess.perform board move) of (Right board') -> return board'
                                                         (Left outcome) -> failWith (GameError outcome) Nothing
 
--- if no mate occurs, but the game stops, then depending on the result, the outcome may be a forfeit, draw, stalemate or checkmate
--- this however should be part of the in-game parser
-result :: Parser ChessResult
-result = M.choice [(try $ string "1-0") $> WhiteWin,
-                   (try $ string "0-1") $> BlackWin,
-                   (string "1/2-1/2")   $> Draw]
-
-noMove :: Chess.Board -> Parser (Chess.Board, Turn)
-noMove board = result $> (board, End)
-
-oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
-oneMove board = do
-    _ <- delimitation
-    _ <- index
-    _ <- delimitation
-    m <- move board
-    b <- applied m board
-    _ <- check
-    _ <- mate
-    _ <- delimitation
-    _ <- result
-    return (b, One m)
-
-twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
-twoMove board = do
-    _  <- delimitation
-    _  <- index
-    _  <- delimitation
-    m  <- move board
-    b  <- applied m board
-    _  <- check
-    _  <- mate
-    _  <- delimitation
-    m' <- move b
-    b' <- applied m' b
-    _  <- check
-    _  <- mate
-    _  <- delimitation
-    return (b', Two (m, m'))
-
-turn :: Chess.Board -> Parser (Chess.Board, Turn)
-turn board = (try $ noMove board) <|> (try $ oneMove board) <|> (try $ twoMove board)
-
-turnMoveParser :: Parser [Chess.Move]
-turnMoveParser = turns [] Chess.board
-        where turns moves board = turn board >>= (continue moves) 
-              continue moves (board, Two (m, m')) = turns (m' : m : moves) board
-              continue moves (board, One m) = continue (m : moves) (board, End)
-              continue moves (board, End) = return $ reverse moves 
-
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
@@ -414,57 +287,3 @@ moveParser board = do
     _ <- delimitation
     _ <- applied m board
     return m
-
-gameParser :: Parser Game
-gameParser = do
-        _      <- delimitation 
-        meta   <- headerParser
-        _      <- delimitation
-        gmoves <- turnMoveParser
-        return meta { moves = gmoves }
-
-splitGames :: ByteString -> [String]
-splitGames = accumulate . C.lines
-    where accumulate [] = []
-          accumulate ls = let (game, remaining) = extractGame ls
-                          in game : (accumulate remaining)
-
-fromPGNFile' :: String -> IO [String]
-fromPGNFile' = fmap splitGames . B.readFile
-
-fromString' :: String -> [String]
-fromString' = splitGames . C.pack
-
-fromPGNFile :: String -> IO (Either ParseError [Game])
-fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFile'
-
-fromString :: String -> Either ParseError [Game]
-fromString = sequence . fmap (run gameParser) . splitGames . C.pack
-
-parseGame :: String -> Either ParseError Game
-parseGame = run gameParser
-
-parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
-parseMove move board = run (moveParser board) move 
-
-parseCompute :: String -> Either ParseError Chess.Board
-parseCompute game = parseGame game >>= (handle . runGame)
-    where handle (Right board)  = Right board 
-          handle (Left outcome) = run (failWith (GameError outcome) Nothing) ""
-
-runGame :: Game -> Either Chess.Outcome Chess.Board
-runGame = foldl proceed (Right Chess.board) . moves
-    where proceed (Right board) = Chess.perform board
-          proceed a             = const a
-
-run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
-run p = runParser p ""
-
---- DEBUG ---
-
-printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
-printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle
-printResult (Right result) = putStrLn $ show result
-
-runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
-runPrint p = printResult . run p

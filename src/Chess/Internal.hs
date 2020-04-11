@@ -44,7 +44,8 @@ data Board = Board { player      :: Colour,
                      coordinates :: Coordinates,
                      pieces      :: Pieces, 
                      blackCastle :: Castles,
-                     whiteCastle :: Castles}
+                     whiteCastle :: Castles }
+             deriving (Eq, Ord)
 
 showPieces :: Board -> IO ()
 showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces

@@ -145,6 +145,12 @@ template mode board colour = unlines $
           pad   = padBy 4
           pos s = showPosition mode board (colour, s)
 
+gameBoard :: Board -> String
+gameBoard board = template GameMode board (player board)
+
+debugBoard :: Board -> String
+debugBoard board = template DebugMode board W
+
 instance Show Board where
       show board = template DebugMode board (player board)
 
