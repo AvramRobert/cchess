@@ -48,12 +48,12 @@ newGameParser :: GameParser GameState
 newGameParser = MC.string' "new game" $> New
 
 showTurn :: Game -> String
-showTurn game = "It's " <> (show $ C.player $ board game) <>"'s turn: "
+showTurn game = "It's " <> (show $ C.player $ board game) <>"'s turn: " -- Chess.Colou needs a DebugMode/GameMode show of it's own
 
 showBoard :: Game -> String
 showBoard = D.gameBoard . board
 
--- My game is all happening at the text level
+-- My game is happening in totality at the text level
 -- I could define a typeclass that shows me how to textualise every parser outcome for the game
 start :: GameState -> IO ()
 start New                    = start (Current $ Game { board = C.board, white = "white", black = "black"} )
@@ -62,7 +62,7 @@ start state @ (Current game) = do
     _     <- putStrLn $ showBoard game
     _     <- putStrLn $ showTurn game
     input <- getLine
-    case (P.run (machine state) input) of
+    case (P.run (machine state) input) of -- interestigly, if nothing matches in the machine parser alternatives, it takes the last parser and assumes it's correct
         (Right state') -> start state'
         (Left e)       -> do putStrLn "You may want to try that again"
                              start state
