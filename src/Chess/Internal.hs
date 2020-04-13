@@ -11,7 +11,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 type Coord       = (Int, Int)
-data Colour      = B | W deriving (Eq, Show, Ord)
+data Colour      = B | W deriving (Eq, Ord)
 data Piece       = Pawn | Knight | Bishop | Rook | Queen | King | Empty deriving (Eq, Show, Ord)
 type Square      = (Colour, Coord)
 type Figure      = (Piece, Colour)
@@ -34,7 +34,7 @@ data Outcome = Illegal        |
                Draw           |
                Stalemate      |
                Forfeit Colour | 
-               Checkmate Colour deriving (Show, Eq, Ord)
+               Checkmate Colour deriving (Eq, Ord)
 
 data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 
@@ -46,18 +46,6 @@ data Board = Board { player      :: Colour,
                      blackCastle :: Castles,
                      whiteCastle :: Castles }
              deriving (Eq, Ord)
-
-showPieces :: Board -> IO ()
-showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
-      where fanOut (c, pmap) = [show c <> " :: "] <> (map row $ M.toList pmap)
-            row (p, cs) = "     " <> (show p) <> " - " <> (show cs)
-
-statistics :: Board -> String
-statistics board = unlines ["Player:     " <> show (player board),
-                            "In-Check:   " <> show (check board),
-                            "Can castle: " <> show (pickCastle $ player board)]
-      where pickCastle B = blackCastle board
-            pickCastle W = whiteCastle board
 
 develop :: Dir -> Square -> Square
 develop dir (colour, (x, y)) = (colour, towards dir colour)

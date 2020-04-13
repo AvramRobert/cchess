@@ -7,6 +7,9 @@ import qualified Text.Megaparsec.Char as MC
 import qualified PGN.Internal as P
 import Data.Functor (($>))
 
+data Interactions a = PrintLine String      |
+                      ReadLine (P.Parser a) 
+
 type GameParser a = M.Parsec GameError String a
 
 data Game = Game { board :: C.Board,
@@ -17,7 +20,7 @@ data Game = Game { board :: C.Board,
 data GameError = UnknownCommand String 
                  deriving (Show, Eq, Ord)
 
-data GameState = New                      | 
+data GameState = New                 | 
                  Current Game             |
                  Move Game C.Move         | 
                  GiveUp Game C.Outcome    |
@@ -30,6 +33,7 @@ instance M.ShowErrorComponent GameError where
 createGame :: P.Parser GameState
 createGame = return $ Current $ Game { board = C.board, white = "player1", black = "player2" }
 
+-- the move parser is case-sensitive. should it be?
 inputMove :: Game -> P.Parser GameState 
 inputMove game = (P.moveParser $ board game) >>= (handle . perform)
     where perform          = C.performEval (board game)
@@ -37,7 +41,9 @@ inputMove game = (P.moveParser $ board game) >>= (handle . perform)
           handle (Left  o) = P.failWith (P.GameError o) Nothing 
 
 giveUp :: Game -> P.Parser GameState
-giveUp game = return $ GiveUp game $ C.Forfeit loser
+giveUp game = M.choice [M.try $ MC.string' "give up", 
+                        M.try $ MC.string' "forfeit", 
+                        M.try $ MC.string' "stop"] $> (GiveUp game $ C.Forfeit loser) 
     where loser = C.player $ board game
 
 machine :: GameState -> P.Parser GameState
@@ -53,6 +59,22 @@ showTurn game = "It's " <> (show $ C.player $ board game) <>"'s turn: " -- Chess
 showBoard :: Game -> String
 showBoard = D.gameBoard . board
 
+anyString :: P.Parser String
+anyString = M.many MC.asciiChar
+
+matches :: (GameState, [Interactions String])
+matches = (New, [PrintLine "New Game!", 
+                 PrintLine "Please input name for white:", 
+                 ReadLine anyString,
+                 PrintLine "Please input name for black:",
+                 ReadLine anyString])
+
+-- the pattern that i would like is to have every individual game state as an ADT and every one of these associated with a function that 
+-- can consume it's input and propell the game to the next state
+-- this preferably being another member of the same ADT
+
+-- better still, every pairing should have an additional association with 
+
 -- My game is happening in totality at the text level
 -- I could define a typeclass that shows me how to textualise every parser outcome for the game
 start :: GameState -> IO ()
@@ -62,7 +84,7 @@ start state @ (Current game) = do
     _     <- putStrLn $ showBoard game
     _     <- putStrLn $ showTurn game
     input <- getLine
-    case (P.run (machine state) input) of -- interestigly, if nothing matches in the machine parser alternatives, it takes the last parser and assumes it's correct
+    case (P.run (machine state) input) of
         (Right state') -> start state'
         (Left e)       -> do putStrLn "You may want to try that again"
                              start state

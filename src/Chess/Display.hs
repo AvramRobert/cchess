@@ -1,9 +1,10 @@
 module Chess.Display where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
-                       Move (Capture, Advance, Enpassant, Promote, Castle),  
+                       Move (Capture, Advance, Enpassant, Promote, Castle),
+                       Outcome (Illegal, Draw, Stalemate, Forfeit, Checkmate),  
                        Colour(W, B), Position (Pos), 
-                       Square, Figure, Coord, Board, player, lookAt, figure, coordinates)
+                       Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other)
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
 
@@ -70,8 +71,38 @@ showPiece :: DisplayMode -> Figure -> String
 showPiece GameMode  = gameFigure
 showPiece DebugMode = debugFigure
 
+gameColour :: Colour -> String
+gameColour W = "White"
+gameColour B = "Black"
+
+debugColour :: Colour -> String
+debugColour W = "W"
+debugColour B = "B"
+
+showColour :: DisplayMode -> Colour -> String
+showColour GameMode = gameColour
+showColour DebugMode = debugColour
+
 showPosition :: DisplayMode -> Board -> Square -> String
 showPosition mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
+
+gameOutcome :: Outcome -> String
+gameOutcome Illegal       = "Illegal move"
+gameOutcome Draw          = "Draw"
+gameOutcome Stalemate     = "Stalemate"
+gameOutcome (Forfeit c)   = (gameColour c) <> "has forfeit. " <> (gameColour $ other c) <> " wins." 
+gameOutcome (Checkmate c) = "Checkmate by " <> (gameColour c) 
+
+debugOutcome :: Outcome -> String
+debugOutcome Illegal      = "Illegal"
+debugOutcome Draw          = "Draw"
+debugOutcome Stalemate     = "Stalemate"
+debugOutcome (Forfeit c)   = "Forfeit: " <> (debugColour c)
+debugOutcome (Checkmate c) = "Checkmate: " <> (debugColour c)
+
+showOutcome :: DisplayMode -> Outcome -> String
+showOutcome GameMode  = gameOutcome
+showOutcome DebugMode = debugOutcome
 
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
@@ -145,6 +176,20 @@ template mode board colour = unlines $
           pad   = padBy 4
           pos s = showPosition mode board (colour, s)
 
+
+-- FIXME: Redo these
+-- showPieces :: Board -> IO ()
+-- showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
+--       where fanOut (c, pmap) = [show c <> " :: "] <> (map row $ M.toList pmap)
+--             row (p, cs) = "     " <> (show p) <> " - " <> (show cs)
+
+-- statistics :: Board -> String
+-- statistics board = unlines ["Player:     " <> show (player board),
+--                             "In-Check:   " <> show (check board),
+--                             "Can castle: " <> show (pickCastle $ player board)]
+--       where pickCastle B = blackCastle board
+--             pickCastle W = whiteCastle board
+
 gameBoard :: Board -> String
 gameBoard board = template GameMode board (player board)
 
@@ -164,3 +209,9 @@ instance Show Move where
       show (Promote pos np (Pos Empty _ e))     = "(" <> show pos <> " -> " <> show e <> ")" <> " = " <> show np
       show (Promote pos np (Pos p c s))         = "(" <> show pos <> " x " <> (show (Pos p c s)) <> ")" <> " = " <> show np
       show (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "O-O" else "O-O-O"
+
+instance Show Colour where
+      show = showColour DebugMode
+
+instance Show Outcome where
+      show = showOutcome DebugMode
