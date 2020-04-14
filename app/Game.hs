@@ -1,5 +1,6 @@
 module Game (runGame) where
 
+import Control.Applicative ((<|>))
 import qualified Chess.Display as D
 import qualified Chess.Internal as C
 import qualified Text.Megaparsec as M
@@ -7,10 +8,9 @@ import qualified Text.Megaparsec.Char as MC
 import qualified PGN.Internal as P
 import Data.Functor (($>))
 
-data Interactions a = PrintLine String      |
-                      ReadLine (P.Parser a) 
-
 type GameParser a = M.Parsec GameError String a
+
+type Instruction a = M.ParsecT GameError String IO a
 
 data Game = Game { board :: C.Board,
                    white :: String,
@@ -20,79 +20,77 @@ data Game = Game { board :: C.Board,
 data GameError = UnknownCommand String 
                  deriving (Show, Eq, Ord)
 
-data GameState = New                 | 
-                 Current Game             |
-                 Move Game C.Move         | 
-                 GiveUp Game C.Outcome    |
-                 OfferDraw Game C.Outcome
+data GameState = Play          |
+                 Move C.Move   |
+                 End C.Outcome | 
+                 OfferDraw     |
+                 Resign        |
+                 Exit
                  deriving (Ord, Show, Eq)
 
 instance M.ShowErrorComponent GameError where
     showErrorComponent (UnknownCommand input) = "Command of: " <> input <> " does not exist"
 
-createGame :: P.Parser GameState
-createGame = return $ Current $ Game { board = C.board, white = "player1", black = "player2" }
+newP :: P.Parser GameState
+newP = MC.string' "new game" $> Play
 
--- the move parser is case-sensitive. should it be?
-inputMove :: Game -> P.Parser GameState 
-inputMove game = (P.moveParser $ board game) >>= (handle . perform)
-    where perform          = C.performEval (board game)
-          handle (Right b) = return $ Current $ game { board = b }
-          handle (Left  o) = P.failWith (P.GameError o) Nothing 
+resignP :: P.Parser GameState
+resignP = M.choice [MC.string' "resign", MC.string' "exit"] $> Resign
 
-giveUp :: Game -> P.Parser GameState
-giveUp game = M.choice [M.try $ MC.string' "give up", 
-                        M.try $ MC.string' "forfeit", 
-                        M.try $ MC.string' "stop"] $> (GiveUp game $ C.Forfeit loser) 
-    where loser = C.player $ board game
+exitP :: P.Parser GameState
+exitP = M.choice [MC.string' "exit", MC.string' "quit"] $> Exit
 
-machine :: GameState -> P.Parser GameState
-machine New            = createGame 
-machine (Current game) = M.choice [M.try $ inputMove game, M.try $ giveUp game]
+-- My PGN parser for pieces is case sensitive. It shouldn't be 
+moveP :: Game -> P.Parser GameState 
+moveP game = fmap Move $ P.moveParser (board game)
 
-newGameParser :: GameParser GameState
-newGameParser = MC.string' "new game" $> New
-
-showTurn :: Game -> String
-showTurn game = "It's " <> (show $ C.player $ board game) <>"'s turn: " -- Chess.Colou needs a DebugMode/GameMode show of it's own
+transitions :: Game -> GameState -> P.Parser GameState
+transitions game Play     = moveP game <|> resignP
+transitions _ _           = (M.many MC.asciiChar) $> Play
 
 showBoard :: Game -> String
 showBoard = D.gameBoard . board
 
-anyString :: P.Parser String
-anyString = M.many MC.asciiChar
+prints :: GameState -> Game -> String
+prints Play game = unlines $ [showBoard game, "Input a move"]
+prints Exit game = "You son of a"
 
-matches :: (GameState, [Interactions String])
-matches = (New, [PrintLine "New Game!", 
-                 PrintLine "Please input name for white:", 
-                 ReadLine anyString,
-                 PrintLine "Please input name for black:",
-                 ReadLine anyString])
+menuP :: P.Parser Game
+menuP = MC.string' "new game" $> (Game { board = C.board, white = "Donney", black = "Larry" })
 
--- the pattern that i would like is to have every individual game state as an ADT and every one of these associated with a function that 
--- can consume it's input and propell the game to the next state
--- this preferably being another member of the same ADT
+-- non-exhaustive
+makeMove :: Game -> C.Move -> (GameState, Game)
+makeMove game move = case (C.performEval (board game) move) of
+    (Left (C.Checkmate x)) -> (End $ C.Checkmate x, game) -- this board doesn't contain the checkmating move
+    (Left (C.Stalemate))   -> (End C.Stalemate, game)
+    (Right board)          -> (Play, game { board = board })
 
--- better still, every pairing should have an additional association with 
+recurse :: (GameState, Game) -> IO ()
+recurse (state, game) = run state game
 
--- My game is happening in totality at the text level
--- I could define a typeclass that shows me how to textualise every parser outcome for the game
-start :: GameState -> IO ()
-start New                    = start (Current $ Game { board = C.board, white = "white", black = "black"} )
-start (GiveUp game outcome)  = putStrLn $ show outcome
-start state @ (Current game) = do
-    _     <- putStrLn $ showBoard game
-    _     <- putStrLn $ showTurn game
-    input <- getLine
-    case (P.run (machine state) input) of
-        (Right state') -> start state'
-        (Left e)       -> do putStrLn "You may want to try that again"
-                             start state
+perform :: GameState -> Game -> IO ()
+perform (Move m) game = recurse $ makeMove game m
+perfrom (Resign) game = return ()
 
+run :: GameState -> Game -> IO ()
+run state game = do
+    _      <- putStrLn $ prints state game
+    input  <- getLine
+    let parser = transitions game state
+    case (P.run parser input) of (Right result) -> perform result game
+                                 (Left err)     -> putStrLn "NOPE" 
+
+menu = unlines ["Welcome to cchess!",
+                "",
+                "What do you want to do?",
+                "- New Game", 
+                "- Exit"]
+
+-- 'runGame` and `run`, in this form, can actually be merged, can't they?
+-- If I make the game part of the states that need it, I can merge them
 runGame :: IO ()
 runGame = do
-    _     <- putStrLn "What do you want to do?"
-    input <- getLine
-    case (P.run newGameParser input) of
-        (Right state) -> start state
-        (Left err)    -> return () 
+    _ <- putStrLn menu
+    i <- getLine
+    case (P.run menuP i) of (Right game) -> run Play game
+                            (Left err)   -> putStrLn "Shit"
