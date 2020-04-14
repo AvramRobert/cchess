@@ -5,10 +5,11 @@ import qualified Text.Megaparsec as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
+import qualified Data.List.NonEmpty as NL
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
-import Text.Megaparsec.Char (char, string, spaceChar, numberChar, asciiChar, newline)
+import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar, asciiChar, newline)
 import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void)
@@ -59,6 +60,12 @@ data Turn = End | One Chess.Move | Two (Chess.Move, Chess.Move) deriving (Show, 
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
 failWith error (Just a)  = return a
+
+chessError :: ParseError -> Maybe ChessError
+chessError error = case (NL.head $ M.bundleErrors error) of
+        (M.FancyError _ errorSet) -> Just $ strip $ head $ S.toList errorSet
+        (_)                       -> Nothing
+    where strip (M.ErrorCustom e) = e
 
 merge :: [ByteString] -> String
 merge = foldl combine ""
@@ -131,10 +138,10 @@ file = M.choice [(char 'a' $> 1),
                  (char 'h' $> 8)]
 
 promotions :: Chess.Square -> Parser Chess.Position
-promotions (c, s) = M.choice [(char 'Q' $> (Chess.Pos Chess.Queen c s)),
-                              (char 'R' $> (Chess.Pos Chess.Rook c s)),
-                              (char 'N' $> (Chess.Pos Chess.Knight c s)),
-                              (char 'B' $> (Chess.Pos Chess.Bishop c s))]
+promotions (c, s) = M.choice [(char' 'Q' $> (Chess.Pos Chess.Queen c s)),
+                              (char' 'R' $> (Chess.Pos Chess.Rook c s)),
+                              (char' 'N' $> (Chess.Pos Chess.Knight c s)),
+                              (char' 'B' $> (Chess.Pos Chess.Bishop c s))]
 
 rank :: Parser Int
 rank = fmap digitToInt $ numberChar
@@ -326,23 +333,23 @@ pawn board = M.choice [try $ promotePawn colour moves,
                 
 
 rook :: Chess.Board -> Parser Chess.Move
-rook board = char 'R' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Rook, Chess.player board))
+rook board = char' 'R' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Rook, Chess.player board))
 
 bishop :: Chess.Board -> Parser Chess.Move
-bishop board = char 'B' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Bishop, Chess.player board))
+bishop board = char' 'B' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Bishop, Chess.player board))
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Knight, Chess.player board))
+knight board = char' 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Knight, Chess.player board))
 
 queen :: Chess.Board -> Parser Chess.Move
-queen board = char 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
+queen board = char' 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
 
 -- there's an ordering problem here due to `string`
 -- if `O-O` comes before `O-O-O`, `string` will catch a long castle with it
 king :: Chess.Board -> Parser Chess.Move
-king board = M.choice [try $ char 'K'       >> (captureOrAdvance moves),
-                       try $ string "O-O-O" >> (castle Chess.Long moves),
-                       try $ string "O-O"   >> (castle Chess.Short moves)]
+king board = M.choice [try $ char' 'K'       >> (captureOrAdvance moves),
+                       try $ string' "O-O-O" >> (castle Chess.Long moves),
+                       try $ string' "O-O"   >> (castle Chess.Short moves)]
     where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
 move :: Chess.Board -> Parser Chess.Move

@@ -20,19 +20,23 @@ data Game = Game { board :: C.Board,
 data GameError = UnknownCommand String 
                  deriving (Show, Eq, Ord)
 
-data GameState = Play          |
-                 Move C.Move   |
-                 End C.Outcome | 
-                 OfferDraw     |
-                 Resign        |
+data GameState = Menu               |
+                 Play Game          |
+                 Move Game C.Move   |
+                 End Game C.Outcome | 
+                 OfferDraw          |
+                 Resign             |
                  Exit
                  deriving (Ord, Show, Eq)
 
 instance M.ShowErrorComponent GameError where
     showErrorComponent (UnknownCommand input) = "Command of: " <> input <> " does not exist"
 
+showBoard :: Game -> String
+showBoard = D.gameBoard . board
+
 newP :: P.Parser GameState
-newP = MC.string' "new game" $> Play
+newP = MC.string' "new game" $> (Play $ Game { board = C.board, white = "Donney", black = "Larry" })
 
 resignP :: P.Parser GameState
 resignP = M.choice [MC.string' "resign", MC.string' "exit"] $> Resign
@@ -40,57 +44,53 @@ resignP = M.choice [MC.string' "resign", MC.string' "exit"] $> Resign
 exitP :: P.Parser GameState
 exitP = M.choice [MC.string' "exit", MC.string' "quit"] $> Exit
 
--- My PGN parser for pieces is case sensitive. It shouldn't be 
 moveP :: Game -> P.Parser GameState 
-moveP game = fmap Move $ P.moveParser (board game)
+moveP game = fmap (Move game) $ P.moveParser (board game)
 
-transitions :: Game -> GameState -> P.Parser GameState
-transitions game Play     = moveP game <|> resignP
-transitions _ _           = (M.many MC.asciiChar) $> Play
+menuT = unlines ["Welcome to cchess!",
+                 "",
+                 "What do you want to do?",
+                 "- New Game", 
+                 "- Exit"]
 
-showBoard :: Game -> String
-showBoard = D.gameBoard . board
+playT game = unlines [showBoard game, "Input a move"]
 
-prints :: GameState -> Game -> String
-prints Play game = unlines $ [showBoard game, "Input a move"]
-prints Exit game = "You son of a"
+exitT = "One day at a time."
 
-menuP :: P.Parser Game
-menuP = MC.string' "new game" $> (Game { board = C.board, white = "Donney", black = "Larry" })
+transitions :: GameState -> P.Parser GameState
+transitions Menu        = newP <|> exitP 
+transitions (Play game) = moveP game <|> resignP
+transitions _           = (M.many MC.asciiChar) $> Exit
+
+texts :: GameState -> String
+texts Menu        = menuT 
+texts Exit        = exitT
+texts (Play game) = playT game
 
 -- non-exhaustive
-makeMove :: Game -> C.Move -> (GameState, Game)
+makeMove :: Game -> C.Move -> GameState
 makeMove game move = case (C.performEval (board game) move) of
-    (Left (C.Checkmate x)) -> (End $ C.Checkmate x, game) -- this board doesn't contain the checkmating move
-    (Left (C.Stalemate))   -> (End C.Stalemate, game)
-    (Right board)          -> (Play, game { board = board })
+    (Left (C.Checkmate x)) -> End game $ C.Checkmate x -- this board doesn't contain the checkmating move
+    (Left (C.Stalemate))   -> End game C.Stalemate 
+    (Right board)          -> Play $ game { board = board }
 
-recurse :: (GameState, Game) -> IO ()
-recurse (state, game) = run state game
+perform :: GameState -> IO ()
+perform (Play game)   = run $ (Play game)
+perform (Move game m) = run $ makeMove game m
+perfrom (Resign)      = return ()
 
-perform :: GameState -> Game -> IO ()
-perform (Move m) game = recurse $ makeMove game m
-perfrom (Resign) game = return ()
+handle :: GameState -> P.ChessError -> IO ()
+handle state P.MissingMovesError = putStrLn "Unknown move. Try again" >> run state
 
-run :: GameState -> Game -> IO ()
-run state game = do
-    _      <- putStrLn $ prints state game
-    input  <- getLine
-    let parser = transitions game state
-    case (P.run parser input) of (Right result) -> perform result game
-                                 (Left err)     -> putStrLn "NOPE" 
+run :: GameState -> IO ()
+run state = do
+    let text   = texts state
+    let parser = transitions state
+    _          <- putStrLn text
+    input      <- getLine
+    case (P.run parser input) of 
+        (Right state') -> perform state'
+        (Left err)     -> maybe (putStrLn $ unlines ["Input error", M.errorBundlePretty err]) (handle state) $ P.chessError err
 
-menu = unlines ["Welcome to cchess!",
-                "",
-                "What do you want to do?",
-                "- New Game", 
-                "- Exit"]
-
--- 'runGame` and `run`, in this form, can actually be merged, can't they?
--- If I make the game part of the states that need it, I can merge them
 runGame :: IO ()
-runGame = do
-    _ <- putStrLn menu
-    i <- getLine
-    case (P.run menuP i) of (Right game) -> run Play game
-                            (Left err)   -> putStrLn "Shit"
+runGame = run Menu
