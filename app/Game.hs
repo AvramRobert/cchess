@@ -87,7 +87,7 @@ run state = do
     let text   = texts state
     let parser = transitions state
     _          <- putStrLn text
-    input      <- getLine
+    input      <- getLine -- these should be escaped
     case (P.run parser input) of 
         (Right state') -> perform state'
         (Left err)     -> maybe (putStrLn $ unlines ["Input error", M.errorBundlePretty err]) (handle state) $ P.chessError err
