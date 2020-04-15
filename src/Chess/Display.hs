@@ -2,7 +2,7 @@ module Chess.Display where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Outcome (Illegal, Draw, Stalemate, Forfeit, Checkmate),  
+                       Outcome (Illegal, Draw, Stalemate, Checkmate),  
                        Colour(W, B), Position (Pos), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other)
 import Data.Maybe (maybe)
@@ -87,18 +87,16 @@ showPosition :: DisplayMode -> Board -> Square -> String
 showPosition mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
 
 gameOutcome :: Outcome -> String
-gameOutcome Illegal       = "Illegal move"
-gameOutcome Draw          = "Draw"
-gameOutcome Stalemate     = "Stalemate"
-gameOutcome (Forfeit c)   = (gameColour c) <> "has forfeit. " <> (gameColour $ other c) <> " wins." 
-gameOutcome (Checkmate c) = "Checkmate by " <> (gameColour c) 
+gameOutcome (Illegal move)    = "Illegal move"
+gameOutcome (Draw board)      = "Draw"
+gameOutcome (Stalemate board) = "Stalemate"
+gameOutcome (Checkmate board) = "Checkmate" 
 
 debugOutcome :: Outcome -> String
-debugOutcome Illegal      = "Illegal"
-debugOutcome Draw          = "Draw"
-debugOutcome Stalemate     = "Stalemate"
-debugOutcome (Forfeit c)   = "Forfeit: " <> (debugColour c)
-debugOutcome (Checkmate c) = "Checkmate: " <> (debugColour c)
+debugOutcome (Illegal move)    = "Illegal"
+debugOutcome (Draw board)      = "Draw"
+debugOutcome (Stalemate board) = "Stalemate"
+debugOutcome (Checkmate board) = "Checkmate"
 
 showOutcome :: DisplayMode -> Outcome -> String
 showOutcome GameMode  = gameOutcome

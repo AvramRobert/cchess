@@ -1,5 +1,6 @@
 module Game (runGame) where
 
+import Control.Monad (foldM)
 import Control.Applicative ((<|>))
 import qualified Chess.Display as D
 import qualified Chess.Internal as C
@@ -8,89 +9,82 @@ import qualified Text.Megaparsec.Char as MC
 import qualified PGN.Internal as P
 import Data.Functor (($>))
 
-type GameParser a = M.Parsec GameError String a
-
-type Instruction a = M.ParsecT GameError String IO a
-
 data Game = Game { board :: C.Board,
                    white :: String,
                    black :: String }
             deriving (Eq, Show, Ord)
 
-data GameError = UnknownCommand String 
-                 deriving (Show, Eq, Ord)
-
-data GameState = Menu               |
-                 Play Game          |
-                 Move Game C.Move   |
-                 End Game C.Outcome | 
-                 OfferDraw          |
-                 Resign             |
-                 Exit
-                 deriving (Ord, Show, Eq)
-
-instance M.ShowErrorComponent GameError where
-    showErrorComponent (UnknownCommand input) = "Command of: " <> input <> " does not exist"
+data State = Menu               |
+             Play Game          |
+             Resign Game        |
+             End Game C.Outcome |
+             Exit 
+               
+data Instruction = Display String                   | 
+                   Interact (P.Parser Instruction)  | 
+                   Transition State                 | 
+                   Stop
 
 showBoard :: Game -> String
 showBoard = D.gameBoard . board
 
-newP :: P.Parser GameState
-newP = MC.string' "new game" $> (Play $ Game { board = C.board, white = "Donney", black = "Larry" })
+menuText :: String
+menuText = unlines ["Welcome to cchess!",
+                    "",
+                    "What do you want to do?",
+                    "- New Game", 
+                    "- Exit"]
 
-resignP :: P.Parser GameState
-resignP = M.choice [MC.string' "resign", MC.string' "exit"] $> Resign
+playText :: Game -> String
+playText game = unlines [showBoard game, "Input a move"]
 
-exitP :: P.Parser GameState
-exitP = M.choice [MC.string' "exit", MC.string' "quit"] $> Exit
+outcomeText :: C.Outcome -> String
+outcomeText (C.Checkmate _) = "You've been checkmated"
+outcomeText (C.Stalemate _) = "This game is a stalemate"
+outcomeText (C.Draw _)      = "This game is a draw. It cannot be won."
+outcomeText (C.Illegal m)   =  show m <> " is illegal."
 
-moveP :: Game -> P.Parser GameState 
-moveP game = fmap (Move game) $ P.moveParser (board game)
+resignText :: C.Colour -> String
+resignText c = unlines ["", "Result: " <> w <> "(W) - (B)" <> b]
+    where w = if (c == C.W) then "1" else "0"
+          b = if (c == C.B) then "1" else "0"
 
-menuT = unlines ["Welcome to cchess!",
-                 "",
-                 "What do you want to do?",
-                 "- New Game", 
-                 "- Exit"]
+exitText :: String
+exitText = "One day at a time."
 
-playT game = unlines [showBoard game, "Input a move"]
+newGameParser :: P.Parser Instruction
+newGameParser = MC.string' "new game" $> (Transition $ Play Game { board = C.board, white = "Whitney", black = "Clareance" })
 
-exitT = "One day at a time."
+moveParser :: Game -> P.Parser Instruction
+moveParser game = fmap (Transition . handle . C.performEval (board game)) $ P.moveParser (board game)
+    where handle (Right board)  = Play game { board = board }
+          handle (Left outcome) = End game outcome
 
-transitions :: GameState -> P.Parser GameState
-transitions Menu        = newP <|> exitP 
-transitions (Play game) = moveP game <|> resignP
-transitions _           = (M.many MC.asciiChar) $> Exit
+exitGameParser :: P.Parser Instruction
+exitGameParser = M.choice [ MC.string' "exit", MC.string' "quit" ] $> (Transition Exit)
 
-texts :: GameState -> String
-texts Menu        = menuT 
-texts Exit        = exitT
-texts (Play game) = playT game
+resignParser :: Game -> P.Parser Instruction
+resignParser game = M.choice [ MC.string' "resign", MC.string' "exit"] $> (Transition (Resign game))
 
--- non-exhaustive
-makeMove :: Game -> C.Move -> GameState
-makeMove game move = case (C.performEval (board game) move) of
-    (Left (C.Checkmate x)) -> End game $ C.Checkmate x -- this board doesn't contain the checkmating move
-    (Left (C.Stalemate))   -> End game C.Stalemate 
-    (Right board)          -> Play $ game { board = board }
+instructions :: State -> [Instruction]
+instructions (Menu)              = [Display menuText, Interact (newGameParser <|> exitGameParser)]
+instructions (Exit)              = [Display exitText]
+instructions (Play game)         = [Display (playText game), Interact (moveParser game <|> resignParser game)]
+instructions (End game outcome)  = [Display (outcomeText outcome)]
+instructions (Resign game)       = [Display (resignText $ C.player $ board game)]
 
-perform :: GameState -> IO ()
-perform (Play game)   = run $ (Play game)
-perform (Move game m) = run $ makeMove game m
-perfrom (Resign)      = return ()
+process :: Instruction -> IO ()
+process (Stop)             = return ()
+process (Display text)     = putStrLn text
+process (Transition state) = run state 
+process (Interact p)       = getLine >>= (handle . P.run p)
+    where handle (Right i)          = process i
+          handle (Left err)         = maybe (unknown err) known $ P.chessError err
+          known P.MissingMovesError = process (Display "Unknown move. Try again") >> process (Interact p)
+          unknown err               = process (Display "\nUnknown input. Try again\n") >> process (Interact p)  
 
-handle :: GameState -> P.ChessError -> IO ()
-handle state P.MissingMovesError = putStrLn "Unknown move. Try again" >> run state
-
-run :: GameState -> IO ()
-run state = do
-    let text   = texts state
-    let parser = transitions state
-    _          <- putStrLn text
-    input      <- getLine -- these should be escaped
-    case (P.run parser input) of 
-        (Right state') -> perform state'
-        (Left err)     -> maybe (putStrLn $ unlines ["Input error", M.errorBundlePretty err]) (handle state) $ P.chessError err
+run :: State -> IO ()
+run = foldM (\_ i -> process i) () . instructions
 
 runGame :: IO ()
 runGame = run Menu

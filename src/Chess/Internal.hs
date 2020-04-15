@@ -30,11 +30,10 @@ data Move = Capture   Position Position       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
-data Outcome = Illegal        |
-               Draw           |
-               Stalemate      |
-               Forfeit Colour | 
-               Checkmate Colour deriving (Eq, Ord)
+data Outcome = Illegal Move    |
+               Draw Board      |
+               Stalemate Board |
+               Checkmate Board deriving (Eq, Ord)
 
 data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
 
@@ -369,8 +368,8 @@ checked board = not $ null $ threats board [square king]
 
 -- you have to compute the other states aswell
 evaluate :: Board -> Either Outcome Board
-evaluate board = if (check board && mate) then Left (Checkmate $ other $ player board)
-                 else if stale            then Left Stalemate
+evaluate board = if (check board && mate) then Left (Checkmate board)
+                 else if stale            then Left (Stalemate board)
                  else                          Right board
       where mate    = all (checked . reset . apply board) $ movesFor board (player board)
             reset b = b { player = player board } 
@@ -389,10 +388,10 @@ performEval board move = case (perform board move) of (Right board) -> evaluate 
                                                       result        -> result
 
 performPermit :: Board -> Move -> Either Outcome Board
-performPermit board move = maybe (Left Illegal) Right $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
+performPermit board move = maybe (Left (Illegal move)) Right $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
 perform :: Board -> Move -> Either Outcome Board 
-perform board move = maybe (Left Illegal) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
+perform board move = maybe (Left (Illegal move)) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
 board = Board { player      = W,
