@@ -36,9 +36,9 @@ data Game = Game {
                   eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show, Eq, Ord)
 
-data ChessError = CaptureError Chess.Coord Chess.Piece |
+data ChessError = CaptureError Chess.Coord Chess.Piece | -- these should be positions and show colours of the pieces
                   AdvanceError Chess.Coord Chess.Piece |
-                  PromoteError Chess.Coord Chess.Piece |
+                  PromoteError Chess.Coord Chess.Piece | 
                   CastleError  Chess.Castles  | 
                   GameError    Chess.Outcome  |
                   MissingMovesError

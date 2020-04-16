@@ -194,6 +194,8 @@ gameBoard board = template GameMode board (player board)
 debugBoard :: Board -> String
 debugBoard board = template DebugMode board W
 
+
+-- FIXME: There should be a show for Castles
 instance Show Board where
       show board = template DebugMode board (player board)
 

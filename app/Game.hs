@@ -28,6 +28,9 @@ data Instruction = Display String                   |
 showBoard :: Game -> String
 showBoard = D.gameBoard . board
 
+showPiece :: C.Piece -> String
+showPiece = show
+
 menuText :: String
 menuText = unlines ["Welcome to cchess!",
                     "",
@@ -78,10 +81,15 @@ process (Stop)             = return ()
 process (Display text)     = putStrLn text
 process (Transition state) = run state 
 process (Interact p)       = getLine >>= (handle . P.run p)
-    where handle (Right i)          = process i
-          handle (Left err)         = maybe (unknown err) known $ P.chessError err
-          known P.MissingMovesError = process (Display "Unknown move. Try again") >> process (Interact p)
-          unknown err               = process (Display "\nUnknown input. Try again\n") >> process (Interact p)  
+    where handle (Right i)            = process i
+          handle (Left err)           = maybe (unknown err) known $ P.chessError err
+          unknown err                 = process (Display "\nUnknown input. Try again\n") >> process (Interact p)  
+          known (P.MissingMovesError) = process (Display "Unknown move. Try again") >> process (Interact p)
+          known (P.CaptureError c pi) = process (Display $ "Cannot capture with " <> show pi <> " at " <> show c) >> process (Interact p) 
+          known (P.AdvanceError c pi) = process (Display $ "Cannot advance to " <> show c <> " with " <> show pi) >> process (Interact p)
+          known (P.PromoteError c pi) = process (Display $ "Cannot promote to " <> show pi <> " at " <> show c) >> process (Interact p)
+          known (P.CastleError c)     = process (Display $ "Cannot castle" <> show c) >> process (Interact p)
+          known (P.GameError o)       = process (Display $ "Cannot perform because the game is: " <> show o) >> process (Interact p)
 
 run :: State -> IO ()
 run = foldM (\_ i -> process i) () . instructions
