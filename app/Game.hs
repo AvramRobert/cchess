@@ -26,10 +26,13 @@ data Instruction = Display String                   |
                    Stop
 
 showBoard :: Game -> String
-showBoard = D.gameBoard . board
+showBoard = D.showBoard D.GameMode . board
 
-showPiece :: C.Piece -> String
-showPiece = show
+showFigure :: C.Figure -> String
+showFigure = D.showFigure D.GameMode
+
+showOutcome :: C.Outcome -> String
+showOutcome = D.showOutcome D.GameMode
 
 menuText :: String
 menuText = unlines ["Welcome to cchess!",
@@ -85,9 +88,9 @@ process (Interact p)       = getLine >>= (handle . P.run p)
           handle (Left err)           = maybe (unknown err) known $ P.chessError err
           unknown err                 = process (Display "\nUnknown input. Try again\n") >> process (Interact p)  
           known (P.MissingMovesError) = process (Display "Unknown move. Try again") >> process (Interact p)
-          known (P.CaptureError c pi) = process (Display $ "Cannot capture with " <> show pi <> " at " <> show c) >> process (Interact p) 
-          known (P.AdvanceError c pi) = process (Display $ "Cannot advance to " <> show c <> " with " <> show pi) >> process (Interact p)
-          known (P.PromoteError c pi) = process (Display $ "Cannot promote to " <> show pi <> " at " <> show c) >> process (Interact p)
+          known (P.CaptureError c f)  = process (Display $ "Cannot capture with " <> showFigure f <> " at " <> show c) >> process (Interact p) 
+          known (P.AdvanceError c f)  = process (Display $ "Cannot advance to " <> showFigure f <> " with " <> show pi) >> process (Interact p)
+          known (P.PromoteError c f)  = process (Display $ "Cannot promote to " <> showFigure f <> " at " <> show c) >> process (Interact p)
           known (P.CastleError c)     = process (Display $ "Cannot castle" <> show c) >> process (Interact p)
           known (P.GameError o)       = process (Display $ "Cannot perform because the game is: " <> show o) >> process (Interact p)
 

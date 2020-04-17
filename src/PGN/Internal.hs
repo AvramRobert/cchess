@@ -36,9 +36,9 @@ data Game = Game {
                   eventDate   :: Maybe String,
                   moves       :: [Chess.Move] } deriving (Show, Eq, Ord)
 
-data ChessError = CaptureError Chess.Coord Chess.Piece | -- these should be positions and show colours of the pieces
-                  AdvanceError Chess.Coord Chess.Piece |
-                  PromoteError Chess.Coord Chess.Piece | 
+data ChessError = CaptureError Chess.Coord Chess.Figure | -- these should be positions and show colours of the pieces
+                  AdvanceError Chess.Coord Chess.Figure |
+                  PromoteError Chess.Coord Chess.Figure | 
                   CastleError  Chess.Castles  | 
                   GameError    Chess.Outcome  |
                   MissingMovesError
@@ -187,15 +187,15 @@ castlesTowards _ _                       = False
 
 captureError :: Chess.Coord -> [Chess.Move] -> ChessError
 captureError _ []    = MissingMovesError
-captureError c (p:_) = CaptureError c (Chess.piece $ Chess.position p)
+captureError c (m:_) = CaptureError c (Chess.figure $ Chess.position m)
 
 promoteError :: Chess.Position -> [Chess.Move] -> ChessError
 promoteError _ []    = MissingMovesError
-promoteError p _     = PromoteError (Chess.coord p) (Chess.piece p)
+promoteError p _     = PromoteError (Chess.coord p) (Chess.figure p)
 
 advanceError :: Chess.Coord -> [Chess.Move] -> ChessError
 advanceError _ []    = MissingMovesError
-advanceError c (p:_) = AdvanceError c (Chess.piece $ Chess.position p)
+advanceError c (m:_) = AdvanceError c $ (Chess.figure $ Chess.position m)
 
 -- there's only one piece I can capture at `x, y`
 unambigousCapture :: [Chess.Move] -> Parser Chess.Move

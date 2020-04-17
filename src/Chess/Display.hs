@@ -3,7 +3,8 @@ module Chess.Display where
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Outcome (Illegal, Draw, Stalemate, Checkmate),  
-                       Colour(W, B), Position (Pos), 
+                       Colour(W, B), Position (Pos),
+                       Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other)
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
@@ -32,6 +33,10 @@ gameFigure (Queen, W)  = "♕"
 gameFigure (Queen, B)  = "♛"
 gameFigure (Empty, _)  = "-"
 
+showFigure :: DisplayMode -> Figure -> String
+showFigure GameMode  = gameFigure
+showFigure DebugMode = debugFigure
+
 gameLabel :: Int -> String
 gameLabel 1 = "A"
 gameLabel 2 = "B"
@@ -44,6 +49,10 @@ gameLabel 8 = "H"
 
 debugLabel :: Int -> String
 debugLabel = show
+
+showLabel :: DisplayMode -> Int -> String
+showLabel GameMode  = gameLabel
+showLabel DebugMode = debugLabel 
 
 debugFigure :: Figure -> String
 debugFigure (Pawn, W)   = "P (W)"
@@ -59,10 +68,6 @@ debugFigure (Knight, B) = "N (B)"
 debugFigure (Queen, W)  = "Q (W)"
 debugFigure (Queen, B)  = "Q (B)"
 debugFigure (Empty, _)  = "-" 
-
-showLabel :: DisplayMode -> Int -> String
-showLabel mode x = case mode of GameMode  -> gameLabel x
-                                DebugMode -> debugLabel x
 
 showIndex :: Colour -> Int -> String
 showIndex c i = show $ snd $ boardCoord $ (c, (1, i))
@@ -83,8 +88,11 @@ showColour :: DisplayMode -> Colour -> String
 showColour GameMode = gameColour
 showColour DebugMode = debugColour
 
-showPosition :: DisplayMode -> Board -> Square -> String
-showPosition mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
+showPosition :: DisplayMode -> Position -> String
+showPosition mode (Pos p c s) = showPiece mode (p, c) <> show s
+
+showSquare :: DisplayMode -> Board -> Square -> String
+showSquare mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
 
 gameOutcome :: Outcome -> String
 gameOutcome (Illegal move)    = "Illegal move"
@@ -101,6 +109,22 @@ debugOutcome (Checkmate board) = "Checkmate"
 showOutcome :: DisplayMode -> Outcome -> String
 showOutcome GameMode  = gameOutcome
 showOutcome DebugMode = debugOutcome
+
+gameCastles :: Castles -> String
+gameCastles Both  = "O-O-O / O-O"
+gameCastles Long  = "O-O-O"
+gameCastles Short = "O-O"
+gameCastles None  = "-"
+
+debugCastles :: Castles -> String
+debugCastles Both  = "Both"
+debugCastles Long  = "Long"
+debugCastles Short = "Short"
+debugCastles None  = "-"
+
+showCastles :: DisplayMode -> Castles -> String
+showCastles GameMode  = gameCastles
+showCastles DebugMode = debugCastles
 
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
@@ -172,7 +196,7 @@ template mode board colour = unlines $
           ip    = manyOf " " li                                                -- index pad => dependent on largest string index
           lp    = manyOf " "  ll                                               -- label pad => dependent on the largest string label
           pad   = padBy 4
-          pos s = showPosition mode board (colour, s)
+          pos s = showSquare mode board (colour, s)
 
 
 -- FIXME: Redo these
@@ -188,19 +212,16 @@ template mode board colour = unlines $
 --       where pickCastle B = blackCastle board
 --             pickCastle W = whiteCastle board
 
-gameBoard :: Board -> String
-gameBoard board = template GameMode board (player board)
-
-debugBoard :: Board -> String
-debugBoard board = template DebugMode board W
-
+showBoard :: DisplayMode -> Board -> String
+showBoard GameMode board = template GameMode board (player board)
+showBoard DebugMode board = template DebugMode board W
 
 -- FIXME: There should be a show for Castles
 instance Show Board where
-      show board = template DebugMode board (player board)
+      show = showBoard DebugMode
 
 instance Show Position where
-      show (Pos p c s) = showPiece DebugMode (p, c) <> show s
+      show = showPosition DebugMode
 
 instance Show Move where
       show (Capture pos s)                      = show pos <> " x " <> show s
@@ -215,3 +236,6 @@ instance Show Colour where
 
 instance Show Outcome where
       show = showOutcome DebugMode
+
+instance Show Castles where
+      show = showCastles DebugMode

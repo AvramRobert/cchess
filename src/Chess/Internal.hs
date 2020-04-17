@@ -35,7 +35,7 @@ data Outcome = Illegal Move    |
                Stalemate Board |
                Checkmate Board deriving (Eq, Ord)
 
-data Castles = Short | Long | Both | None deriving (Show, Eq, Ord)
+data Castles = Short | Long | Both | None deriving (Eq, Ord)
 
 data Board = Board { player      :: Colour,
                      check       :: Bool,
