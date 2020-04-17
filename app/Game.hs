@@ -23,7 +23,7 @@ data State = Menu               |
 data Instruction = Display String                   | 
                    Interact (P.Parser Instruction)  | 
                    Transition State                 
-                   
+
 showBoard :: Game -> String
 showBoard = D.showBoard D.GameMode . board
 
@@ -50,7 +50,7 @@ outcomeText (C.Draw _)      = "This game is a draw. It cannot be won."
 outcomeText (C.Illegal m)   =  show m <> " is illegal."
 
 resignText :: C.Colour -> String
-resignText c = unlines ["", "Result: " <> w <> "(W) - (B)" <> b]
+resignText c = unlines ["", "Result: (W) " <> w <> " -" <> b <> " (B)"]
     where w = if (c == C.W) then "1" else "0"
           b = if (c == C.B) then "1" else "0"
 
@@ -84,8 +84,8 @@ process (Transition state) = run state
 process (Interact p)       = getLine >>= (handle . P.run p)
     where handle (Right i)            = process i
           handle (Left err)           = maybe (unknown err) known $ P.chessError err
-          unknown err                 = process (Display "\nUnknown input. Try again\n") >> process (Interact p)  
-          known (P.MissingMovesError) = process (Display "Unknown move. Try again") >> process (Interact p)
+          unknown err                 = process (Display $ "Unknown input. Try again\n") >> process (Interact p)  
+          known (P.MissingMovesError) = process (Display $ "Unknown move. Try again") >> process (Interact p)
           known (P.CaptureError c f)  = process (Display $ "Cannot capture with " <> showFigure f <> " at " <> show c) >> process (Interact p) 
           known (P.AdvanceError c f)  = process (Display $ "Cannot advance to " <> showFigure f <> " with " <> show pi) >> process (Interact p)
           known (P.PromoteError c f)  = process (Display $ "Cannot promote to " <> showFigure f <> " at " <> show c) >> process (Interact p)
