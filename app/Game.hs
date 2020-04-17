@@ -22,9 +22,8 @@ data State = Menu               |
                
 data Instruction = Display String                   | 
                    Interact (P.Parser Instruction)  | 
-                   Transition State                 | 
-                   Stop
-
+                   Transition State                 
+                   
 showBoard :: Game -> String
 showBoard = D.showBoard D.GameMode . board
 
@@ -80,7 +79,6 @@ instructions (End game outcome)  = [Display (outcomeText outcome)]
 instructions (Resign game)       = [Display (resignText $ C.player $ board game)]
 
 process :: Instruction -> IO ()
-process (Stop)             = return ()
 process (Display text)     = putStrLn text
 process (Transition state) = run state 
 process (Interact p)       = getLine >>= (handle . P.run p)
