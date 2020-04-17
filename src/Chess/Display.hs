@@ -5,11 +5,13 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Outcome (Illegal, Draw, Stalemate, Checkmate),  
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
-                       Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other)
+                       Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
 
 data DisplayMode = GameMode | DebugMode deriving (Eq, Show)
+
+defaultMode = DebugMode
 
 manyOf :: String -> Int -> String
 manyOf a i = foldr (<>) "" $ take i $ repeat a
@@ -72,10 +74,6 @@ debugFigure (Empty, _)  = "-"
 showIndex :: Colour -> Int -> String
 showIndex c i = show $ snd $ boardCoord $ (c, (1, i))
 
-showPiece :: DisplayMode -> Figure -> String
-showPiece GameMode  = gameFigure
-showPiece DebugMode = debugFigure
-
 gameColour :: Colour -> String
 gameColour W = "White"
 gameColour B = "Black"
@@ -88,14 +86,21 @@ showColour :: DisplayMode -> Colour -> String
 showColour GameMode = gameColour
 showColour DebugMode = debugColour
 
+gamePosition :: Position -> String
+gamePosition (Pos p c s) = gameFigure (p, c) <> show s
+
+debugPosition :: Position -> String
+debugPosition (Pos p c s) = debugFigure (p, c) <> show s
+
 showPosition :: DisplayMode -> Position -> String
-showPosition mode (Pos p c s) = showPiece mode (p, c) <> show s
+showPosition GameMode  = gamePosition
+showPosition DebugMode = debugPosition
 
 showSquare :: DisplayMode -> Board -> Square -> String
-showSquare mode board square = maybe (show Empty) (showPiece mode . figure) $ lookAt board $ boardCoord square
+showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
 
 gameOutcome :: Outcome -> String
-gameOutcome (Illegal move)    = "Illegal move"
+gameOutcome (Illegal move)    = "Illegal" <> gameMove move
 gameOutcome (Draw board)      = "Draw"
 gameOutcome (Stalemate board) = "Stalemate"
 gameOutcome (Checkmate board) = "Checkmate" 
@@ -126,6 +131,26 @@ showCastles :: DisplayMode -> Castles -> String
 showCastles GameMode  = gameCastles
 showCastles DebugMode = debugCastles
 
+gameMove :: Move -> String
+gameMove (Capture pos s)                      = gamePosition pos <> " x " <> show s
+gameMove (Advance pos s)                      = gamePosition pos <> " -> " <> show s
+gameMove (Enpassant pos e enm)                = "(" <> gamePosition pos <> " -> "<> show e <> ")" <> " x " <> gamePosition enm
+gameMove (Promote pos np (Pos Empty _ e))     = "(" <> gamePosition pos <> " -> " <> show e <> ")" <> " = " <> gameFigure (np, colour pos)
+gameMove (Promote pos np (Pos p c s))         = "(" <> gamePosition pos <> " x " <> (gamePosition (Pos p c s)) <> ")" <> " = " <> gameFigure (np, colour pos)
+gameMove (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "O-O" else "O-O-O"
+
+debugMove :: Move -> String
+debugMove (Capture pos s)                      = "Capture " <> debugPosition pos <> " x " <> show s
+debugMove (Advance pos s)                      = "Advance " <> debugPosition pos <> " -> " <> show s
+debugMove (Enpassant pos e enm)                = "Enpassant " <> debugPosition pos <> " -> " <> show e <> " x " <> debugPosition enm
+debugMove (Promote pos np (Pos Empty _ e))     = "Promote " <> debugPosition pos <> " " <> show e <> " = " <> debugFigure (np, colour pos)
+debugMove (Promote pos np (Pos p c s))         = "Promote " <> debugPosition pos <> " x " <> (debugPosition (Pos p c s)) <> " = " <> debugFigure (np, colour pos)
+debugMove (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "Castles Long" else "Castles Short"
+
+showMove :: DisplayMode -> Move -> String
+showMove GameMode  = gameMove
+showMove DebugMode = debugMove
+
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
     where half   = round $ (fromIntegral i / 2)
@@ -140,6 +165,16 @@ centerOn width s = if (even delta)
           third  = delta - half
           halves = manyOf " " half
           thirds = manyOf " " third
+
+gameBoard :: Board -> String
+gameBoard board = template GameMode board (player board)
+
+debugBoard :: Board -> String
+debugBoard board = template DebugMode board W
+
+showBoard :: DisplayMode -> Board -> String
+showBoard GameMode  = gameBoard
+showBoard DebugMode = debugBoard
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 
@@ -181,8 +216,8 @@ template mode board colour = unlines $
 
      ip  <> dp <> t        <> dp <> t        <> dp <> t        <> dp <> t        <> dp <> t        <> dp <> t        <> dp <> t        <> dp <> t        <> dp,
      ip  <> dp <> l 1      <> dp <> l 2      <> dp <> l 3      <> dp <> l 4      <> dp <> l 5      <> dp <> l 6      <> dp <> l 7      <> dp <> l 8      <> dp]
-    where le    = maybe 0 (length . pad . showPiece mode . figure)
-                $ maxBy   (length . pad . showPiece mode . figure) 
+    where le    = maybe 0 (length . pad . showFigure mode . figure)
+                $ maxBy   (length . pad . showFigure mode . figure) 
                 $ coordinates board                                            -- largest padded string entry
           ll    = length $ l 1                                                 -- largest string label
           li    = length $ i 1                                                 -- largest string index
@@ -198,7 +233,6 @@ template mode board colour = unlines $
           pad   = padBy 4
           pos s = showSquare mode board (colour, s)
 
-
 -- FIXME: Redo these
 -- showPieces :: Board -> IO ()
 -- showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
@@ -212,30 +246,20 @@ template mode board colour = unlines $
 --       where pickCastle B = blackCastle board
 --             pickCastle W = whiteCastle board
 
-showBoard :: DisplayMode -> Board -> String
-showBoard GameMode board = template GameMode board (player board)
-showBoard DebugMode board = template DebugMode board W
-
--- FIXME: There should be a show for Castles
 instance Show Board where
-      show = showBoard DebugMode
+      show = showBoard defaultMode
 
 instance Show Position where
-      show = showPosition DebugMode
-
-instance Show Move where
-      show (Capture pos s)                      = show pos <> " x " <> show s
-      show (Advance pos s)                      = show pos <> " -> " <> show s
-      show (Enpassant pos e enm)                = "(" <> show pos <> " -> "<> show e <> ")" <> " x " <> show enm
-      show (Promote pos np (Pos Empty _ e))     = "(" <> show pos <> " -> " <> show e <> ")" <> " = " <> show np
-      show (Promote pos np (Pos p c s))         = "(" <> show pos <> " x " <> (show (Pos p c s)) <> ")" <> " = " <> show np
-      show (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "O-O" else "O-O-O"
+      show = showPosition defaultMode
 
 instance Show Colour where
-      show = showColour DebugMode
+      show = showColour defaultMode
 
 instance Show Outcome where
-      show = showOutcome DebugMode
+      show = showOutcome defaultMode
 
 instance Show Castles where
-      show = showCastles DebugMode
+      show = showCastles defaultMode
+
+instance Show Move where
+      show = showMove defaultMode
