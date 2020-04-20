@@ -419,7 +419,6 @@ moveParser board = do
     _ <- delimitation
     m <- move board
     _ <- delimitation
-    _ <- applied m board
     return m
 
 gameParser :: Parser Game
