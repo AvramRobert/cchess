@@ -2,7 +2,7 @@ module Chess.Display where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Outcome (Illegal, Draw, Stalemate, Checkmate),  
+                       Outcome (Illegal, Stalemate, Checkmate),  
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
@@ -100,16 +100,14 @@ showSquare :: DisplayMode -> Board -> Square -> String
 showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
 
 gameOutcome :: Outcome -> String
-gameOutcome (Illegal move)    = "Illegal" <> gameMove move
-gameOutcome (Draw board)      = "Draw"
-gameOutcome (Stalemate board) = "Stalemate"
-gameOutcome (Checkmate board) = "Checkmate" 
+gameOutcome (Illegal move) = "Illegal" <> gameMove move
+gameOutcome (Stalemate)    = "Stalemate"
+gameOutcome (Checkmate)    = "Checkmate" 
 
 debugOutcome :: Outcome -> String
-debugOutcome (Illegal move)    = "Illegal"
-debugOutcome (Draw board)      = "Draw"
-debugOutcome (Stalemate board) = "Stalemate"
-debugOutcome (Checkmate board) = "Checkmate"
+debugOutcome (Illegal move) = "Illegal"
+debugOutcome (Stalemate)    = "Stalemate"
+debugOutcome (Checkmate)    = "Checkmate"
 
 showOutcome :: DisplayMode -> Outcome -> String
 showOutcome GameMode  = gameOutcome

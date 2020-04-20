@@ -60,11 +60,11 @@ menuText = unlines ["Welcome to cchess!",
 playText :: Game -> String
 playText game = unlines [showBoard game, "Input a move"]
 
+-- I could re-add the suggestion that a game is drawn/drawable
 outcomeText :: C.Outcome -> String
-outcomeText (C.Checkmate _) = "You've been checkmated"
-outcomeText (C.Stalemate _) = "This game is a stalemate"
-outcomeText (C.Draw _)      = "This game is a draw. It cannot be won."
-outcomeText (C.Illegal m)   =  show m <> " is illegal."
+outcomeText (C.Checkmate) = "You've been checkmated"
+outcomeText (C.Stalemate) = "This game is a stalemate"
+outcomeText (C.Illegal m) =  show m <> " is illegal"
 
 resignText :: C.Colour -> String
 resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]

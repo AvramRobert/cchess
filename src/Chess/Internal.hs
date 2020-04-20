@@ -30,10 +30,11 @@ data Move = Capture   Position Position       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
+--  i think i'll put Draw and Resignation here... make it simpler
 data Outcome = Illegal Move    |
-               Draw Board      |
-               Stalemate Board |
-               Checkmate Board deriving (Eq, Ord)
+               Stalemate       |
+               Checkmate 
+               deriving (Eq, Ord)
 
 data Castles = Short | Long | Both | None deriving (Eq, Ord)
 
@@ -368,8 +369,8 @@ checked board = not $ null $ threats board [square king]
 
 -- you have to compute the other states aswell
 evaluate :: Board -> Either Outcome Board
-evaluate board = if (check board && mate) then Left (Checkmate board)
-                 else if stale            then Left (Stalemate board)
+evaluate board = if (check board && mate) then Left Checkmate
+                 else if stale            then Left Stalemate
                  else                          Right board
       where mate    = all (checked . reset . apply board) $ movesFor board (player board)
             reset b = b { player = player board } 
