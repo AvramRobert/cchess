@@ -67,7 +67,7 @@ outcomeText (C.Draw _)      = "This game is a draw. It cannot be won."
 outcomeText (C.Illegal m)   =  show m <> " is illegal."
 
 resignText :: C.Colour -> String
-resignText c = unlines ["", "Result: (W) " <> w <> " -" <> b <> " (B)"]
+resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
     where w = if (c == C.W) then "1" else "0"
           b = if (c == C.B) then "1" else "0"
 
@@ -90,8 +90,8 @@ resign game = M.choice [ MC.string' "resign", MC.string' "exit"] $> (Resign game
 
 instructions :: State -> Instruction State
 instructions (Menu)              = display menuText >> input (newGame <|> exit)
-instructions (Exit)              = display exitText >> stop
 instructions (Play game)         = display (playText game) >> input (move game <|> resign game)
+instructions (Exit)              = display exitText >> stop
 instructions (End game outcome)  = display (outcomeText outcome) >> stop
 instructions (Resign game)       = display (resignText $ C.player $ board game) >> stop
 
