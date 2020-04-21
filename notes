@@ -8,7 +8,7 @@ To Do:
      * 1. Add proper checkmate verification
      * 2. Implement proper rendering for the board
      * 3. Implement a game interface
-    4. Implement parsing of game outcomes -- do I need to though?
+     * 4. Implement parsing of game outcomes
     5. Add stalemate checks
     6. Add in-game draw suggestions checks
     7. Refine the API

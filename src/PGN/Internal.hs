@@ -57,7 +57,7 @@ instance M.ShowErrorComponent ChessError where
 
 type Parser a = Parsec ChessError String a
 
-data Turn = Ending | MatedEnding | Normal deriving (Show, Eq)
+data Turn = Ended | Mated | Moved deriving (Show, Eq)
 
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
@@ -387,34 +387,37 @@ appliedTurnParser board = do
     e <- mate
     _ <- delimitation
     o <- M.optional $ M.lookAhead result
-    return $ case o of (Just _) | e -> (m, b, MatedEnding)
-                       (Just _)     -> (m, b, Ending)
-                       (Nothing)    -> (m, b, Normal)
+    return $ case o of (Just _) | e -> (m, b, Mated)
+                       (Just _)     -> (m, b, Ended)
+                       (Nothing)    -> (m, b, Moved)
 
 turnParser :: Chess.Board -> Parser (Chess.Move, Chess.Board, Turn)
 turnParser board = (try firstTurn) <|> (try secondTurn)
     where firstTurn  = delimitation >> index >> appliedTurnParser board
           secondTurn = delimitation >> appliedTurnParser board  
 
-allMovesParser :: Parser (Chess.Board, [Chess.Move], Turn)
-allMovesParser = moves [] Chess.board
+moveSetParser :: Parser (Chess.Board, [Chess.Move], Turn)
+moveSetParser = moves [] Chess.board
     where moves ms board = turnParser board >>= (continue ms)
-          continue ms (m, b, Normal)  = moves (m:ms) b
-          continue ms (m, b, t)       = return (b, reverse (m:ms), t)
+          continue ms (m, b, Moved) = moves (m:ms) b
+          continue ms (m, b, t)     = return (b, reverse (m:ms), t)
+
+endReason :: Chess.Board -> Turn -> Result -> Chess.Outcome
+endReason board Mated (Win _) = Chess.Checkmate
+endReason board _     (Win _) = Chess.Resignation
+endReason board _     (Draw)  = if (Chess.stalemate board) 
+                                then Chess.Stalemate 
+                                else Chess.Draw
 
 gameParser :: Parser Game
 gameParser = do
     _                    <- delimitation
     meta                 <- headerParser
     _                    <- delimitation
-    (board, moves, turn) <- allMovesParser
+    (board, moves, turn) <- moveSetParser
     result               <- result
-    let reason           = computeReason turn result (Chess.evaluate board)  
+    let reason           = Just (endReason board turn result)  
     return meta { moves = moves, reason = reason }
-    where computeReason MatedEnding (Win _) _ = Just Chess.Checkmate
-          computeReason _  _      (Left  o)   = Just o
-          computeReason _ (Win _) (Right _)   = Just Chess.Resignation 
-          computereason _ (Draw)   _          = Just $ Chess.Draw
 
 splitGames :: ByteString -> [String]
 splitGames = accumulate . C.lines
