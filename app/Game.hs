@@ -105,7 +105,7 @@ process eff @ (Effect (Input p) f)    = getLine >>= (handle . P.run p)
           unknown error               = putStrLn $ "Unknown input. Try again\n"
           known (P.MissingMovesError) = putStrLn $ "Unknown move. Try again"
           known (P.CaptureError c f)  = putStrLn $ "Cannot capture with " <> showFigure f <> " at " <> show c 
-          known (P.AdvanceError c f)  = putStrLn $ "Cannot advance to " <> showFigure f <> " with " <> show c 
+          known (P.AdvanceError c f)  = putStrLn $ "Cannot advance with " <> showFigure f <> " to " <> show c 
           known (P.PromoteError c f)  = putStrLn $ "Cannot promote to " <> showFigure f <> " at " <> show c
           known (P.CastleError c)     = putStrLn $ "Cannot castle " <> showCastles c
           known (P.GameError o)       = putStrLn $ "Cannot perform because the game is: " <> showOutcome o
