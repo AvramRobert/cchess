@@ -4,4 +4,4 @@ import Bench (runBench)
 import Game (runGame)
 
 main :: IO ()
-main = runGame
+main = runBench

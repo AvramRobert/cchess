@@ -33,7 +33,9 @@ data Dir = U  | D  | L  | R |
 --  i think i'll put Draw and Resignation here... make it simpler
 data Outcome = Illegal Move    |
                Stalemate       |
-               Checkmate 
+               Checkmate       |
+               Resignation     |
+               Draw
                deriving (Eq, Ord)
 
 data Castles = Short | Long | Both | None deriving (Eq, Ord)

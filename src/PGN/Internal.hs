@@ -19,9 +19,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
 import Chess.Display
 
-data ChessResult = Win Chess.Colour               | 
-                   Resignation Chess.Colour       | 
-                   Draw deriving (Show, Ord, Eq)
+data Result = Win Chess.Colour | Draw deriving (Show, Ord, Eq)
 
 data Game = Game {
                   event       :: String, 
@@ -30,7 +28,8 @@ data Game = Game {
                   gameRound   :: String,
                   whitePlayer :: String,
                   blackPlayer :: String,
-                  endResult   :: ChessResult,
+                  endResult   :: Result,
+                  reason      :: Maybe Chess.Outcome,
                   -- These upper 7 are mandatory, the lower 4 aren't
                   whiteElo    :: Maybe Int,
                   blackElo    :: Maybe Int, 
@@ -48,6 +47,7 @@ data ChessError = CaptureError Chess.Coord Chess.Figure | -- these should be pos
 
 type ParseError = M.ParseErrorBundle String ChessError
 
+-- Move this to `Display`?
 instance M.ShowErrorComponent ChessError where
     showErrorComponent (CaptureError coord piece) = "Could not capture at " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)
@@ -57,10 +57,7 @@ instance M.ShowErrorComponent ChessError where
 
 type Parser a = Parsec ChessError String a
 
-data Turn = One   Chess.Move              (ChessResult, Chess.Outcome)   |
-            Two  (Chess.Move, Chess.Move) (ChessResult, Chess.Outcome)   |
-            More (Chess.Move, Chess.Move) 
-            deriving (Show, Eq)
+data Turn = Ending | MatedEnding | Normal deriving (Show, Eq)
 
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
@@ -118,6 +115,7 @@ headerParser = do
                     whitePlayer = whitep,
                     blackPlayer = blackp,
                     endResult   = outcome,
+                    reason      = Nothing,
                     whiteElo    = whitee,
                     blackElo    = blacke,
                     eco         = eco,
@@ -369,60 +367,10 @@ applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case (Chess.perform board move) of (Right board') -> return board'
                                                         (Left outcome) -> failWith (GameError outcome) Nothing
 
-result :: Parser ChessResult
+result :: Parser Result
 result = M.choice [(try $ string "1-0")     $> (Win Chess.W),
                    (try $ string "0-1")     $> (Win Chess.B),
                    (try $ string "1/2-1/2") $> Draw]
-
-termination :: Chess.Board -> Bool -> Parser (ChessResult, Maybe Chess.Outcome)
-termination board mate = fmap ending result
-    where ending r @ (Win Chess.W) | mate = (r, Just Chess.Checkmate)
-          ending r @ (Win Chess.B) | mate = (r, Just Chess.Checkmate)
-          ending r @ (Win colour)         = (Resignation $ Chess.other colour, Nothing)
-          ending r @ (Draw)               = case (Chess.evaluate board) of (Left Chess.Stalemate) -> (r, Just Chess.Stalemate)
-                                                                           (Right _)              -> (r, Nothing) 
-oneMove :: Chess.Board -> Parser (Chess.Board, Turn)
-oneMove board = do
-    _ <- delimitation
-    _ <- index
-    m <- moveParser board
-    b <- applied m board
-    _ <- check
-    o <- mate
-    _ <- delimitation
-    e <- termination b o
-    return (b, turn m e)
-    where turn move (result, Just outcome) = One move (result, outcome)
-          turn move (result, Nothing)      = One move (result, Chess.Stalemate) -- this i have to fix
-
-twoMove :: Chess.Board -> Parser (Chess.Board, Turn)
-twoMove board = do
-    _  <- delimitation
-    _  <- index
-    m  <- moveParser board
-    b  <- applied m board
-    _  <- check
-    _  <- mate
-    m' <- moveParser b
-    b' <- applied m' b
-    _  <- check
-    o  <- mate
-    _  <- delimitation
-    e  <- M.optional $ termination b' o
-    return (b', turn (m, m') e)
-    where turn moves (Just (result, Just outcome)) = Two moves (result, outcome)
-          turn moves (Just (result, Nothing))      = Two moves (result, Chess.Stalemate)
-          turn moves (Nothing)                     = More moves 
-
-turn :: Chess.Board -> Parser (Chess.Board, Turn)
-turn board = (try $ oneMove board) <|> (try $ twoMove board)
-
-turnMoveParser :: Parser [Chess.Move]
-turnMoveParser = turns [] Chess.board
-        where turns moves board = turn board >>= (continue moves) 
-              continue moves (board, More (m, m'))  = turns (m' : m : moves) board 
-              continue moves (board, Two (m, m') _) = return $ reverse (m' : m : moves)
-              continue moves (board, One m _)       = return $ reverse (m : moves)
 
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
@@ -431,13 +379,42 @@ moveParser board = do
     _ <- delimitation
     return m
 
+appliedTurnParser :: Chess.Board -> Parser (Chess.Move, Chess.Board, Turn)
+appliedTurnParser board = do
+    m <- moveParser board
+    b <- applied m board
+    _ <- check
+    e <- mate
+    _ <- delimitation
+    o <- M.optional $ M.lookAhead result
+    return $ case o of (Just _) | e -> (m, b, MatedEnding)
+                       (Just _)     -> (m, b, Ending)
+                       (Nothing)    -> (m, b, Normal)
+
+turnParser :: Chess.Board -> Parser (Chess.Move, Chess.Board, Turn)
+turnParser board = (try firstTurn) <|> (try secondTurn)
+    where firstTurn  = delimitation >> index >> appliedTurnParser board
+          secondTurn = delimitation >> appliedTurnParser board  
+
+allMovesParser :: Parser (Chess.Board, [Chess.Move], Turn)
+allMovesParser = moves [] Chess.board
+    where moves ms board = turnParser board >>= (continue ms)
+          continue ms (m, b, Normal)  = moves (m:ms) b
+          continue ms (m, b, t)       = return (b, reverse (m:ms), t)
+
 gameParser :: Parser Game
 gameParser = do
-        _      <- delimitation 
-        meta   <- headerParser
-        _      <- delimitation
-        gmoves <- turnMoveParser
-        return meta { moves = gmoves }
+    _                    <- delimitation
+    meta                 <- headerParser
+    _                    <- delimitation
+    (board, moves, turn) <- allMovesParser
+    result               <- result
+    let reason           = computeReason turn result (Chess.evaluate board)  
+    return meta { moves = moves, reason = reason }
+    where computeReason MatedEnding (Win _) _ = Just Chess.Checkmate
+          computeReason _  _      (Left  o)   = Just o
+          computeReason _ (Win _) (Right _)   = Just Chess.Resignation 
+          computereason _ (Draw)   _          = Just $ Chess.Draw
 
 splitGames :: ByteString -> [String]
 splitGames = accumulate . C.lines
