@@ -30,7 +30,6 @@ data Move = Capture   Position Position       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
---  i think i'll put Draw and Resignation here... make it simpler
 data Outcome = Illegal Move    |
                Stalemate       |
                Checkmate       |

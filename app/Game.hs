@@ -114,4 +114,4 @@ run :: State -> IO ()
 run = process . instructions
 
 runGame :: IO ()
-runGame = process $ instructions Menu
+runGame = run Menu
