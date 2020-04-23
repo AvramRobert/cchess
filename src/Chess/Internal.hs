@@ -368,14 +368,16 @@ checked :: Board -> Bool
 checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
 
-checkmate :: Board -> Bool
-checkmate board = check board && mated board
+immoble :: Board -> Bool
+immoble board = all (checked . reset . apply board) $ movesFor board (player board)
       where reset b = b { player = player board }
-            mated b = all (checked . reset . apply b) $ movesFor b (player b)
-            
+
+checkmate :: Board -> Bool
+checkmate = every [check, immoble]
+
 -- as far as i remember, checking for stalemate is fairly simple. I think i can keep track of it's condition as a top-level field
 stalemate :: Board -> Bool
-stalemate board = False -- checkthis
+stalemate = every [not . check, immoble]
 
 drawn :: Board -> Bool
 drawn board = False -- probably this

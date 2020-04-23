@@ -9,9 +9,12 @@ To Do:
      * 2. Implement proper rendering for the board
      * 3. Implement a game interface
      * 4. Implement parsing of game outcomes
-    5. Add stalemate checks
-    6. Add in-game draw suggestions checks
+     * 5. Add stalemate checks
+    5.5 Fix PGN header parser to account for misshaps in ordering + add the other additional  fields a file might have
+    6. Implement translation from Moves -> PGN
     7. Refine the API
     8. Write a read-me, documentation and release
-    9. Add some more tests
+    9 Add some more tests
     10. Add an engine to play against
+    11. Add in-game draw suggestions checks
+    12. Write a PGN parser that parses files directly and doesn't use bytestrings to extract each individual game

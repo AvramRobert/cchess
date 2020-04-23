@@ -19,7 +19,49 @@ import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
 import Chess.Display
 
-data Result = Win Chess.Colour | Draw deriving (Show, Ord, Eq)
+data GameResult = Win Chess.Colour | Draw deriving (Show, Ord, Eq)
+
+-- http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
+-- look here to find all possible headers
+data Header = Event String
+             | Site String
+             | Date String
+             | Round String
+             | White String
+             | Black String
+             | Result GameResult -- It can have three instances Win Colour (1-0, 0-1), Draw (1/2-1/2), Other (*) (Game is ongoing)
+             -- These are optional
+             | EventDate String
+             | ECO String
+             | WhiteElo String
+             | BlackElo String
+             | PlyCount String
+             | Annotator String
+             | TimeControl String
+             | Time String
+             | Termination String -- OUTCOME! -> Values (Abandoned, Adjundication, Death, Emergency, Normal, Rules Infraction, Time Forfeit, Unterminated)
+             | Mode String -- Can be: OTB (Over the board), ICS (Internet chess server)
+             | FEN String -- Initial position on the board in Forsyth-Edwards Notation
+
+headerRank :: Header -> Int
+headerRank rank = case rank of 
+    (Event _)    -> 1
+    (Site _)     -> 2
+    (Date _)     -> 3
+    (Round _)    -> 4
+    (White _)    -> 5
+    (Black _)    -> 6
+    (Result _)   -> 7
+    (WhiteElo _) -> 8
+    (BlackElo _) -> 9
+    (ECO _)      -> 10
+    _            -> 11
+
+instance Eq Header where
+    (==) a b = headerRank a == headerRank b
+
+instance Ord Header where
+    compare a b = (headerRank a) `compare` (headerRank b)
 
 data Game = Game {
                   event       :: String, 
@@ -28,14 +70,14 @@ data Game = Game {
                   gameRound   :: String,
                   whitePlayer :: String,
                   blackPlayer :: String,
-                  endResult   :: Result,
+                  endResult   :: GameResult,
                   reason      :: Maybe Chess.Outcome,
+                  moves       :: [Chess.Move],
                   -- These upper 7 are mandatory, the lower 4 aren't
                   whiteElo    :: Maybe Int,
                   blackElo    :: Maybe Int, 
                   eco         :: Maybe String,
-                  eventDate   :: Maybe String,
-                  moves       :: [Chess.Move] } deriving (Show, Eq, Ord)
+                  eventDate   :: Maybe String} deriving (Show, Eq, Ord)
 
 data ChessError = CaptureError Chess.Coord Chess.Figure |
                   AdvanceError Chess.Coord Chess.Figure |
@@ -69,17 +111,13 @@ chessError error = case (NL.head $ M.bundleErrors error) of
         (_)                       -> Nothing
     where strip (M.ErrorCustom e) = e
 
-merge :: [ByteString] -> String
-merge = foldl combine ""
-    where combine s b = s <> C.unpack b
-
 extractGame :: [ByteString] -> (String, [ByteString])
-extractGame lines = (merge (header <> gameLines), remaining)
+extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
         where header    = takeWhile headline lines
               headless  = dropWhile headline lines
               gameLines = takeWhile (not . headline) headless
               remaining = dropWhile (not . headline) headless
-              headline string = (not $ C.null string) && C.head string == '['
+              headline  = every [not . C.null, (== '[') . C.head]
 
 -- apparently there's no sane way to consume any arbitrary ascii characters between two quotes, without forcing the user to lookAhead for the quote
 -- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
@@ -95,6 +133,9 @@ headline header p = do
         _ <- delimitation
         return a
 
+-- Some PGN files exports don't abide to the format rules..
+-- They don't keep the strict order of [Event, Site, Date, Round, White, Black, Result], but rather may put other things randomly in-between
+-- I might as well just make ordering irrelevant in this parser...
 headerParser :: Parser Game
 headerParser = do
     event   <- headline "Event" characters
@@ -367,7 +408,7 @@ applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case (Chess.perform board move) of (Right board') -> return board'
                                                         (Left outcome) -> failWith (GameError outcome) Nothing
 
-result :: Parser Result
+result :: Parser GameResult
 result = M.choice [(try $ string "1-0")     $> (Win Chess.W),
                    (try $ string "0-1")     $> (Win Chess.B),
                    (try $ string "1/2-1/2") $> Draw]
@@ -402,7 +443,7 @@ moveSetParser = moves [] Chess.board
           continue ms (m, b, Moved) = moves (m:ms) b
           continue ms (m, b, t)     = return (b, reverse (m:ms), t)
 
-endReason :: Chess.Board -> Turn -> Result -> Chess.Outcome
+endReason :: Chess.Board -> Turn -> GameResult -> Chess.Outcome
 endReason board Mated (Win _) = Chess.Checkmate
 endReason board _     (Win _) = Chess.Resignation
 endReason board _     (Draw)  = if (Chess.stalemate board) 
