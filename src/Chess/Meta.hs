@@ -6,18 +6,33 @@ import Chess.Display
 data Game = Game { tags  :: [Tag],
                    board :: Chess.Board }
 
-data GameResult = Win Chess.Colour | Draw | Other deriving (Show, Ord, Eq)
+data Outcome = Win Chess.Colour 
+             | Draw 
+             | Other deriving (Show, Ord, Eq)
+
+data Reason  = Abandoned 
+             | Adjundication 
+             | Death 
+             | Emergency 
+             | Checkmate
+             | Resignation
+             | Stalemate 
+             | Infraction 
+             | TimeForfeit 
+             | Unterminated
+             deriving (Show, Eq)
+
+data Variant = OTB | ICS deriving (Show, Eq) -- Over The Board | Internet Chess Server
 
 -- http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
 -- look here to find all possible headers
--- I can make a generic that that just captures the entry name and its content, instead of Just ignoring them
 data Tag = Event String
           | Site String
           | Date String
           | Round String
           | White String
           | Black String
-          | Result GameResult -- It can have three instances Win Colour (1-0, 0-1), Draw (1/2-1/2), Other (*) (Game is ongoing)
+          | Result Outcome
              -- These are optional
           | EventDate String
           | ECO String
@@ -27,11 +42,14 @@ data Tag = Event String
           | Annotator String
           | TimeControl String
           | Time String
-          | Termination String -- OUTCOME! -> Values (Abandoned, Adjundication, Death, Emergency, Normal, Rules Infraction, Time Forfeit, Unterminated)
-          | Mode String -- Can be: OTB (Over the board), ICS (Internet chess server)
+          | Termination Reason
+          | Mode Variant
           | FEN String -- Initial position on the board in Forsyth-Edwards Notation
-          | Ignored
+          | Unknown String String
           deriving (Show, Eq)
+
+instance Ord Tag where
+    compare a b = (tagRank a) `compare` (tagRank b)
 
 tagRank :: Tag -> Int
 tagRank rank = case rank of 
@@ -47,5 +65,6 @@ tagRank rank = case rank of
     (ECO _)      -> 10
     _            -> 11
 
-instance Ord Tag where
-    compare a b = (tagRank a) `compare` (tagRank b)
+-- Implement this checkmate and all
+evaluate :: Chess.Board -> Maybe Reason
+evaluate _ = Nothing

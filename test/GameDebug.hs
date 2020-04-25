@@ -20,4 +20,4 @@ testBoard = case (PI.parseBoard testGame) of (Right b) -> b; (Left e) -> CI.boar
 
 faultyMove = CI.Advance (CI.Pos CI.Rook CI.B (7, 6)) (7, 8)
 
-faultyBoard = CI.apply testBoard faultyMove
+faultyBoard = CI.forceApply testBoard faultyMove

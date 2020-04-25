@@ -4,18 +4,23 @@ module Game (runGame) where
 
 import qualified Chess.Display as D
 import qualified Chess.Internal as C
+import qualified Chess.Meta as CM
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char as MC
 import qualified PGN.Internal as P
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
-import Chess.Meta
+
+data Game = Game { board :: C.Board,
+                   white :: String,
+                   black :: String }
+            deriving (Eq, Show, Ord)
 
 data State = Menu               |
              Play Game          |
              Resign Game        |
-             End Game C.Outcome |
+             End Game CM.Reason |
              Exit 
 
 data Prompt a where
@@ -40,9 +45,6 @@ showBoard = D.showBoard D.GameMode . board
 showFigure :: C.Figure -> String
 showFigure = D.showFigure D.GameMode
 
-showOutcome :: C.Outcome -> String
-showOutcome = D.showOutcome D.GameMode
-
 showCastles :: C.Castles -> String
 showCastles = D.showCastles D.GameMode
 
@@ -57,10 +59,9 @@ playText :: Game -> String
 playText game = unlines [showBoard game, "Input a move"]
 
 -- I could re-add the suggestion that a game is drawn/drawable
-outcomeText :: C.Outcome -> String
-outcomeText (C.Checkmate) = "You've been checkmated"
-outcomeText (C.Stalemate) = "This game is a stalemate"
-outcomeText (C.Illegal m) =  show m <> " is illegal"
+outcomeText :: CM.Reason  -> String
+outcomeText (CM.Checkmate) = "You've been checkmated"
+outcomeText (CM.Stalemate) = "This game is a stalemate"
 
 resignText :: C.Colour -> String
 resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
@@ -71,12 +72,13 @@ exitText :: String
 exitText = "One day at a time."
 
 newGame :: P.Parser State
-newGame = MC.string' "new game" $> Play Game { board = C.board, tags = [] }
+newGame = MC.string' "new game" $> Play Game { board = C.board, white = "Whitney", black = "Clareance" }
 
 move :: Game -> P.Parser State
-move game = fmap (handle . C.performEval (board game)) $ P.moveParser (board game)
-    where handle (Right board)  = Play game { board = board }
-          handle (Left outcome) = End game outcome
+move game = fmap (evaluate . C.forceApply (board game)) $ P.moveParser (board game)
+    where evaluate board = case (CM.evaluate board) of 
+            (Just outcome) -> End game outcome 
+            (Nothing)      -> Play game { board = board }  
 
 exit :: P.Parser State
 exit = M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit
@@ -100,11 +102,11 @@ process eff @ (Effect (Input p) f)    = getLine >>= (handle . P.run p)
           handle (Left error)         = maybe (unknown error) (known) (P.chessError error) >> process eff
           unknown error               = putStrLn $ "Unknown input. Try again\n"
           known (P.MissingMovesError) = putStrLn $ "Unknown move. Try again"
+          known (P.IllegalMoveError)  = putStrLn $ "Illegal move. Try again" 
           known (P.CaptureError c f)  = putStrLn $ "Cannot capture with " <> showFigure f <> " at " <> show c 
           known (P.AdvanceError c f)  = putStrLn $ "Cannot advance with " <> showFigure f <> " to " <> show c 
           known (P.PromoteError c f)  = putStrLn $ "Cannot promote to " <> showFigure f <> " at " <> show c
           known (P.CastleError c)     = putStrLn $ "Cannot castle " <> showCastles c
-          known (P.GameError o)       = putStrLn $ "Cannot perform because the game is: " <> showOutcome o
 
 run :: State -> IO ()
 run = process . instructions

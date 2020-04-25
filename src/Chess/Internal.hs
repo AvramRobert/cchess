@@ -30,13 +30,6 @@ data Move = Capture   Position Position       |
 data Dir = U  | D  | L  | R |
            UL | UR | DL | DR deriving (Show, Eq, Ord)
 
-data Outcome = Illegal Move    |
-               Stalemate       |
-               Checkmate       |
-               Resignation     |
-               Draw
-               deriving (Eq, Ord)
-
 data Castles = Short | Long | Both | None deriving (Eq, Ord)
 
 data Board = Board { player      :: Colour,
@@ -356,19 +349,29 @@ trackMove move board = board { past = move : (past board) }
 computeChecks :: Board -> Board
 computeChecks board = board { check = checked board }
 
-apply :: Board -> Move -> Board
-apply board move = changePlayers 
-                 $ computeChecks 
-                 $ computeCastles move 
-                 $ trackMove move 
-                 $ changePlacement move board
+permit :: Board -> Move -> Maybe Board
+permit board move = let board' = forceApply board move
+                        colour = player board
+                        tboard = board' { player = colour } 
+                    in case (check board) of True  | not $ checked tboard -> Just board' -- check and can escape
+                                             False | not $ checked tboard -> Just board' -- not in check, but don't move into check
+                                             _                            -> Nothing
+apply :: Board -> Move -> Maybe Board
+apply board move = join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
+
+forceApply :: Board -> Move -> Board
+forceApply board move = changePlayers 
+                      $ computeChecks 
+                      $ computeCastles move 
+                      $ trackMove move 
+                      $ changePlacement move board
 
 checked :: Board -> Bool
 checked board = not $ null $ threats board [square king]
       where king = head $ findPieces board (King, player board)
 
 immoble :: Board -> Bool
-immoble board = all (checked . reset . apply board) $ movesFor board (player board)
+immoble board = all (checked . reset . forceApply board) $ movesFor board (player board)
       where reset b = b { player = player board }
 
 checkmate :: Board -> Bool
@@ -380,31 +383,6 @@ stalemate = every [not . check, immoble]
 
 drawn :: Board -> Bool
 drawn board = False -- probably this
-
--- you have to compute the other states aswell
-evaluate :: Board -> Either Outcome Board
-evaluate board = if (checkmate board)      then Left Checkmate
-                 else if (stalemate board) then Left Stalemate
-                 else if (drawn board)     then Left Draw
-                 else Right board
-
-permit :: Board -> Move -> Maybe Board
-permit board move = let board' = apply board move
-                        colour = player board
-                        tboard = board' { player = colour } 
-                    in case (check board) of True  | not $ checked tboard -> Just board' -- check and can escape
-                                             False | not $ checked tboard -> Just board' -- not in check, but don't move into check
-                                             _                            -> Nothing
-
-performEval :: Board -> Move -> Either Outcome Board
-performEval board move = case (perform board move) of (Right board) -> evaluate board
-                                                      result        -> result
-
-performPermit :: Board -> Move -> Either Outcome Board
-performPermit board move = maybe (Left (Illegal move)) Right $ join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
-
-perform :: Board -> Move -> Either Outcome Board 
-perform board move = maybe (Left (Illegal move)) Right $ fmap (apply board) $ find (== move) $ movesPosition board $ position move
 
 board :: Board
 board = Board { player      = W,

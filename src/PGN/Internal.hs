@@ -23,8 +23,8 @@ import Chess.Display
 data ChessError = CaptureError Chess.Coord Chess.Figure |
                   AdvanceError Chess.Coord Chess.Figure |
                   PromoteError Chess.Coord Chess.Figure | 
-                  CastleError  Chess.Castles  | 
-                  GameError    Chess.Outcome  |
+                  CastleError  Chess.Castles            | 
+                  IllegalMoveError                      |
                   MissingMovesError
                   deriving (Eq, Show, Ord)
 
@@ -36,11 +36,12 @@ instance M.ShowErrorComponent ChessError where
     showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (PromoteError coord piece) = "Could not promote at " <> (show coord) <> " to "   <> (show piece)
     showErrorComponent (CastleError c)            = "Could not castle: " <> (show c) 
-    showErrorComponent (GameError o)              = "Disallowed due to: " <> (show o)
+    showErrorComponent (IllegalMoveError)         = "This move is illegal"
+    showErrorComponent (MissingMovesError)        = "No moves available"
 
 type Parser a = Parsec ChessError String a
 
-data Turn = Ended | Mated | Moved deriving (Show, Eq)
+data Turn = Ended | Moved deriving (Show, Eq)
 
 failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
@@ -69,16 +70,16 @@ characters = M.manyTill asciiChar (M.lookAhead $ char '"')
 numbers :: Parser (Maybe Int)
 numbers = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
-tagline :: Parser String -> Parser a -> Parser a
+tagline :: Parser a -> Parser b -> Parser (a, b)
 tagline title content = do
         _ <- delimitation
         _ <- char '['
-        _ <- title
+        t <- title
         _ <- delimitation
         a <- M.between (char '"') (char '"') content
         _ <- char ']'
         _ <- delimitation
-        return a
+        return (t, a)
 
 tagParsers :: [Parser G.Tag]
 tagParsers = [try $ extract characters "event" G.Event, 
@@ -88,16 +89,15 @@ tagParsers = [try $ extract characters "event" G.Event,
               try $ extract characters "white" G.White,
               try $ extract characters "black" G.Black,
               try $ extract result     "result" G.Result, 
-              ignore]
-    where extract what title to = fmap to $ tagline (string' title) what
-          ignore                = tagline characters characters $> G.Ignored
+              unknown]
+    where extract what title to = fmap (to . snd) $ tagline (string' title) what
+          unknown               = fmap (\(t, c) -> G.Unknown t c) $ tagline characters characters
 
 -- Some PGN files exports don't abide to the format rules..
--- I have to parse without ordering and them order them properly afterwards
+-- I have to parse without ordering and the order them properly later on
 tagsParser :: Parser [G.Tag]
-tagsParser = fmap sort $ (M.optional (M.choice tagParsers) >>= process)
-    where process (Just G.Ignored)  = tagsParser
-          process (Just h)        = fmap (\hs -> h:hs) tagsParser
+tagsParser = (M.optional (M.choice tagParsers) >>= process)
+    where process (Just h)        = fmap (\hs -> h:hs) tagsParser
           process (Nothing)       = return []
 
 headline :: String -> Parser a -> Parser a
@@ -351,10 +351,10 @@ move board = M.choice [try $ pawn board,
                        try $ king board]
 
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move board = case (Chess.perform board move) of (Right board') -> return board'
-                                                        (Left outcome) -> failWith (GameError outcome) Nothing
+applied move board = maybe illegal return $ Chess.apply board move
+    where illegal = failWith IllegalMoveError Nothing
 
-result :: Parser G.GameResult
+result :: Parser G.Outcome
 result = M.choice [(try $ string "1-0")     $> (G.Win Chess.W),
                    (try $ string "0-1")     $> (G.Win Chess.B),
                    (try $ string "1/2-1/2") $> G.Draw,
@@ -367,19 +367,18 @@ moveParser board = do
     _ <- delimitation
     return m
 
-appliedTurnParser :: Chess.Board -> Parser (Chess.Move, Chess.Board, Turn)
+appliedTurnParser :: Chess.Board -> Parser (Chess.Board, Turn)
 appliedTurnParser board = do
     m <- moveParser board
     b <- applied m board
     _ <- check
-    e <- mate
+    _ <- mate
     _ <- delimitation
     o <- M.optional $ M.lookAhead result
-    return $ case o of (Just _) | e -> (m, b, Mated)
-                       (Just _)     -> (m, b, Ended)
-                       (Nothing)    -> (m, b, Moved)
+    return $ case o of (Just _)     -> (b, Ended)
+                       (Nothing)    -> (b, Moved)
 
-turnParser :: Chess.Board -> Parser (Chess.Move, Chess.Board, Turn)
+turnParser :: Chess.Board -> Parser (Chess.Board, Turn)
 turnParser board = (try firstTurn) <|> (try secondTurn)
     where firstTurn  = delimitation >> index >> appliedTurnParser board
           secondTurn = delimitation >> appliedTurnParser board  
@@ -387,15 +386,8 @@ turnParser board = (try firstTurn) <|> (try secondTurn)
 boardParser :: Parser (Chess.Board, Turn)
 boardParser = parseOn Chess.board
     where parseOn board = turnParser board >>= continue
-          continue (m, b, Moved) = parseOn b
-          continue (m, b, t)     = return (b, t)
-
-endReason :: Chess.Board -> Turn -> G.GameResult -> Chess.Outcome
-endReason board Mated (G.Win _) = Chess.Checkmate
-endReason board _     (G.Win _) = Chess.Resignation
-endReason board _     (G.Draw)  = if (Chess.stalemate board) 
-                                  then Chess.Stalemate 
-                                  else Chess.Draw
+          continue (b, Moved) = parseOn b
+          continue (b, t)     = return (b, t)
 
 gameParser :: Parser G.Game
 gameParser = do
@@ -404,7 +396,6 @@ gameParser = do
     _             <- delimitation
     (board, turn) <- boardParser
     result        <- result
-    let reason    = Just (endReason board turn result)  
     return G.Game { G.tags = tags, G.board = board }
 
 splitGames :: ByteString -> [String]

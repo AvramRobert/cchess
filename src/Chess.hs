@@ -6,8 +6,8 @@ import Data.Set (Set)
 newBoard :: Chess.Board
 newBoard = Chess.board
 
-applyMove :: Chess.Board -> Chess.Move -> Either Chess.Outcome Chess.Board
-applyMove = Chess.perform
+applyMove :: Chess.Board -> Chess.Move -> Maybe Chess.Board
+applyMove = Chess.apply
 
 legalMoves :: Chess.Board -> [Chess.Move]
 legalMoves = Chess.allMoves

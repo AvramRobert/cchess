@@ -2,7 +2,6 @@ module Chess.Display where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Outcome (Illegal, Stalemate, Checkmate),  
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
@@ -98,20 +97,6 @@ showPosition DebugMode = debugPosition
 
 showSquare :: DisplayMode -> Board -> Square -> String
 showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
-
-gameOutcome :: Outcome -> String
-gameOutcome (Illegal move) = "Illegal" <> gameMove move
-gameOutcome (Stalemate)    = "Stalemate"
-gameOutcome (Checkmate)    = "Checkmate" 
-
-debugOutcome :: Outcome -> String
-debugOutcome (Illegal move) = "Illegal"
-debugOutcome (Stalemate)    = "Stalemate"
-debugOutcome (Checkmate)    = "Checkmate"
-
-showOutcome :: DisplayMode -> Outcome -> String
-showOutcome GameMode  = gameOutcome
-showOutcome DebugMode = debugOutcome
 
 gameCastles :: Castles -> String
 gameCastles Both  = "O-O-O / O-O"
@@ -252,9 +237,6 @@ instance Show Position where
 
 instance Show Colour where
       show = showColour defaultMode
-
-instance Show Outcome where
-      show = showOutcome defaultMode
 
 instance Show Castles where
       show = showCastles defaultMode
