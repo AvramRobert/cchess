@@ -67,7 +67,6 @@ develop dir (colour, (x, y)) = (colour, towards dir colour)
           towards DL B = (x - 1, y + 1)
           towards DR B = (x + 1, y + 1)
 
-
 {- 
    A function that can follow any number of directions on the board and accepts a handler `h` that applies when it goes outside the board's bounds.
    By returning `[]`, `h` can be used to short-circuit the result

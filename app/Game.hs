@@ -10,11 +10,7 @@ import qualified PGN.Internal as P
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
-
-data Game = Game { board :: C.Board,
-                   white :: String,
-                   black :: String }
-            deriving (Eq, Show, Ord)
+import Chess.Meta
 
 data State = Menu               |
              Play Game          |
@@ -75,7 +71,7 @@ exitText :: String
 exitText = "One day at a time."
 
 newGame :: P.Parser State
-newGame = MC.string' "new game" $> Play Game { board = C.board, white = "Whitney", black = "Clareance" }
+newGame = MC.string' "new game" $> Play Game { board = C.board, tags = [] }
 
 move :: Game -> P.Parser State
 move game = fmap (handle . C.performEval (board game)) $ P.moveParser (board game)

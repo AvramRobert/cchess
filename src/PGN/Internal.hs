@@ -6,78 +6,19 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Data.List.NonEmpty as NL
+import qualified Chess.Meta as G
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
 import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar, asciiChar, newline)
 import Text.Read (readMaybe)
 import Data.Char (digitToInt)
-import Control.Monad (void)
+import Control.Monad (void, forM)
 import Data.Functor (($>))
-import Data.List (find)
+import Data.List (find, sort)
 import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
 import Chess.Display
-
-data GameResult = Win Chess.Colour | Draw deriving (Show, Ord, Eq)
-
--- http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
--- look here to find all possible headers
-data Header = Event String
-             | Site String
-             | Date String
-             | Round String
-             | White String
-             | Black String
-             | Result GameResult -- It can have three instances Win Colour (1-0, 0-1), Draw (1/2-1/2), Other (*) (Game is ongoing)
-             -- These are optional
-             | EventDate String
-             | ECO String
-             | WhiteElo String
-             | BlackElo String
-             | PlyCount String
-             | Annotator String
-             | TimeControl String
-             | Time String
-             | Termination String -- OUTCOME! -> Values (Abandoned, Adjundication, Death, Emergency, Normal, Rules Infraction, Time Forfeit, Unterminated)
-             | Mode String -- Can be: OTB (Over the board), ICS (Internet chess server)
-             | FEN String -- Initial position on the board in Forsyth-Edwards Notation
-
-headerRank :: Header -> Int
-headerRank rank = case rank of 
-    (Event _)    -> 1
-    (Site _)     -> 2
-    (Date _)     -> 3
-    (Round _)    -> 4
-    (White _)    -> 5
-    (Black _)    -> 6
-    (Result _)   -> 7
-    (WhiteElo _) -> 8
-    (BlackElo _) -> 9
-    (ECO _)      -> 10
-    _            -> 11
-
-instance Eq Header where
-    (==) a b = headerRank a == headerRank b
-
-instance Ord Header where
-    compare a b = (headerRank a) `compare` (headerRank b)
-
-data Game = Game {
-                  event       :: String, 
-                  site        :: String, 
-                  date        :: String,
-                  gameRound   :: String,
-                  whitePlayer :: String,
-                  blackPlayer :: String,
-                  endResult   :: GameResult,
-                  reason      :: Maybe Chess.Outcome,
-                  moves       :: [Chess.Move],
-                  -- These upper 7 are mandatory, the lower 4 aren't
-                  whiteElo    :: Maybe Int,
-                  blackElo    :: Maybe Int, 
-                  eco         :: Maybe String,
-                  eventDate   :: Maybe String} deriving (Show, Eq, Ord)
 
 data ChessError = CaptureError Chess.Coord Chess.Figure |
                   AdvanceError Chess.Coord Chess.Figure |
@@ -122,6 +63,43 @@ extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
 -- apparently there's no sane way to consume any arbitrary ascii characters between two quotes, without forcing the user to lookAhead for the quote
 -- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
 -- so it has to be this: between (char '"') (char '"') (manyTill asciiChar (lookAhead (char '"')))
+characters :: Parser String
+characters = M.manyTill asciiChar (M.lookAhead $ char '"')
+
+numbers :: Parser (Maybe Int)
+numbers = fmap (>>= readMaybe) $ M.optional $ many numberChar
+
+tagline :: Parser String -> Parser a -> Parser a
+tagline title content = do
+        _ <- delimitation
+        _ <- char '['
+        _ <- title
+        _ <- delimitation
+        a <- M.between (char '"') (char '"') content
+        _ <- char ']'
+        _ <- delimitation
+        return a
+
+tagParsers :: [Parser G.Tag]
+tagParsers = [try $ extract characters "event" G.Event, 
+              try $ extract characters "site" G.Site, 
+              try $ extract characters "date" G.Date,
+              try $ extract characters "round" G.Round,
+              try $ extract characters "white" G.White,
+              try $ extract characters "black" G.Black,
+              try $ extract result     "result" G.Result, 
+              ignore]
+    where extract what title to = fmap to $ tagline (string' title) what
+          ignore                = tagline characters characters $> G.Ignored
+
+-- Some PGN files exports don't abide to the format rules..
+-- I have to parse without ordering and them order them properly afterwards
+tagsParser :: Parser [G.Tag]
+tagsParser = fmap sort $ (M.optional (M.choice tagParsers) >>= process)
+    where process (Just G.Ignored)  = tagsParser
+          process (Just h)        = fmap (\hs -> h:hs) tagsParser
+          process (Nothing)       = return []
+
 headline :: String -> Parser a -> Parser a
 headline header p = do
         _ <- delimitation
@@ -132,38 +110,6 @@ headline header p = do
         _ <- char ']'
         _ <- delimitation
         return a
-
--- Some PGN files exports don't abide to the format rules..
--- They don't keep the strict order of [Event, Site, Date, Round, White, Black, Result], but rather may put other things randomly in-between
--- I might as well just make ordering irrelevant in this parser...
-headerParser :: Parser Game
-headerParser = do
-    event   <- headline "Event" characters
-    site    <- headline "Site" characters
-    date    <- headline "Date" characters
-    ground  <- headline "Round" characters
-    whitep  <- headline "White" characters
-    blackp  <- headline "Black" characters
-    outcome <- headline "Result" result
-    whitee  <- headline "WhiteElo" numbers
-    blacke  <- headline "BlackElo" numbers
-    eco     <- M.optional $ headline "ECO" characters
-    eventd  <- M.optional $ headline "EventDate" characters
-    return $ Game  {event       = event,
-                    site        = site,
-                    date        = date,
-                    gameRound   = ground,
-                    whitePlayer = whitep,
-                    blackPlayer = blackp,
-                    endResult   = outcome,
-                    reason      = Nothing,
-                    whiteElo    = whitee,
-                    blackElo    = blacke,
-                    eco         = eco,
-                    eventDate   = eventd,
-                    moves       = []}
-    where characters          = M.manyTill asciiChar (M.lookAhead $ char '"')
-          numbers             = fmap (>>= readMaybe) $ M.optional $ many numberChar
 
 delimitation :: Parser ()
 delimitation = void $ many (try newline <|> try spaceChar)
@@ -408,10 +354,11 @@ applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = case (Chess.perform board move) of (Right board') -> return board'
                                                         (Left outcome) -> failWith (GameError outcome) Nothing
 
-result :: Parser GameResult
-result = M.choice [(try $ string "1-0")     $> (Win Chess.W),
-                   (try $ string "0-1")     $> (Win Chess.B),
-                   (try $ string "1/2-1/2") $> Draw]
+result :: Parser G.GameResult
+result = M.choice [(try $ string "1-0")     $> (G.Win Chess.W),
+                   (try $ string "0-1")     $> (G.Win Chess.B),
+                   (try $ string "1/2-1/2") $> G.Draw,
+                   (try $ string "*")       $> G.Other]
 
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
@@ -437,28 +384,28 @@ turnParser board = (try firstTurn) <|> (try secondTurn)
     where firstTurn  = delimitation >> index >> appliedTurnParser board
           secondTurn = delimitation >> appliedTurnParser board  
 
-moveSetParser :: Parser (Chess.Board, [Chess.Move], Turn)
-moveSetParser = moves [] Chess.board
-    where moves ms board = turnParser board >>= (continue ms)
-          continue ms (m, b, Moved) = moves (m:ms) b
-          continue ms (m, b, t)     = return (b, reverse (m:ms), t)
+boardParser :: Parser (Chess.Board, Turn)
+boardParser = parseOn Chess.board
+    where parseOn board = turnParser board >>= continue
+          continue (m, b, Moved) = parseOn b
+          continue (m, b, t)     = return (b, t)
 
-endReason :: Chess.Board -> Turn -> GameResult -> Chess.Outcome
-endReason board Mated (Win _) = Chess.Checkmate
-endReason board _     (Win _) = Chess.Resignation
-endReason board _     (Draw)  = if (Chess.stalemate board) 
-                                then Chess.Stalemate 
-                                else Chess.Draw
+endReason :: Chess.Board -> Turn -> G.GameResult -> Chess.Outcome
+endReason board Mated (G.Win _) = Chess.Checkmate
+endReason board _     (G.Win _) = Chess.Resignation
+endReason board _     (G.Draw)  = if (Chess.stalemate board) 
+                                  then Chess.Stalemate 
+                                  else Chess.Draw
 
-gameParser :: Parser Game
+gameParser :: Parser G.Game
 gameParser = do
-    _                    <- delimitation
-    meta                 <- headerParser
-    _                    <- delimitation
-    (board, moves, turn) <- moveSetParser
-    result               <- result
-    let reason           = Just (endReason board turn result)  
-    return meta { moves = moves, reason = reason }
+    _             <- delimitation
+    tags          <- tagsParser
+    _             <- delimitation
+    (board, turn) <- boardParser
+    result        <- result
+    let reason    = Just (endReason board turn result)  
+    return G.Game { G.tags = tags, G.board = board }
 
 splitGames :: ByteString -> [String]
 splitGames = accumulate . C.lines
@@ -472,27 +419,20 @@ fromPGNFile' = fmap splitGames . B.readFile
 fromString' :: String -> [String]
 fromString' = splitGames . C.pack
 
-fromPGNFile :: String -> IO (Either ParseError [Game])
+fromPGNFile :: String -> IO (Either ParseError [G.Game])
 fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFile'
 
-fromString :: String -> Either ParseError [Game]
+fromString :: String -> Either ParseError [G.Game]
 fromString = sequence . fmap (run gameParser) . splitGames . C.pack
 
-parseGame :: String -> Either ParseError Game
+parseGame :: String -> Either ParseError G.Game
 parseGame = run gameParser
 
 parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
-parseCompute :: String -> Either ParseError Chess.Board
-parseCompute game = parseGame game >>= (handle . runGame)
-    where handle (Right board)  = Right board 
-          handle (Left outcome) = run (failWith (GameError outcome) Nothing) ""
-
-runGame :: Game -> Either Chess.Outcome Chess.Board
-runGame = foldl proceed (Right Chess.board) . moves
-    where proceed (Right board) = Chess.perform board
-          proceed a             = const a
+parseBoard :: String -> Either ParseError Chess.Board
+parseBoard = fmap G.board . parseGame 
 
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""

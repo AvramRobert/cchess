@@ -16,7 +16,7 @@ computeGames :: [String] -> IO ()
 computeGames = computeFrom 1 
     where computeFrom _ []     = putStrLn "Successfully finished!"
           computeFrom i (x:xs) =  do
-            let computed = P.compute x
+            let computed = P.parse x
             _ <- putStrLn $ "Computing game " <> (show i)
             if (isRight computed)
             then computeFrom (i + 1) xs
