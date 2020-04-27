@@ -1,4 +1,4 @@
-module Chess.Meta where
+module Chess.Game where
 
 import qualified Chess.Internal as Chess
 import Chess.Display
@@ -67,4 +67,8 @@ tagRank rank = case rank of
 
 -- Implement this checkmate and all
 evaluate :: Chess.Board -> Maybe Reason
-evaluate _ = Nothing
+evaluate board = let immoble = Chess.immoble board
+                     checked = Chess.check board
+                 in if (checked && immoble) then Just Checkmate
+                    else if immoble         then Just Stalemate
+                    else                         Nothing

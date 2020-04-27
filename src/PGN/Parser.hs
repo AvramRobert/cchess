@@ -1,4 +1,4 @@
-module PGN.Internal where
+module PGN.Parser where
 
 import qualified Chess.Internal as Chess
 import qualified Text.Megaparsec as M
@@ -6,7 +6,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Data.List.NonEmpty as NL
-import qualified Chess.Meta as G
+import qualified Chess.Game as G
 import Data.Monoid (Monoid)
 import Data.ByteString.Lazy (ByteString)
 import Text.Megaparsec (Parsec, (<|>), runParser, try, many)
@@ -30,7 +30,6 @@ data ChessError = CaptureError Chess.Coord Chess.Figure |
 
 type ParseError = M.ParseErrorBundle String ChessError
 
--- Move this to `Display`?
 instance M.ShowErrorComponent ChessError where
     showErrorComponent (CaptureError coord piece) = "Could not capture at " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)

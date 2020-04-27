@@ -1,22 +1,22 @@
 module PGN (fromFile, fromFile', parse, parseMany) where
 
 import qualified Text.Megaparsec as M
-import qualified Chess.Meta as Chess
-import qualified PGN.Internal as PGN
+import Chess.Game (Game)
+import PGN.Parser (ParseError, fromPGNFile, fromPGNFile', fromString', parseGame)
 
 type StringError = String
 
-stringifyError :: Either PGN.ParseError a -> Either StringError a
+stringifyError :: Either ParseError a -> Either StringError a
 stringifyError = either (Left . M.errorBundlePretty) return
 
 fromFile' :: String -> IO [String]
-fromFile' = PGN.fromPGNFile' 
+fromFile' = fromPGNFile' 
 
-fromFile :: String -> IO (Either StringError [Chess.Game])
-fromFile = fmap stringifyError . PGN.fromPGNFile
+fromFile :: String -> IO (Either StringError [Game])
+fromFile = fmap stringifyError . fromPGNFile
 
-parse :: String -> Either StringError Chess.Game
-parse = stringifyError . PGN.parseGame
+parse :: String -> Either StringError Game
+parse = stringifyError . parseGame
 
-parseMany :: String -> Either StringError [Chess.Game]
-parseMany = sequence . fmap parse . PGN.fromString'
+parseMany :: String -> Either StringError [Game]
+parseMany = sequence . fmap parse . fromString'

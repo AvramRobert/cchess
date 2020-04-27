@@ -1,7 +1,7 @@
 module Main where
 
 import Bench (runBench)
-import Game (runGame)
+import Play (playGame)
 
 main :: IO ()
-main = runGame
+main = playGame

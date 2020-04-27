@@ -1,13 +1,13 @@
 {-# LANGUAGE GADTs #-}
 
-module Game (runGame) where
+module Play (playGame) where
 
 import qualified Chess.Display as D
 import qualified Chess.Internal as C
-import qualified Chess.Meta as CM
+import qualified Chess.Game as G
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char as MC
-import qualified PGN.Internal as P
+import qualified PGN.Parser as P
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
@@ -20,7 +20,7 @@ data Game = Game { board :: C.Board,
 data State = Menu               |
              Play Game          |
              Resign Game        |
-             End Game CM.Reason |
+             End Game G.Reason |
              Exit 
 
 data Prompt a where
@@ -59,9 +59,9 @@ playText :: Game -> String
 playText game = unlines [showBoard game, "Input a move"]
 
 -- I could re-add the suggestion that a game is drawn/drawable
-outcomeText :: CM.Reason  -> String
-outcomeText (CM.Checkmate) = "You've been checkmated"
-outcomeText (CM.Stalemate) = "This game is a stalemate"
+outcomeText :: G.Reason  -> String
+outcomeText (G.Checkmate) = "You've been checkmated"
+outcomeText (G.Stalemate) = "This game is a stalemate"
 
 resignText :: C.Colour -> String
 resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
@@ -76,7 +76,7 @@ newGame = MC.string' "new game" $> Play Game { board = C.board, white = "Whitney
 
 move :: Game -> P.Parser State
 move game = fmap (evaluate . C.forceApply (board game)) $ P.moveParser (board game)
-    where evaluate board = case (CM.evaluate board) of 
+    where evaluate board = case (G.evaluate board) of 
             (Just outcome) -> End game outcome 
             (Nothing)      -> Play game { board = board }  
 
@@ -111,5 +111,5 @@ process eff @ (Effect (Input p) f)    = getLine >>= (handle . P.run p)
 run :: State -> IO ()
 run = process . instructions
 
-runGame :: IO ()
-runGame = run Menu
+playGame :: IO ()
+playGame = run Menu
