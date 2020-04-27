@@ -16,7 +16,7 @@ data Reason  = Abandoned
              | Emergency 
              | Normal
              | Checkmate   --
-             | Resignation -- these three pertain actually to 'normal'. I've put by myself because they are sort-of undocumented
+             | Resignation -- these three pertain actually to 'normal'. I've put them here myself because they are sort-of undocumented
              | Stalemate   -- 
              | Infraction 
              | TimeForfeit 
@@ -67,13 +67,13 @@ data Tag =  Event String
           | ECO String
           | NIC String
             -- Time 
-          | Time String         -- go down the rabbit whole and try to parse propely? 
-          | UTCTime String
-          | UTCDate String
+          | Time String         --  
+          | UTCTime String      -- go down the rabbit whole and try to parse these propely?
+          | UTCDate String      --
           | TimeControl String -- I'm not sure about this, it seems a bit iffy in its definition
            -- Alternative starting positions
           | SetUp String
-          | FEN String -- Initial position on the board in Forsyth-Edwards Notation
+          | FEN String
             -- Game conclusion
           | Termination Reason
             -- Misc
@@ -95,10 +95,7 @@ tagRank rank = case rank of
     (White _)    -> 5
     (Black _)    -> 6
     (Result _)   -> 7
-    (WhiteElo _) -> 8
-    (BlackElo _) -> 9
-    (ECO _)      -> 10
-    _            -> 11
+    _            -> 8
 
 -- Implement this checkmate and all
 evaluate :: Chess.Board -> Maybe Reason
