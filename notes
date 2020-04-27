@@ -12,7 +12,7 @@ To Do:
      * 5. Add stalemate checks
      * 6 Fix PGN header parser to account for misshaps in ordering + add the other additional  fields a file might have
      * 7. Implement evaluation steps for a Board
-    8. Implement all PGN tags
+     * 8. Implement all PGN tags
     9. Implement translation from Moves -> PGN
    10. Refine the API
    11. Write a read-me, documentation and release

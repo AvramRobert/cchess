@@ -14,7 +14,7 @@ import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar
 import Text.Read (readMaybe)
 import Data.Char (digitToInt)
 import Control.Monad (void, forM)
-import Data.Functor (($>))
+import Data.Functor (($>), (<&>))
 import Data.List (find, sort)
 import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
@@ -66,8 +66,43 @@ extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
 characters :: Parser String
 characters = M.manyTill asciiChar (M.lookAhead $ char '"')
 
-numbers :: Parser (Maybe Int)
-numbers = fmap (>>= readMaybe) $ M.optional $ many numberChar
+result :: Parser G.Outcome
+result = M.choice [try (string "1-0")     $> (G.Win Chess.W),
+                   try (string "0-1")     $> (G.Win Chess.B),
+                   try (string "1/2-1/2") $> G.Draw,
+                   try (string "*")       $> G.Other]
+
+rating :: Parser G.Rating
+rating = M.choice [try (string "-") $> G.Unrated,
+                   try (characters) <&> G.Rated]
+
+title :: Parser G.Title
+title = M.choice [try (string' "GM") $> G.GM,
+                  try (string' "FM") $> G.FM,
+                  try (string' "IM") $> G.IM,
+                  try (string' "-")  $> G.UT]
+
+address :: Parser G.Address
+address = M.choice [try (string "-") $>  G.NoAddress,
+                    try (characters) <&> G.Address]
+
+playerType :: Parser G.PlayerType
+playerType = M.choice [try (string' "human")    $> G.Human,
+                       try (string' "computer") $> G.Computer]
+
+reason :: Parser G.Reason
+reason = M.choice [try (string' "abandoned")        $> G.Abandoned,
+                   try (string' "adjudication")     $> G.Adjundication,
+                   try (string' "death")            $> G.Death,
+                   try (string' "emergency")        $> G.Emergency,
+                   try (string' "normal")           $> G.Normal,
+                   try (string' "rules infraction") $> G.Infraction,
+                   try (string' "time forfeit")     $> G.TimeForfeit,
+                   try (string' "Unterminated")     $> G.Unterminated]
+
+variant :: Parser G.Variant
+variant = M.choice [try (string' "otb") $> G.OTB,
+                    try (string' "ics") $> G.ICS]
 
 tagline :: Parser a -> Parser b -> Parser (a, b)
 tagline title content = do
@@ -87,10 +122,40 @@ tagParsers = [try $ extract characters "event" G.Event,
               try $ extract characters "round" G.Round,
               try $ extract characters "white" G.White,
               try $ extract characters "black" G.Black,
-              try $ extract result     "result" G.Result, 
+              try $ extract result     "result" G.Result,
+              try $ extract rating     "whiteelo" G.WhiteElo,
+              try $ extract rating     "blackelo" G.BlackElo,
+              try $ extract title      "whitetitle" G.WhiteTitle,
+              try $ extract title      "blacktitle" G.BlackTitle,
+              try $ extract characters "whiteuscf" G.WhiteUSCF,
+              try $ extract characters "blackuscf" G.BlackUSCF,
+              try $ extract address    "whitena" G.WhiteNA,
+              try $ extract address    "blackna" G.BlackNA,
+              try $ extract playerType "whitetype" G.WhiteType,
+              try $ extract playerType "blacktype" G.BlackType,
+              try $ extract characters "eventdate" G.EventDate,
+              try $ extract characters "eventsponsor" G.EventSponsor,
+              try $ extract characters "section" G.Section,
+              try $ extract characters "stage" G.Stage,
+              try $ extract characters "board" G.Board,
+              try $ extract characters "opening" G.Opening,
+              try $ extract characters "variation" G.Variation,
+              try $ extract characters "subvariation" G.SubVariation,
+              try $ extract characters "eco" G.ECO,
+              try $ extract characters "nic" G.NIC,
+              try $ extract characters "time" G.Time,
+              try $ extract characters "utctime" G.UTCTime,
+              try $ extract characters "utcdate" G.UTCDate,
+              try $ extract characters "timecontrol" G.TimeControl,
+              try $ extract characters "setup" G.SetUp,
+              try $ extract characters "fen" G.FEN,
+              try $ extract reason     "termination" G.Termination,
+              try $ extract characters "plycount" G.PlyCount,
+              try $ extract characters "annotator" G.Annotator,
+              try $ extract variant    "mode" G.Mode,
               unknown]
-    where extract what title to = fmap (to . snd) $ tagline (string' title) what
-          unknown               = fmap (\(t, c) -> G.Unknown t c) $ tagline characters characters
+    where extract what title to = tagline (string' title) what <&> (to . snd)
+          unknown               = tagline characters characters <&> (\(t, c) -> G.Unknown t c)
 
 -- Some PGN files exports don't abide to the format rules..
 -- I have to parse without ordering and the order them properly later on
@@ -352,12 +417,6 @@ move board = M.choice [try $ pawn board,
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = maybe illegal return $ Chess.apply board move
     where illegal = failWith IllegalMoveError Nothing
-
-result :: Parser G.Outcome
-result = M.choice [(try $ string "1-0")     $> (G.Win Chess.W),
-                   (try $ string "0-1")     $> (G.Win Chess.B),
-                   (try $ string "1/2-1/2") $> G.Draw,
-                   (try $ string "*")       $> G.Other]
 
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do

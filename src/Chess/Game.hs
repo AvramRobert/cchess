@@ -14,9 +14,10 @@ data Reason  = Abandoned
              | Adjundication 
              | Death 
              | Emergency 
-             | Checkmate
-             | Resignation
-             | Stalemate 
+             | Normal
+             | Checkmate   --
+             | Resignation -- these three pertain actually to 'normal'. I've put by myself because they are sort-of undocumented
+             | Stalemate   -- 
              | Infraction 
              | TimeForfeit 
              | Unterminated
@@ -24,9 +25,16 @@ data Reason  = Abandoned
 
 data Variant = OTB | ICS deriving (Show, Eq) -- Over The Board | Internet Chess Server
 
+data Title = GM | FM | IM | UT deriving (Show, Eq) -- Grandmaster, FIDE Master, International Master, Untitled
+
+data Rating = Rated String | Unrated deriving (Show, Eq)
+
+data Address = Address String | NoAddress deriving (Show, Eq)
+
+data PlayerType = Human | Computer deriving (Show, Eq)
+
 -- http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
--- look here to find all possible headers
-data Tag = Event String
+data Tag =  Event String
           | Site String
           | Date String
           | Round String
@@ -34,17 +42,44 @@ data Tag = Event String
           | Black String
           | Result Outcome
              -- These are optional
+            -- Player
+          | WhiteElo Rating
+          | BlackElo Rating
+          | WhiteTitle Title
+          | BlackTitle Title
+          | WhiteUSCF String
+          | BlackUSCF String
+          | WhiteNA Address
+          | BlackNA Address
+          | WhiteType PlayerType
+          | BlackType PlayerType
+            -- Event
           | EventDate String
+          | EventSponsor String
+          | Section String
+          | Stage String
+          | Board String
+            -- Opening (locale)
+          | Opening String
+          | Variation String
+          | SubVariation String
+            -- Opening (third-party)
           | ECO String
-          | WhiteElo String
-          | BlackElo String
-          | PlyCount String
-          | Annotator String
-          | TimeControl String
-          | Time String
-          | Termination Reason
-          | Mode Variant
+          | NIC String
+            -- Time 
+          | Time String         -- go down the rabbit whole and try to parse propely? 
+          | UTCTime String
+          | UTCDate String
+          | TimeControl String -- I'm not sure about this, it seems a bit iffy in its definition
+           -- Alternative starting positions
+          | SetUp String
           | FEN String -- Initial position on the board in Forsyth-Edwards Notation
+            -- Game conclusion
+          | Termination Reason
+            -- Misc
+          | PlyCount String
+          | Annotator String  
+          | Mode Variant
           | Unknown String String
           deriving (Show, Eq)
 
