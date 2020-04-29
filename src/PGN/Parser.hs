@@ -376,7 +376,9 @@ castle _           = const $ failWith MissingMovesError Nothing
 -- there's an ordering problem here aswell
 -- An unambigous advance may be eagerly interpreted as a promotion in certain scenarios
 -- Ex: d1=Q => `d1` by itself is a valid unambigous advance.
--- We thus have to start with checking promotions and then the rest.. 
+-- We thus have to start with checking promotions and then the rest..
+
+-- SHIT: The pawn parser doesn't see enpassants. FUCK
 pawn :: Chess.Board -> Parser Chess.Move
 pawn board = M.choice [try $ promotePawn colour moves,
                        try $ capturePromotePawn colour moves,

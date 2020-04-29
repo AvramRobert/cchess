@@ -1,9 +1,14 @@
-module Lib.Coll (first, spread, every, conjoin, consume, keepLast, zipped, when, once, exactly, groupOn, asListOf, chunksOf, maxBy) where
+module Lib.Coll (first, spread, every, conjoin, consume, keepLast, mapFirst, 
+                 zipped, when, once, exactly, groupOn, asListOf, chunksOf, maxBy) where
 
 import Debug.Trace (trace)
 import Control.Monad (foldM)
 import Data.List (find, groupBy, sortOn)
 import Data.Maybe (isJust)
+
+mapFirst :: [a -> Maybe b] -> a -> Maybe b
+mapFirst [] _     = Nothing
+mapFirst (f:fs) a = maybe (mapFirst fs a) Just (f a)
 
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n = takeWhile (not . null) . map (take n) . iterate (drop n)

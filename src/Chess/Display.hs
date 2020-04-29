@@ -38,22 +38,31 @@ showFigure :: DisplayMode -> Figure -> String
 showFigure GameMode  = gameFigure
 showFigure DebugMode = debugFigure
 
-gameLabel :: Int -> String
-gameLabel 1 = "A"
-gameLabel 2 = "B"
-gameLabel 3 = "C"
-gameLabel 4 = "D"
-gameLabel 5 = "E"
-gameLabel 6 = "F"
-gameLabel 7 = "G"
-gameLabel 8 = "H"
+gameFile :: Int -> String
+gameFile 1 = "A"
+gameFile 2 = "B"
+gameFile 3 = "C"
+gameFile 4 = "D"
+gameFile 5 = "E"
+gameFile 6 = "F"
+gameFile 7 = "G"
+gameFile 8 = "H"
 
-debugLabel :: Int -> String
-debugLabel = show
+debugFile :: Int -> String
+debugFile = show
 
-showLabel :: DisplayMode -> Int -> String
-showLabel GameMode  = gameLabel
-showLabel DebugMode = debugLabel 
+showFile :: DisplayMode -> Int -> String
+showFile GameMode  = gameFile
+showFile DebugMode = debugFile 
+
+standardFigure :: Figure -> String
+standardFigure (Pawn, _)   = "P"
+standardFigure (Bishop, _) = "B"
+standardFigure (Rook, _)   = "R"
+standardFigure (Knight, _) = "N"
+standardFigure (King, _)   = "K"
+standardFigure (Queen, _)  = "Q"
+standardFigure (Empty, _)  = ""
 
 debugFigure :: Figure -> String
 debugFigure (Pawn, W)   = "P (W)"
@@ -70,8 +79,8 @@ debugFigure (Queen, W)  = "Q (W)"
 debugFigure (Queen, B)  = "Q (B)"
 debugFigure (Empty, _)  = "-" 
 
-showIndex :: Colour -> Int -> String
-showIndex c i = show $ snd $ boardCoord $ (c, (1, i))
+showRank :: Colour -> Int -> String
+showRank c i = show $ snd $ boardCoord $ (c, (1, i))
 
 gameColour :: Colour -> String
 gameColour W = "White"
@@ -207,8 +216,8 @@ template mode board colour = unlines $
           d     = "|"                                                          -- delimiter entry
           dp    = manyOf " " $ length d                                        -- delimiter pad => dependent on string delimiter size
           e     = centerOn le . pad . pos                                      -- lookup entry
-          l     = centerOn le . showLabel mode                                 -- lookup label => center and pad it based on the largest string entry
-          i     = pad . showIndex colour                                       -- lookup index
+          l     = centerOn le . showFile mode                                 -- lookup label => center and pad it based on the largest string entry
+          i     = pad . showRank colour                                       -- lookup index
           t     = manyOf "‾" le                                                -- top       => dependent on largest string entry
           b     = manyOf " " le                                                -- bottom    => dependent on largest string entry
           ip    = manyOf " " li                                                -- index pad => dependent on largest string index
