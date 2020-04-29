@@ -1,8 +1,9 @@
-module PGN (fromFile, fromFile', parse, parseMany) where
+module PGN (fromFile, fromFile', parse, parseMany, write) where
 
 import qualified Text.Megaparsec as M
-import Chess.Game (Game)
+import Chess.Game (Game, board)
 import PGN.Parser (ParseError, fromPGNFile, fromPGNFile', fromString', parseGame)
+import PGN.Writer (writeMoves)
 
 type StringError = String
 
@@ -20,3 +21,6 @@ parse = stringifyError . parseGame
 
 parseMany :: String -> Either StringError [Game]
 parseMany = sequence . fmap parse . fromString'
+
+write :: Game -> String
+write = unlines . writeMoves . board

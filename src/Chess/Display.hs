@@ -39,14 +39,14 @@ showFigure GameMode  = gameFigure
 showFigure DebugMode = debugFigure
 
 gameFile :: Int -> String
-gameFile 1 = "A"
-gameFile 2 = "B"
-gameFile 3 = "C"
-gameFile 4 = "D"
-gameFile 5 = "E"
-gameFile 6 = "F"
-gameFile 7 = "G"
-gameFile 8 = "H"
+gameFile 1 = "a"
+gameFile 2 = "b"
+gameFile 3 = "c"
+gameFile 4 = "d"
+gameFile 5 = "e"
+gameFile 6 = "f"
+gameFile 7 = "g"
+gameFile 8 = "h"
 
 debugFile :: Int -> String
 debugFile = show

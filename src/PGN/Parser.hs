@@ -227,8 +227,11 @@ advancesTo _ _                    = False
 
 capturesAt :: Chess.Coord -> Chess.Move -> Bool
 capturesAt s (Chess.Capture _ enemy) = s == (Chess.coord enemy)
-capturesAt s (Chess.Enpassant _ e _) = s == e
 capturesAt _ _                       = False
+
+enpassantAt :: Chess.Coord -> Chess.Move -> Bool
+enpassantAt s (Chess.Enpassant _ e _) = s == e
+enpassantAt _ _                       = False
 
 promotesAs :: Chess.Position -> Chess.Move -> Bool
 promotesAs newPos (Chess.Promote _ newPiece enemy) = (Chess.piece newPos) == newPiece && (Chess.coord newPos) == (Chess.coord enemy)
@@ -250,6 +253,14 @@ promoteError p _     = PromoteError (Chess.coord p) (Chess.figure p)
 advanceError :: Chess.Coord -> [Chess.Move] -> ChessError
 advanceError _ []    = MissingMovesError
 advanceError c (m:_) = AdvanceError c $ (Chess.figure $ Chess.position m)
+
+enpassantCapture :: [Chess.Move] -> Parser Chess.Move
+enpassantCapture moves = do
+    ox <- file
+    _  <- char 'x'
+    x  <- file
+    y  <- rank
+    failWith (captureError (x, y) moves) $ find (every [enpassantAt (x, y), hasX ox]) moves
 
 -- there's only one piece I can capture at `x, y`
 unambigousCapture :: [Chess.Move] -> Parser Chess.Move
@@ -332,15 +343,19 @@ capture moves = M.choice [try $ unambigousCapture moves,
                           try $ explicitCapture moves]
 
 captureOrAdvance :: [Chess.Move] -> Parser Chess.Move
-captureOrAdvance moves = M.choice [capture moves, advance moves]  
+captureOrAdvance moves = M.choice [capture moves, advance moves] 
+
+-- there's a pawn at file `ox` that can capture `x, y` enapssant
+enpassantPawn :: [Chess.Move] -> Parser Chess.Move
+enpassantPawn = enpassantCapture
 
 -- there's a pawn at file `ox` that can capture `x, y`
 capturePawn :: [Chess.Move] -> Parser Chess.Move
-capturePawn moves = fileAmbigousCapture moves
+capturePawn = fileAmbigousCapture
 
 -- there's a pawn at file `ox` that can advnace to `x, y`
 advancePawn :: [Chess.Move] -> Parser Chess.Move
-advancePawn moves = unambigousAdvance moves 
+advancePawn = unambigousAdvance 
 
 -- there's a pawn at promoting position `x, y -+ 1` and can promote at `x, y`
 promotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
@@ -383,6 +398,7 @@ pawn :: Chess.Board -> Parser Chess.Move
 pawn board = M.choice [try $ promotePawn colour moves,
                        try $ capturePromotePawn colour moves,
                        try $ capturePawn moves,
+                       try $ enpassantPawn moves,
                        try $ advancePawn moves]
         where moves  = Chess.movesPiece board (Chess.Pawn, colour)
               colour = Chess.player board 

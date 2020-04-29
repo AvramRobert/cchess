@@ -1,4 +1,4 @@
-module PGN.Writer where
+module PGN.Writer (writeMoves) where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -14,6 +14,10 @@ import Lib.Coll
 
 data Ambiguity = Non | File | Rank | Total
 
+justOne :: a -> [b] -> Maybe a
+justOne a (b:[]) = Just a
+justOne _ _      = Nothing
+
 movesFor :: Position -> Board -> [Move]
 movesFor (Pos p c _) board = movesPiece board (p, c)
 
@@ -21,13 +25,27 @@ label :: Square -> String
 label (colour, (x, y)) = gameFile x <> showRank colour y  
 
 non :: Move -> String
-non (Advance (Pos Pawn c _) end)                  = label (c, end)
-non (Advance (Pos p c _)    end)                  = standardFigure (p, c) <> label (c, end)
-non (Promote (Pos Pawn c _) p (Pos Empty _ end))  = label (c, end) <> "=" <> standardFigure (p, c)  
-non (Promote (Pos Pawn c (x, _)) p (Pos _ _ end)) = gameFile x <> "x" <> label (c, end) <> "=" <> standardFigure (p, c)  
+non (Promote (Pos Pawn c _) p endp)  = label (c, coord endp) <> "=" <> standardFigure (p, c)  
+non (Advance (Pos Pawn c _) end)     = label (c, end)
+non (Advance (Pos p c _)    end)     = standardFigure (p, c) <> label (c, end)
+non (Capture (Pos p c _)    endp)    = standardFigure (p, c) <> "x" <> label (c, coord endp)
+non (Castle  (_, (7, _)) _)          = "O-O"
+non (Castle  (_, (3, _)) _)          = "O-O-O"
 
 file :: Move -> String
-file (Capture (Pos Pawn c (xs, _)) endp) = gameFile xs <> "x" <> label (c, coord endp)
+file (Enpassant (Pos _ c (xs, _)) end _)  = gameFile xs <> "x" <> label (c, end)
+file (Promote (Pos p c (xs, _)) _ endp)   = gameFile xs <> "x" <> label (c, coord endp) <> "=" <> standardFigure (p, c)  
+file (Capture (Pos Pawn c (xs, _)) endp)  = gameFile xs <> "x" <> label (c, coord endp)
+file (Capture (Pos p c (xs, _)) endp)     = standardFigure (p, c) <> gameFile xs <> "x" <> label (c, coord endp)
+file (Advance (Pos p c (xs, _)) end)      = standardFigure (p, c) <> gameFile xs <> label (c, end)
+
+rank :: Move -> String
+rank (Capture (Pos p c (_, ys)) endp) = standardFigure (p, c) <> showRank c ys <> "x" <> label (c, coord endp)
+rank (Advance (Pos p c (_, ys))  end) = standardFigure (p, c) <> showRank c ys <> label (c, end)
+
+total :: Move -> String
+total (Capture (Pos p c start) endp) = standardFigure (p, c) <> label (c, start) <> "x" <> label (c, coord endp)
+total (Advance (Pos p c start) end)  = standardFigure (p, c) <> label (c, start) <> label (c, end)
 
 -- I can reuse this (and its counterparts) from Parser 
 advancesTo :: Coord -> Move -> Bool
@@ -36,45 +54,44 @@ advancesTo _ _                       = False
 
 capturesAt :: Coord -> Move -> Bool
 capturesAt s (Capture _ enemy) = s == (coord enemy)
-capturesAt s (Enpassant _ e _) = s == e
 capturesAt _ _                 = False
 
+hasX :: Int -> Move -> Bool
+hasX x = (== x) . fst . coord . position
+
+hasY :: Int -> Move -> Bool
+hasY y = (== y) . snd . coord . position
+
 encode :: Move -> Ambiguity -> String
-encode move Non = non move
-
--- ambiguity -> there's more than one piece of that type that can go to (xe, ye)
-
--- 1. unambigous: there's only one piece of that type that can go (xe, ye)
--- 2. fileambigous: there's only one piece of that type with that ox that can go to (xe, ye)
--- 3. rankambigous: there's only one piece of that type with that oy that can go to (xe, ye)
--- 4. explicit: (ox, oy) to (xe, ye)
-
-justOne :: a -> [b] -> Maybe a
-justOne a (b:[]) = Just a
-justOne _ _      = Nothing
+encode move Non   = non move
+encode move File  = file move
+encode move Rank  = rank move
+encode move Total = total move
 
 unambigous :: Position -> [Move] -> Maybe Ambiguity
-unambigous (Pos p c _) = justOne Non
+unambigous (Pos p c (x, y)) = justOne Non
 
 fileAmbigous :: Position -> [Move] -> Maybe Ambiguity
-fileAmbigous (Pos p c _) = justOne File -- fix this
+fileAmbigous (Pos p c (x, y)) = justOne File . filter (hasX x)
 
 rankAmbigous :: Position -> [Move] -> Maybe Ambiguity
-rankAmbigous (Pos p c _) = justOne Rank
+rankAmbigous (Pos p c (x, y)) = justOne Rank . filter (hasY y)
 
+-- You don't need the ADT. You can directly call the transformation functions. When unambigous -> apply unambigous. etc
 disambiguate :: Position -> [Move] ->  Ambiguity
 disambiguate pos = maybe Total id . mapFirst [unambigous pos, fileAmbigous pos, rankAmbigous pos]
 
 derive :: Board -> Move -> Ambiguity
 derive board move = case move of
-    (Promote _ _ _)             -> Non
-    (Castle _ _)                -> Non
-    (Enpassant _ _ _)           -> Non
-    (Advance (Pos Pawn _ _) _)  -> Non
-    (Advance pos end)           -> disambiguate pos $ filter (advancesTo end)          $ movesFor pos board
-    (Capture pos epos)          -> disambiguate pos $ filter (capturesAt (coord epos)) $ movesFor pos board
+    (Castle _ _)                  -> Non
+    (Promote _ _ (Pos Empty _ _)) -> Non
+    (Promote _ _ _)               -> File
+    (Advance (Pos Pawn _ _) _)    -> Non
+    (Enpassant _ _ _)             -> File
+    (Capture (Pos Pawn _ _) _)    -> File
+    (Advance pos end)             -> disambiguate pos $ filter (advancesTo end)          $ movesFor pos board
+    (Capture pos epos)            -> disambiguate pos $ filter (capturesAt (coord epos)) $ movesFor pos board
 
-write :: Board -> [String]
-write = snd . foldr write (board, []) . past
+writeMoves :: Board -> [String]
+writeMoves = snd . foldr write (board, []) . past
     where write move (board, ps) = (forceApply board move, (encode move $ derive board move) : ps)
-                   

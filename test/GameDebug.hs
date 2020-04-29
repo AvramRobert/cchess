@@ -7,6 +7,7 @@ import Data.Maybe
 import qualified Chess.Internal as C
 import qualified Chess.Game as G
 import qualified PGN as P
+import qualified PGN.Writer as W
 import System.IO.Unsafe (unsafePerformIO)
 
 pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn"
@@ -19,6 +20,8 @@ testGame' = "[Event \"World Championship Tournament\"]\r\n[Site \"Mexico City ME
 testBoard = case (P.parse testGame) of 
     (Right game) -> G.board game
     (Left e)     -> C.board
+
+testPGN = W.writeMoves testBoard
 
 faultyMove = C.Advance (C.Pos C.Rook C.B (7, 6)) (7, 8)
 
