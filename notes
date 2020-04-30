@@ -21,3 +21,4 @@ To Do:
    14. Add an engine to play against
    15. Add in-game draw suggestions checks
    16. Write a PGN parser that parses files directly and doesn't use bytestrings to extract each individual game
+   17. Encode the ambiguity of a move directly when parsing, either in the board, or with the move itself, so that serialisation is less of a burden
