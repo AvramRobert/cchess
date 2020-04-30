@@ -5,7 +5,8 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, 
-                       player, coord, figure, colour, movesPiece, past, forceApply, emptyBoard, piece, position)
+                       player, coord, figure, colour, movesPiece, past, 
+                       forceApply, emptyBoard, piece, position, check)
 import Control.Applicative ((<|>))
 import Chess.Display (gameFile, debugRank, standardFigure)
 import Data.List (find)
@@ -72,18 +73,28 @@ rankAmbigous move (Pos p c (x, y)) = justOne (rank move) . filter (hasY y)
 disambiguate :: Move -> Position -> [Move] -> String
 disambiguate move pos = maybe (total move) id . mapFirst [unambigous move pos, fileAmbigous move pos, rankAmbigous move pos]
 
-encode :: Board -> Move -> String
-encode board move = case move of
-    (Castle _ _)                  -> non move
-    (Promote _ _ (Pos Empty _ _)) -> non move
-    (Promote _ _ _)               -> file move
-    (Advance (Pos Pawn _ _) _)    -> non move
-    (Enpassant _ _ _)             -> file move
-    (Capture (Pos Pawn _ _) _)    -> file move
-    (Advance pos end)             -> disambiguate move pos $ filter (advancesTo end)          $ movesFor pos board
-    (Capture pos epos)            -> disambiguate move pos $ filter (capturesAt (coord epos)) $ movesFor pos board
+encodeMove :: Board -> Move -> String
+encodeMove board move = serialise move
+    where serialise (Castle _ _)                  = non move
+          serialise (Promote _ _ (Pos Empty _ _)) = non move
+          serialise (Promote _ _ _)               = file move
+          serialise (Advance (Pos Pawn _ _) _)    = non move
+          serialise (Enpassant _ _ _)             = file move
+          serialise (Capture (Pos Pawn _ _) _)    = file move
+          serialise (Advance pos end)             = disambiguate move pos $ filter (advancesTo end)          $ movesFor pos board
+          serialise (Capture pos epos)            = disambiguate move pos $ filter (capturesAt (coord epos)) $ movesFor pos board
 
--- I FORGOT THE CHECK AND CHECKMATES
+encodeCheck :: Board -> String
+encodeCheck board | check board = "+"
+encodeCheck board               = ""
+
+-- The check is valid after the move was applied, so in order to encode the check properly, I have to use the board after the force apply in order to compute the check
 writeMoves :: Board -> [String]
-writeMoves = reverse . snd . foldr write (emptyBoard, []) . past
-    where write move (board, mvs) = (forceApply board move, (encode board move) : mvs)
+writeMoves = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (emptyBoard, []) . past
+    where write move (board, mvs) = let board' = forceApply board move 
+                                        emove  = encodeMove board move
+                                        echeck = encodeCheck board'
+                                    in (board', (emove <> echeck) : mvs) 
+          index (i, m1:m2:_)      = show i <> "." <> m1 <> " " <> m2
+          index (i, m1:[])        = show i <> "." <> m1 <> " "
+          index (i, [])           = ""

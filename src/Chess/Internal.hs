@@ -9,6 +9,9 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Debug.Trace (trace)
+
+-- Instead of translating a board on-demand, why not directly encode the pgn form of every move into the board?
 
 type Coord       = (Int, Int)
 data Colour      = B | W deriving (Eq, Ord)
@@ -359,9 +362,10 @@ permit board move = let board' = forceApply board move
 apply :: Board -> Move -> Maybe Board
 apply board move = join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
+-- `checked` is applied on the current board with the current player. Make sure to change the players to compute it propely 
 forceApply :: Board -> Move -> Board
-forceApply board move = changePlayers 
-                      $ computeChecks 
+forceApply board move = computeChecks 
+                      $ changePlayers
                       $ computeCastles move 
                       $ trackMove move 
                       $ changePlacement move board

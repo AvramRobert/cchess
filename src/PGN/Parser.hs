@@ -25,7 +25,8 @@ data ChessError = CaptureError Chess.Coord Chess.Figure |
                   PromoteError Chess.Coord Chess.Figure | 
                   CastleError  Chess.Castles            | 
                   IllegalMoveError                      |
-                  MissingMovesError
+                  MissingMovesError                     |
+                  UnexpectedCheckError
                   deriving (Eq, Show, Ord)
 
 type ParseError = M.ParseErrorBundle String ChessError
@@ -37,6 +38,7 @@ instance M.ShowErrorComponent ChessError where
     showErrorComponent (CastleError c)            = "Could not castle: " <> (show c) 
     showErrorComponent (IllegalMoveError)         = "This move is illegal"
     showErrorComponent (MissingMovesError)        = "No moves available"
+    showErrorComponent (UnexpectedCheckError)     = "Board was not expected to be in check"
 
 type Parser a = Parsec ChessError String a
 
@@ -200,8 +202,11 @@ promotions (c, s) = M.choice [(char' 'Q' $> (Chess.Pos Chess.Queen c s)),
 rank :: Parser Int
 rank = fmap digitToInt $ numberChar
 
-check :: Parser ()
-check = void $ M.optional $ M.single '+'
+check :: Chess.Board -> Parser ()
+check board = (M.optional $ M.single '+') >>= verify
+    where verify (Just _) | Chess.check board = return ()
+          verify (Nothing)                    = return ()
+          verify (Just _)                     = failWith UnexpectedCheckError Nothing
 
 mate :: Parser Bool
 mate = fmap (maybe False (const True)) $ M.optional $ M.single '#'
@@ -447,7 +452,7 @@ appliedTurnParser :: Chess.Board -> Parser (Chess.Board, Turn)
 appliedTurnParser board = do
     m <- moveParser board
     b <- applied m board
-    _ <- check
+    _ <- check b
     _ <- mate
     _ <- delimitation
     o <- M.optional $ M.lookAhead result
