@@ -1,38 +1,18 @@
 module PGN.Writer where
 
-import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
+import Chess.Internal (Piece (Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Colour(W, B), Position (Pos),
-                       Castles (Both, Long, Short, None), 
-                       Square, Figure, Coord, Board, 
-                       player, coord, figure, colour, movesPiece, past, 
-                       forceApply, emptyBoard, piece, position, check)
-import Control.Applicative ((<|>))
+                       Position (Pos), Square, Board, 
+                       coord, movesPiece, past, forceApply, emptyBoard, check)
 import Chess.Display (gameFile, debugRank, standardFigure)
-import Data.List (find)
-import Data.Maybe (isJust)
 import Lib.Coll
+import PGN.Common
 
 movesFor :: Position -> Board -> [Move]
 movesFor (Pos p c _) board = movesPiece board (p, c)
 
 label :: Square -> String
 label (colour, (x, y)) = gameFile x <> debugRank (colour, (x, y))  
-
--- I can reuse this (and its counterparts) from Parser 
-advancesTo :: Coord -> Move -> Bool
-advancesTo c (Advance (Pos _ _ _) e) = c == e
-advancesTo _ _                       = False
-
-capturesAt :: Coord -> Move -> Bool
-capturesAt s (Capture _ enemy) = s == (coord enemy)
-capturesAt _ _                 = False
-
-hasX :: Int -> Move -> Bool
-hasX x = (== x) . fst . coord . position
-
-hasY :: Int -> Move -> Bool
-hasY y = (== y) . snd . coord . position
 
 unambigous :: Position -> [Move] -> Bool
 unambigous (Pos p c (x, y)) = (== 1) . length

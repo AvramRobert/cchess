@@ -16,7 +16,11 @@ To Do:
     9. Implement translation from Moves -> PGN (add benchmarks, try to simplify, make into chunks and pop every pair of moves)
    10. Refine the API
    11. Write a read-me, documentation and release
-   12. Add some more tests
+   12. Add some more tests:
+       -> Parser 
+       -> Checks
+       -> Checkmates
+       -> Writer (moves, position)
    13. Complete game interface (print game as PGN file out when exiting or resigning)  
    14. Add an engine to play against
    15. Add in-game draw suggestions checks
