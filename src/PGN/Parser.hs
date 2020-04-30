@@ -460,7 +460,7 @@ turnParser board = (try firstTurn) <|> (try secondTurn)
           secondTurn = delimitation >> appliedTurnParser board  
 
 boardParser :: Parser (Chess.Board, Turn)
-boardParser = parseOn Chess.board
+boardParser = parseOn Chess.emptyBoard
     where parseOn board = turnParser board >>= continue
           continue (b, Moved) = parseOn b
           continue (b, t)     = return (b, t)

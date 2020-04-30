@@ -72,7 +72,7 @@ exitText :: String
 exitText = "One day at a time."
 
 newGame :: P.Parser State
-newGame = MC.string' "new game" $> Play Game { board = C.board, white = "Whitney", black = "Clareance" }
+newGame = MC.string' "new game" $> Play Game { board = C.emptyBoard, white = "Whitney", black = "Clareance" }
 
 move :: Game -> P.Parser State
 move game = fmap (evaluate . C.forceApply (board game)) $ P.moveParser (board game)

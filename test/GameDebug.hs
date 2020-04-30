@@ -19,7 +19,7 @@ testGame' = "[Event \"World Championship Tournament\"]\r\n[Site \"Mexico City ME
 
 testBoard = case (P.parse testGame) of 
     (Right game) -> G.board game
-    (Left e)     -> C.board
+    (Left e)     -> C.emptyBoard
 
 testPGN = W.writeMoves testBoard
 

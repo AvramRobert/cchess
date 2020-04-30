@@ -77,10 +77,17 @@ debugFigure (Knight, W) = "N (W)"
 debugFigure (Knight, B) = "N (B)"
 debugFigure (Queen, W)  = "Q (W)"
 debugFigure (Queen, B)  = "Q (B)"
-debugFigure (Empty, _)  = "-" 
+debugFigure (Empty, _)  = "-"
 
-showRank :: Colour -> Int -> String
-showRank c i = show $ snd $ boardCoord $ (c, (1, i))
+gameRank :: Square -> String
+gameRank = show . snd . boardCoord
+
+debugRank :: Square -> String
+debugRank = show . snd . snd
+
+showRank :: DisplayMode -> Square -> String
+showRank GameMode = gameRank
+showRank DebugMode = debugRank
 
 gameColour :: Colour -> String
 gameColour W = "White"
@@ -216,8 +223,8 @@ template mode board colour = unlines $
           d     = "|"                                                          -- delimiter entry
           dp    = manyOf " " $ length d                                        -- delimiter pad => dependent on string delimiter size
           e     = centerOn le . pad . pos                                      -- lookup entry
-          l     = centerOn le . showFile mode                                 -- lookup label => center and pad it based on the largest string entry
-          i     = pad . showRank colour                                       -- lookup index
+          l     = centerOn le . showFile mode                                  -- lookup label => center and pad it based on the largest string entry
+          i y   = pad $ showRank mode (colour, (1, y))                         -- lookup index
           t     = manyOf "‾" le                                                -- top       => dependent on largest string entry
           b     = manyOf " " le                                                -- bottom    => dependent on largest string entry
           ip    = manyOf " " li                                                -- index pad => dependent on largest string index

@@ -4,7 +4,7 @@ import qualified Chess.Internal as Chess
 import Data.Set (Set)
 
 newBoard :: Chess.Board
-newBoard = Chess.board
+newBoard = Chess.emptyBoard
 
 applyMove :: Chess.Board -> Chess.Move -> Maybe Chess.Board
 applyMove = Chess.apply

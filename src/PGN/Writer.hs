@@ -1,18 +1,16 @@
-module PGN.Writer (writeMoves) where
+module PGN.Writer where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, 
-                       player, coord, figure, colour, movesPiece, past, forceApply, board, piece, position)
+                       player, coord, figure, colour, movesPiece, past, forceApply, emptyBoard, piece, position)
 import Control.Applicative ((<|>))
-import Chess.Display (gameFile, showRank, standardFigure)
+import Chess.Display (gameFile, debugRank, standardFigure)
 import Data.List (find)
 import Data.Maybe (isJust)
 import Lib.Coll
-
-data Ambiguity = Non | File | Rank | Total
 
 justOne :: a -> [b] -> Maybe a
 justOne a (b:[]) = Just a
@@ -22,7 +20,7 @@ movesFor :: Position -> Board -> [Move]
 movesFor (Pos p c _) board = movesPiece board (p, c)
 
 label :: Square -> String
-label (colour, (x, y)) = gameFile x <> showRank colour y  
+label (colour, (x, y)) = gameFile x <> debugRank (colour, (x, y))  
 
 non :: Move -> String
 non (Promote (Pos Pawn c _) p endp)  = label (c, coord endp) <> "=" <> standardFigure (p, c)  
@@ -32,7 +30,7 @@ non (Capture (Pos p c _)    endp)    = standardFigure (p, c) <> "x" <> label (c,
 non (Castle  (_, (7, _)) _)          = "O-O"
 non (Castle  (_, (3, _)) _)          = "O-O-O"
 
-file :: Move -> String
+file :: Move -> String  
 file (Enpassant (Pos _ c (xs, _)) end _)  = gameFile xs <> "x" <> label (c, end)
 file (Promote (Pos p c (xs, _)) _ endp)   = gameFile xs <> "x" <> label (c, coord endp) <> "=" <> standardFigure (p, c)  
 file (Capture (Pos Pawn c (xs, _)) endp)  = gameFile xs <> "x" <> label (c, coord endp)
@@ -40,8 +38,8 @@ file (Capture (Pos p c (xs, _)) endp)     = standardFigure (p, c) <> gameFile xs
 file (Advance (Pos p c (xs, _)) end)      = standardFigure (p, c) <> gameFile xs <> label (c, end)
 
 rank :: Move -> String
-rank (Capture (Pos p c (_, ys)) endp) = standardFigure (p, c) <> showRank c ys <> "x" <> label (c, coord endp)
-rank (Advance (Pos p c (_, ys))  end) = standardFigure (p, c) <> showRank c ys <> label (c, end)
+rank (Capture (Pos p c start) endp) = standardFigure (p, c) <> debugRank (c, start) <> "x" <> label (c, coord endp)
+rank (Advance (Pos p c start)  end) = standardFigure (p, c) <> debugRank (c, start) <> label (c, end)
 
 total :: Move -> String
 total (Capture (Pos p c start) endp) = standardFigure (p, c) <> label (c, start) <> "x" <> label (c, coord endp)
@@ -62,36 +60,30 @@ hasX x = (== x) . fst . coord . position
 hasY :: Int -> Move -> Bool
 hasY y = (== y) . snd . coord . position
 
-encode :: Move -> Ambiguity -> String
-encode move Non   = non move
-encode move File  = file move
-encode move Rank  = rank move
-encode move Total = total move
+unambigous :: Move -> Position -> [Move] -> Maybe String
+unambigous move (Pos p c (x, y)) = justOne (non move)
 
-unambigous :: Position -> [Move] -> Maybe Ambiguity
-unambigous (Pos p c (x, y)) = justOne Non
+fileAmbigous :: Move -> Position -> [Move] -> Maybe String
+fileAmbigous move (Pos p c (x, y)) = justOne (file move) . filter (hasX x)
 
-fileAmbigous :: Position -> [Move] -> Maybe Ambiguity
-fileAmbigous (Pos p c (x, y)) = justOne File . filter (hasX x)
+rankAmbigous :: Move -> Position -> [Move] -> Maybe String
+rankAmbigous move (Pos p c (x, y)) = justOne (rank move) . filter (hasY y)
 
-rankAmbigous :: Position -> [Move] -> Maybe Ambiguity
-rankAmbigous (Pos p c (x, y)) = justOne Rank . filter (hasY y)
+disambiguate :: Move -> Position -> [Move] -> String
+disambiguate move pos = maybe (total move) id . mapFirst [unambigous move pos, fileAmbigous move pos, rankAmbigous move pos]
 
--- You don't need the ADT. You can directly call the transformation functions. When unambigous -> apply unambigous. etc
-disambiguate :: Position -> [Move] ->  Ambiguity
-disambiguate pos = maybe Total id . mapFirst [unambigous pos, fileAmbigous pos, rankAmbigous pos]
+encode :: Board -> Move -> String
+encode board move = case move of
+    (Castle _ _)                  -> non move
+    (Promote _ _ (Pos Empty _ _)) -> non move
+    (Promote _ _ _)               -> file move
+    (Advance (Pos Pawn _ _) _)    -> non move
+    (Enpassant _ _ _)             -> file move
+    (Capture (Pos Pawn _ _) _)    -> file move
+    (Advance pos end)             -> disambiguate move pos $ filter (advancesTo end)          $ movesFor pos board
+    (Capture pos epos)            -> disambiguate move pos $ filter (capturesAt (coord epos)) $ movesFor pos board
 
-derive :: Board -> Move -> Ambiguity
-derive board move = case move of
-    (Castle _ _)                  -> Non
-    (Promote _ _ (Pos Empty _ _)) -> Non
-    (Promote _ _ _)               -> File
-    (Advance (Pos Pawn _ _) _)    -> Non
-    (Enpassant _ _ _)             -> File
-    (Capture (Pos Pawn _ _) _)    -> File
-    (Advance pos end)             -> disambiguate pos $ filter (advancesTo end)          $ movesFor pos board
-    (Capture pos epos)            -> disambiguate pos $ filter (capturesAt (coord epos)) $ movesFor pos board
-
+-- I FORGOT THE CHECK AND CHECKMATES
 writeMoves :: Board -> [String]
-writeMoves = snd . foldr write (board, []) . past
-    where write move (board, ps) = (forceApply board move, (encode move $ derive board move) : ps)
+writeMoves = reverse . snd . foldr write (emptyBoard, []) . past
+    where write move (board, mvs) = (forceApply board move, (encode board move) : mvs)

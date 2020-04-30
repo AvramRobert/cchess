@@ -384,14 +384,14 @@ stalemate = every [not . check, immoble]
 drawn :: Board -> Bool
 drawn board = False -- probably this
 
-board :: Board
-board = Board { player      = W,
-                past        = [],
-                check       = False,
-                blackCastle = Both,
-                whiteCastle = Both,
-                coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
-                pieces      = M.fromList $ map byPiece $ groupOn colour $ filter (not . (== Empty) . piece) $ positions }
+emptyBoard :: Board
+emptyBoard = Board { player      = W,
+                     past        = [],
+                     check       = False,
+                     blackCastle = Both,
+                     whiteCastle = Both,
+                     coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
+                     pieces      = M.fromList $ map byPiece $ groupOn colour $ filter (not . (== Empty) . piece) $ positions }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
                      ([Pawn, Pawn,   Pawn,   Pawn,  Pawn,  Pawn,   Pawn,   Pawn], W),
                      ([Empty, Empty, Empty,  Empty, Empty, Empty,  Empty, Empty], W),
