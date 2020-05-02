@@ -11,6 +11,11 @@ import qualified PGN.Parser as P
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
+import qualified Sim as S
+
+-- THIS WHOLE THING SHOULDN'T BE USING THE PGN PARSER.
+
+-- I SHOULD DEFINE A SEPARATE PARSER THAT HAS SLIGHTLY DIFFERENT (MORE GENERAL) OUTCOMES AND USE THAT IN SIM AND THEN USE THAT HERE
 
 data Game = Game { board :: C.Board,
                    white :: String,

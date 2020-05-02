@@ -1,19 +1,63 @@
-module Sim (applyMove, readMove, newGame) where
+module Sim (applyMove, readMove, newGame, Outcome, Variant, Game, Move) where
 
-import qualified Chess.Internal as Chess
+import qualified Text.Megaparsec as M
+import qualified PGN.Parser as P
+import qualified Chess.Display as D
+import qualified Chess.Internal as CI
+import qualified PGN as PGN
+import qualified Chess as Chess
 import qualified Chess.Game as Game
-import qualified PGN as P
-import qualified Chess as C
 
-type Move = Chess.Move
+data Variant  = InputError | GameError
+data SimError = SimError Variant String
+data Outcome  = Error Variant String | Terminated Game
+
+data Result = Continue | Terminate
+type Parser a = M.Parsec (M.ParseErrorBundle String SimError) String a
+
+type Move = CI.Move
 type Game = Game.Game
 
+showBoard :: Game -> String
+showBoard game = D.showBoard (Game.mode game) (Game.board game)
+
+showFigure :: Game -> CI.Figure -> String
+showFigure game = D.showFigure (Game.mode game)
+
+showCastles :: Game -> CI.Castles -> String
+showCastles game = D.showCastles (Game.mode game)
+
+deriveChessError :: Game -> P.ChessError -> Outcome
+deriveChessError game (P.MissingMovesError)    = Error GameError "Unavailable move"
+deriveChessError game (P.IllegalMoveError)     = Error GameError "Illegal move" 
+deriveChessError game (P.UnexpectedCheckError) = Error GameError "Board is not in check"
+deriveChessError game (P.CaptureError c f)     = Error GameError ("Cannot capture with " <> showFigure game f <> " at " <> show c) 
+deriveChessError game (P.AdvanceError c f)     = Error GameError ("Cannot advance with " <> showFigure game f <> " to " <> show c) 
+deriveChessError game (P.PromoteError c f)     = Error GameError ("Cannot promote to " <> showFigure game f <> " at " <> show c)
+deriveChessError game (P.CastleError c)        = Error GameError ("Cannot castle " <> showCastles game c)
+
+deriveParseError :: Game -> P.ParseError -> Outcome
+deriveParseError game = maybe (Error InputError "Unknown input") (deriveChessError game) . P.chessError
+
+-- FixMe `newtype` the tags
 newGame :: String -> String -> Game
-newGame white black = Game.Game { Game.tags = [], Game.board = Chess.emptyBoard }
+newGame white black = Game.Game { Game.tags  = [], 
+                                  Game.board = CI.emptyBoard, 
+                                  Game.mode  = D.GameMode }
 
-applyMove :: Move -> Game -> Maybe Game
-applyMove move game = fmap replace $ C.applyMove move $ Game.board game
-    where replace board = game { Game.board = board }
+applyMove :: Move -> Game -> Either Outcome Game
+applyMove move game = case (Chess.applyMove move $ Game.board game) of
+    (Just board) -> Right game { Game.board = board }
+    (Nothing)    -> Left (Error GameError "Illegal move")
 
-readMove :: String -> Game -> Maybe Move
-readMove move = either (const Nothing) Just . P.parseMove move . Game.board
+readMove :: String -> Game -> Either Outcome Move
+readMove smove game = case (PGN.parseMove smove $ Game.board game) of
+    (Left err)    -> Left (deriveParseError game err)
+    (Right move)  -> Right move
+
+-- `Play` uses parers. If I am to use this for the game simulation in `Play`, I have to somehow make this return a parser, whose error is probably an `Outcome`
+readApplyMove :: String -> Game -> Either Outcome Game
+readApplyMove smove game = either Left (eval . apply) $ readMove smove game
+    where apply move            = game { Game.board = CI.forceApply (Game.board game) move }
+          eval game             = maybe (Right game) (terminate game) $ Game.evaluate (Game.board game) -- Add tags
+          terminate game reason = Left (Terminated game { Game.tags = (Game.Termination reason) : (Game.tags game) })

@@ -6,7 +6,7 @@ import Test.QuickCheck.Property (Property, forAll, succeeded, failed)
 import System.IO.Unsafe (unsafePerformIO)
 
 gameConsistency :: Property
-gameConsistency = forAll games (successful . P.parse)
+gameConsistency = forAll games (successful . P.parseGame)
     where games = G.elements $ unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn"
           successful (Right _) = succeeded
           successful (Left  _) = failed

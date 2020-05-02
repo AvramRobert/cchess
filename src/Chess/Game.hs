@@ -4,7 +4,8 @@ import qualified Chess.Internal as Chess
 import Chess.Display
 
 data Game = Game { tags  :: [Tag],
-                   board :: Chess.Board }
+                   board :: Chess.Board,
+                   mode  :: DisplayMode }
 
 data Outcome = Win Chess.Colour 
              | Draw 
@@ -98,6 +99,7 @@ tagRank rank = case rank of
     _            -> 8
 
 -- Implement this checkmate and all
+-- shouldn't this be a game?
 evaluate :: Chess.Board -> Maybe Reason
 evaluate board = let immoble = Chess.immoble board
                      checked = Chess.check board
