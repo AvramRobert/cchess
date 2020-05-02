@@ -9,7 +9,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn"
 
-parseBoard game = case (P.parse game) of 
+parseBoard game = case (P.parseGame game) of 
     (Right game) -> G.board game 
     (Left e)     -> C.newBoard
 

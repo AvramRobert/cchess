@@ -13,7 +13,7 @@ To Do:
      * 6 Fix PGN header parser to account for misshaps in ordering + add the other additional  fields a file might have
      * 7. Implement evaluation steps for a Board
      * 8. Implement all PGN tags
-    9. Implement translation from Moves -> PGN (add benchmarks, try to simplify, make into chunks and pop every pair of moves)
+     * 9. Implement translation from Moves -> PGN
    10. Refine the API
    11. Write a read-me, documentation and release
    12. Add some more tests:
