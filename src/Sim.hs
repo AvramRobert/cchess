@@ -57,6 +57,7 @@ moveParser game = M.getParserState >>= (parse $ Game.board game)
             (state, (Right move)) -> M.setParserState state $> move
             (state, (Left err))   -> failWith $ deriveParseError game err
 
+-- I don't think PGN needs the `chessError` extraction anymore. Given that this happenes here
 run :: Parser a -> String -> Either SimError a
 run parser = makeSimError . M.runParser parser ""
     where makeSimError (Right a)              = Right a
@@ -66,3 +67,4 @@ run parser = makeSimError . M.runParser parser ""
           strip (M.ErrorCustom e)             = e
 
 -- add a function that parses a move and applies it with evaluation, returning the game
+-- FIXME: Clean this up a little bit. Make it a bit more usable and general.
