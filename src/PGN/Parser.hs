@@ -470,7 +470,7 @@ parseMove move board = run (moveParser board) move
 
 parseBoard :: String -> Either ParseError Chess.Board
 parseBoard = fmap G.board . parseGame 
-
+    
 run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
 run p = runParser p ""
 

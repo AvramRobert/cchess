@@ -27,5 +27,5 @@ To Do:
    13. Complete game interface (print game as PGN file out when exiting or resigning)  
    14. Add an engine to play against
    15. Add in-game draw suggestions checks
-   16. Write a PGN parser that parses files directly and doesn't use bytestrings to extract each individual game
+   16. Patch the PGN parser to parse  bytestrings directly. (Text.Megaparsec.Byte)
    17. Encode the ambiguity of a move directly when parsing, either in the board, or with the move itself, so that serialisation is less of a burden

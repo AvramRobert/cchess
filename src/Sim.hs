@@ -1,4 +1,4 @@
-module Sim (applyMove, readMove, newGame, Outcome, Variant, Game, Move) where
+module Sim (applyMove, readMove, newGame, moveParser, Outcome, Variant, Game, Move) where
 
 import qualified Text.Megaparsec as M
 import qualified PGN.Parser as P
@@ -7,13 +7,14 @@ import qualified Chess.Internal as CI
 import qualified PGN as PGN
 import qualified Chess as Chess
 import qualified Chess.Game as Game
+import qualified Data.Set as S
 
-data Variant  = InputError | GameError
-data SimError = SimError Variant String
+data Variant  = InputError | GameError deriving (Ord, Eq, Show)
+data SimError = SimError Variant String deriving (Eq, Ord, Show)
 data Outcome  = Error Variant String | Terminated Game
 
 data Result = Continue | Terminate
-type Parser a = M.Parsec (M.ParseErrorBundle String SimError) String a
+type Parser a = M.Parsec SimError String a
 
 type Move = CI.Move
 type Game = Game.Game
@@ -61,3 +62,17 @@ readApplyMove smove game = either Left (eval . apply) $ readMove smove game
     where apply move            = game { Game.board = CI.forceApply (Game.board game) move }
           eval game             = maybe (Right game) (terminate game) $ Game.evaluate (Game.board game) -- Add tags
           terminate game reason = Left (Terminated game { Game.tags = (Game.Termination reason) : (Game.tags game) })
+
+
+failWith :: SimError -> Parser a
+failWith error = M.fancyFailure $ S.fromList [M.ErrorCustom error]
+
+--- This is the only possibility that I've found for transforming one parser into another
+-- I get the state of my current one, apply the other one on it, return the state after application
+-- set the state of my old one to the new one I've gotten after application
+moveParser :: Game -> Parser Move
+moveParser game = M.getParserState >>= (parse $ Game.board game)
+    where parse board state = case (M.runParser' (P.moveParser board) state) of
+            (state, (Right move)) -> fmap (const move) $ M.setParserState state
+            (state, (Left err))   -> failWith (SimError GameError "I like big butts and I cannot lie")
+                                                                
