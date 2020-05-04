@@ -49,12 +49,6 @@ failWith :: ChessError -> Maybe a -> Parser a
 failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
 failWith error (Just a)  = return a
 
-chessError :: ParseError -> Maybe ChessError
-chessError error = case (NL.head $ M.bundleErrors error) of
-        (M.FancyError _ errorSet) -> Just $ strip $ head $ S.toList errorSet
-        (_)                       -> Nothing
-    where strip (M.ErrorCustom e) = e
-
 extractGame :: [ByteString] -> (String, [ByteString])
 extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
         where header    = takeWhile headline lines

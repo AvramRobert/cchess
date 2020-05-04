@@ -12,11 +12,11 @@ import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
 
-data State = Menu                |
-             Play G.Game         |
-             Resign G.Game       |
-             End G.Game G.Reason |
-             Exit 
+data State = Menu                
+           | Play   G.Game         
+           | Resign G.Game       
+           | End    G.Game G.Reason 
+           | Exit 
 
 data Prompt a where
     Display :: String     -> Prompt String
@@ -61,10 +61,10 @@ newGame :: S.Parser State
 newGame = MC.string' "new game" $> (Play $ S.newGame "Whitney" "Clareance")
 
 move :: G.Game -> S.Parser State
-move game = fmap (evaluate . C.forceApply (G.board game)) $ S.moveParser game
-    where evaluate board = case (G.evaluate board) of 
-            (Just outcome) -> End game outcome 
-            (Nothing)      -> Play game { G.board = board }  
+move = fmap transition . S.appliedMoveParser
+    where transition (S.Continue game)    = Play game
+          transition (S.Retry game)       = Play game 
+          transition (S.Terminate game r) = End  game r  
 
 exit :: S.Parser State
 exit = M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit

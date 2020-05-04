@@ -89,6 +89,16 @@ showRank :: DisplayMode -> Square -> String
 showRank GameMode = gameRank
 showRank DebugMode = debugRank
 
+gameCoord :: Square -> String
+gameCoord square = gameFile (fst $ snd square) <> gameRank square
+
+debugCoord :: Square -> String
+debugCoord square = debugFile (fst $ snd square) <> debugRank square
+
+showCoord :: DisplayMode -> Square -> String
+showCoord GameMode  = gameCoord
+showCoord DebugMode = debugCoord
+
 gameColour :: Colour -> String
 gameColour W = "White"
 gameColour B = "Black"
