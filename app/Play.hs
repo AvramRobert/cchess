@@ -61,7 +61,7 @@ newGame :: S.Parser State
 newGame = MC.string' "new game" $> (Play $ S.newGame "Whitney" "Clareance")
 
 move :: G.Game -> S.Parser State
-move = fmap transition . S.appliedMoveParser
+move = fmap transition . S.evaluatedMoveParser
     where transition (S.Continue game)    = Play game
           transition (S.Retry game)       = Play game 
           transition (S.Terminate game r) = End  game r  

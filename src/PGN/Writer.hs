@@ -1,9 +1,9 @@
-module PGN.Writer where
+module PGN.Writer (writeMoves, writeApplyMove, writeMove) where
 
 import Chess.Internal (Piece (Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Position (Pos), Square, Board, 
-                       coord, movesPiece, past, forceApply, emptyBoard, check)
+                       coord, movesPiece, past, permitApply, forceApply, emptyBoard, check)
 import Chess.Display (gameFile, debugRank, standardFigure)
 import Lib.Coll
 import PGN.Common
@@ -87,17 +87,21 @@ encodeCheck :: Board -> String
 encodeCheck board | check board = "+"
 encodeCheck board               = ""
 
--- The check is valid after the move was applied, so in order to encode the check properly, I have to use the board after the force apply in order to compute the check
-writeApplyMove :: Move -> Board -> (Board, String)
-writeApplyMove move board = (board', encodeMove move board <> encodeCheck board')
-    where board' = forceApply board move
+forceWriteApplyMove :: Move -> Board -> (Board, String)
+forceWriteApplyMove move board = encode $ forceApply board move
+    where encode board' = (board', encodeMove move board <> encodeCheck board')
 
-writeMove :: Move -> Board -> String
-writeMove move = snd . writeApplyMove move
+-- The check is valid after the move was applied, so in order to encode the check properly, I have to use the board after the force apply in order to compute the check
+writeApplyMove :: Move -> Board -> Maybe (Board, String)
+writeApplyMove move board = fmap encode $ permitApply board move
+    where encode board' = (board', encodeMove move board <> encodeCheck board')
+
+writeMove :: Move -> Board -> Maybe String
+writeMove move = fmap snd . writeApplyMove move
 
 writeMoves :: Board -> [String]
 writeMoves = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (emptyBoard, []) . past
-    where write move (board, mvs)   = accumulate mvs $ writeApplyMove move board
+    where write move (board, mvs)   = accumulate mvs $ forceWriteApplyMove move board
           accumulate mvs (board, m) = (board, m : mvs)
           index (i, m1:m2:_)        = show i <> "." <> m1 <> " " <> m2
           index (i, m1:[])          = show i <> "." <> m1 <> " "

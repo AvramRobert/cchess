@@ -1,6 +1,6 @@
 module Chess (
     newBoard, applyMove, legalMoves, currentPlayer,
-    Chess.Move (Chess.Castle, Chess.Promote, Chess.Advance, Chess.Capture, Chess.Enpassant),
+    Chess.Move (Chess.Castle, Chess.Promote, Chess.Advance, Chess.Capture, Chess.Enpassant), Chess.Castles,
     Chess.Board, Chess.Position (Chess.Pos), Chess.Figure, Chess.Square, Chess.Colour (Chess.W, Chess.B), Chess.Coord) where 
         
 import qualified Chess.Game as Game

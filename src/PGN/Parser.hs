@@ -396,8 +396,9 @@ move board = M.choice [try $ pawn board,
                        try $ queen board,
                        try $ king board]
 
+-- Shouldn't this be force apply?
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move board = maybe illegal return $ Chess.apply board move
+applied move board = maybe illegal return $ Chess.permitApply board move
     where illegal = failWith IllegalMoveError Nothing
 
 moveParser :: Chess.Board -> Parser Chess.Move
@@ -407,16 +408,21 @@ moveParser board = do
     _ <- delimitation
     return m
 
+appliedMoveParser :: Chess.Board -> Parser (Chess.Board, Chess.Move)
+appliedMoveParser board = do
+    m  <- moveParser board
+    b' <- applied m board
+    _  <- check b'
+    _  <- mate
+    _  <- delimitation
+    return (b', m)
+
 appliedTurnParser :: Chess.Board -> Parser (Chess.Board, Turn)
 appliedTurnParser board = do
-    m <- moveParser board
-    b <- applied m board
-    _ <- check b
-    _ <- mate
-    _ <- delimitation
-    o <- M.optional $ M.lookAhead result
-    return $ case o of (Just _)     -> (b, Ended)
-                       (Nothing)    -> (b, Moved)
+    (b', _) <- appliedMoveParser board
+    o       <- M.optional $ M.lookAhead result
+    return $ case o of (Just _)     -> (b', Ended)
+                       (Nothing)    -> (b', Moved)
 
 turnParser :: Chess.Board -> Parser (Chess.Board, Turn)
 turnParser board = (try firstTurn) <|> (try secondTurn)

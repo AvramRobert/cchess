@@ -362,6 +362,9 @@ permit board move = let board' = forceApply board move
 apply :: Board -> Move -> Maybe Board
 apply board move = join $ fmap (permit board) $ find (== move) $ movesPosition board $ position move
 
+permitApply :: Board -> Move -> Maybe Board
+permitApply board = permit board
+
 -- `checked` is applied on the current board with the current player. Make sure to change the players to compute it propely 
 forceApply :: Board -> Move -> Board
 forceApply board move = computeChecks 

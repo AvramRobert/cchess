@@ -1,10 +1,10 @@
-module Sim (run, newGame, readMove, applyMove, moveParser, appliedMoveParser, 
+module Sim (run, newGame, readMove, applyMove, moveParser, appliedMoveParser, evaluatedMoveParser, 
             variant, msg, showBoard, showFigure, showCastles, 
             Parser, SimError, Variant, Result (Continue, Retry, Terminate)) where
 
 import qualified Text.Megaparsec as M
-import qualified Chess.Internal as C
 import qualified PGN.Parser as P
+import qualified Chess as C
 import qualified Chess.Display as D
 import qualified Chess.Game as G
 import qualified Data.List.NonEmpty as L
@@ -56,36 +56,36 @@ deriveChessError game (P.CastleError c)        = SimError GameError ("Cannot cas
 deriveParseError :: G.Game -> P.ParseError -> SimError
 deriveParseError game = parseError (deriveChessError game) (const $ SimError InputError "Unknown input")
 
-evaluated :: G.Game -> Maybe C.Board -> Result 
-evaluated game (Nothing)    = Retry game
-evaluated game (Just board) = maybe (continueWith board) (terminateWith board) $ G.evaluate board
-    where continueWith board  = Continue game { G.board = board }
-          terminateWith board = Terminate game { G.board = board } 
+evaluated :: G.Game -> Result 
+evaluated game = maybe (Continue game) (Terminate game) $ G.evaluate $ G.board game
 
 -- FixMe `newtype` the tags
 newGame :: String -> String -> G.Game
 newGame white black = G.Game { G.tags  = [], 
-                               G.board = C.emptyBoard, 
+                               G.board = C.newBoard, 
                                G.mode  = D.GameMode }
 
 moveParser :: G.Game -> Parser C.Move
-moveParser game = M.getParserState >>= (parse $ G.board game)
-    where parse board state = case (M.runParser' (P.moveParser board) state) of
-            (state, (Right move)) -> M.setParserState state $> move
-            (state, (Left err))   -> failWith $ deriveParseError game err
+moveParser = fmap snd . appliedMoveParser
 
-appliedMoveParser :: G.Game -> Parser Result
-appliedMoveParser game = fmap (evaluated game . apply) $ moveParser game
-    where apply = return . C.forceApply (G.board game)
+appliedMoveParser :: G.Game -> Parser (G.Game, C.Move)
+appliedMoveParser game = M.getParserState >>= (parse $ G.board game)
+    where parse board state = case (M.runParser' (P.appliedMoveParser board) state) of
+                (state, (Right (board', move))) -> M.setParserState state $> (game { G.board = board' }, move)
+                (state, (Left err))             -> failWith $ deriveParseError game err
+
+evaluatedMoveParser :: G.Game -> Parser Result
+evaluatedMoveParser game = fmap (evaluated . fst) $ appliedMoveParser game
 
 readMove :: String -> G.Game -> Either SimError C.Move
 readMove input game = run (moveParser game) input
 
 applyMove :: C.Move -> G.Game -> Result
-applyMove move game = evaluated game $ C.apply (G.board game) move
+applyMove move game = maybe (Retry game) (evaluated . add) $ C.applyMove move $ G.board game
+    where add board = game { G.board = board }
 
 readApplyMove :: String -> G.Game -> Either SimError Result
-readApplyMove move game = run (appliedMoveParser game) move
+readApplyMove move game = run (evaluatedMoveParser game) move
 
 run :: Parser a -> String -> Either SimError a
 run parser = either (Left . makeError) Right . M.runParser parser ""
