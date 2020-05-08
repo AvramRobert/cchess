@@ -88,12 +88,17 @@ encodeCheck board | check board = "+"
 encodeCheck board               = ""
 
 -- The check is valid after the move was applied, so in order to encode the check properly, I have to use the board after the force apply in order to compute the check
+writeApplyMove :: Move -> Board -> (Board, String)
+writeApplyMove move board = (board', encodeMove move board <> encodeCheck board')
+    where board' = forceApply board move
+
+writeMove :: Move -> Board -> String
+writeMove move = snd . writeApplyMove move
+
 writeMoves :: Board -> [String]
 writeMoves = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (emptyBoard, []) . past
-    where write move (board, mvs) = let board' = forceApply board move 
-                                        emove  = encodeMove move board 
-                                        echeck = encodeCheck board'
-                                    in (board', (emove <> echeck) : mvs) 
-          index (i, m1:m2:_)      = show i <> "." <> m1 <> " " <> m2
-          index (i, m1:[])        = show i <> "." <> m1 <> " "
-          index (i, [])           = ""
+    where write move (board, mvs)   = accumulate mvs $ writeApplyMove move board
+          accumulate mvs (board, m) = (board, m : mvs)
+          index (i, m1:m2:_)        = show i <> "." <> m1 <> " " <> m2
+          index (i, m1:[])          = show i <> "." <> m1 <> " "
+          index (i, [])             = ""

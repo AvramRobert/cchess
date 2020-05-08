@@ -3,11 +3,11 @@
 module Play (playGame) where
 
 import qualified Chess.Display as D
-import qualified Chess.Internal as C
-import qualified Chess.Game as G
+import qualified Chess.Game    as G
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char as MC
 import qualified Sim as S
+import qualified Chess as C
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
@@ -15,7 +15,7 @@ import Lib.Freer
 data State = Menu                
            | Play   G.Game         
            | Resign G.Game       
-           | End    G.Game G.Reason 
+           | End    G.Game G.Reason   
            | Exit 
 
 data Prompt a where
@@ -77,7 +77,7 @@ instructions (Menu)              = display menuText >> input (newGame <|> exit)
 instructions (Play game)         = display (playText game) >> input (move game <|> resign game)
 instructions (Exit)              = display exitText >> stop
 instructions (End game outcome)  = display (outcomeText outcome) >> stop
-instructions (Resign game)       = display (resignText $ C.player $ G.board game) >> stop
+instructions (Resign game)       = display (resignText $ C.currentPlayer $ G.board game) >> stop
 
 process :: Instruction State -> IO ()
 process (Value s)                     = run s

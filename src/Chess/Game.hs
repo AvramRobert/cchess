@@ -106,3 +106,6 @@ evaluate board = let immoble = Chess.immoble board
                  in if (checked && immoble) then Just Checkmate
                     else if immoble         then Just Stalemate
                     else                         Nothing
+
+newGame :: Game
+newGame = Game { tags = [], board = Chess.emptyBoard, mode = GameMode }
