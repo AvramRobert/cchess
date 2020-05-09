@@ -3,20 +3,20 @@ module Bench (runBench) where
 import Criterion.Main (defaultMain, bgroup, bench, whnf)
 import qualified Chess.Game as G
 import qualified Chess as C
-import qualified PGN as P
 import qualified PGN.Writer as W
 import System.IO.Unsafe (unsafePerformIO)
 
-pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn"
+pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"
+newGame  = C.newGame "" ""
 
-parseBoard game = case (P.parseGame game) of 
+parseBoard game = case (C.parseGame game) of 
     (Right game) -> G.board game 
-    (Left e)     -> C.newBoard
+    (Left e)     -> G.board newGame
 
 boards = [ parseBoard (pgnGames !! 0),
            parseBoard (pgnGames !! 1),
            parseBoard (pgnGames !! 2),
-           parseBoard (pgnGames !! 3)]
+           parseBoard (pgnGames !! 3) ]
 
 runBench :: IO ()
 runBench = defaultMain [ bgroup "Parser" [ bench "game1" $ whnf parseBoard $ (pgnGames !! 0),

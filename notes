@@ -15,11 +15,12 @@ To Do:
      * 8. Implement all PGN tags
      * 9. Implement translation from Moves -> PGN
      * 10. Refine the API:
-           * -> ! Define a different Parser (one with a more general game-oriented concern) in `Sim` and use that both there and in `Play` 
+           * -> ! Define a different Parser (one with a more general game-oriented concern) in `Sim` and use that both there and include `Play` 
            * -> Add a `Sim` module where one can simluate chess games fairly arbitrarily
            * -> Try to use this in the `Play` module
            * -> Move all `Chess` related types to the main `Chess.hs` file and use those types everywhere else.
            * -> Move migrate the mostly external usage of `Internal` files to `API` files (example: Play.hs uses internal to distinguish between colours)
+   10.5. Add a typeclass in-between the parser I use (Megaparsec) and the outer world. People might be using some other parser for their implementation
    11. Write a read-me, documentation and release
    12. Add some more tests:
        -> Parser 
