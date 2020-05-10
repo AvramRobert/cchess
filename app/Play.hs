@@ -10,7 +10,6 @@ import qualified Chess as C
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
 import Lib.Freer
-import API
 
 data State = Menu                
            | Play   G.Game         
@@ -20,7 +19,7 @@ data State = Menu
 
 data Prompt a where
     Display :: String     -> Prompt String
-    Input   :: Parser a -> Prompt a
+    Input   :: C.Parser a -> Prompt a
     Stop    :: Prompt a
 
 type Instruction a = Freer Prompt a
@@ -28,7 +27,7 @@ type Instruction a = Freer Prompt a
 display :: String -> Instruction String
 display = perform . Display
 
-input :: Parser State -> Instruction State
+input :: C.Parser State -> Instruction State
 input = perform . Input
 
 stop :: Instruction State
@@ -57,19 +56,19 @@ resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
 exitText :: String
 exitText = "One day at a time."
 
-newGame :: Parser State
+newGame :: C.Parser State
 newGame = MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance")
 
-move :: G.Game -> Parser State
+move :: G.Game -> C.Parser State
 move = fmap transition . C.evaluatedMoveParser
     where transition (C.Continue game)    = Play game
           transition (C.Retry game)       = Play game 
           transition (C.Terminate game r) = End  game r  
 
-exit :: Parser State
+exit :: C.Parser State
 exit = M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit
 
-resign :: G.Game -> Parser State
+resign :: G.Game -> C.Parser State
 resign game = M.choice [ MC.string' "resign", MC.string' "exit"] $> (Resign game)
 
 instructions :: State -> Instruction State
@@ -83,9 +82,9 @@ process :: Instruction State -> IO ()
 process (Value s)                     = run s
 process (Effect (Stop) _)             = return ()
 process (Effect (Display s) f)        = putStrLn s >> (process $ f s)
-process eff @ (Effect (Input p) f)    = getLine >>= (handle . runParser p)
+process eff @ (Effect (Input p) f)    = getLine >>= (handle . C.runParser p)
     where handle (Right state)        = process (f state)
-          handle (Left error)         = putStrLn (message error) >> process eff
+          handle (Left error)         = putStrLn (C.message error) >> process eff
 
 run :: State -> IO ()
 run = process . instructions
