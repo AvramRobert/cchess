@@ -1,7 +1,7 @@
 module GameSpec (pgnFileSpec, pgnGames) where
 
+import qualified Chess as C
 import Test.Hspec
-import qualified PGN as P
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (all)
 import Data.Either (isRight)
@@ -10,13 +10,13 @@ data Result = Game String deriving (Show)
 
 -- put this somewhere else
 pgnGames :: [String]
-pgnGames = unsafePerformIO $ P.fromFile' "./test/resources/games/carlsen.pgn" 
+pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn" 
 
 computeGames :: [String] -> IO ()
 computeGames = computeFrom 1 
     where computeFrom _ []     = putStrLn "Successfully finished!"
           computeFrom i (x:xs) =  do
-            let computed = P.parseGame x
+            let computed = C.parseGame x
             _ <- putStrLn $ "Computing game " <> (show i)
             if (isRight computed)
             then computeFrom (i + 1) xs
