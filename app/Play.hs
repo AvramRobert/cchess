@@ -42,7 +42,7 @@ menuText = unlines ["Welcome to cchess!",
                     "- Exit"]
 
 playText :: G.Game -> String
-playText game = unlines [C.showBoard game, "Input a move"]
+playText game = unlines [D.showGameBoard D.GameMode game, "Input a move"]
 
 -- I could re-add the suggestion that a game is drawn/drawable
 outcomeText :: G.Reason  -> String

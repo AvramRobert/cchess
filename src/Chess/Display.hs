@@ -5,10 +5,11 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
+import Chess.Game (Game, board)
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
 
-data DisplayMode = GameMode | DebugMode deriving (Eq, Show)
+data DisplayMode = GameMode | DebugMode | ErrorMode deriving (Eq, Show)
 
 defaultMode = DebugMode
 
@@ -34,9 +35,28 @@ gameFigure (Queen, W)  = "♕"
 gameFigure (Queen, B)  = "♛"
 gameFigure (Empty, _)  = "-"
 
+debugFigure :: Figure -> String
+debugFigure (Pawn, _)   = "P"
+debugFigure (Bishop, _) = "B"
+debugFigure (Rook, _)   = "R"
+debugFigure (Knight, _) = "N"
+debugFigure (King, _)   = "K"
+debugFigure (Queen, _)  = "Q"
+debugFigure (Empty, _)  = ""
+
+errorFigure :: Figure -> String
+errorFigure (Pawn, c)    = "Pawn ("   <> errorColour c <> ")"
+errorFigure (Bishop, c)  = "Bishop (" <> errorColour c <> ")"
+errorFigure (Rook, c)    = "Rook ("   <> errorColour c <> ")"
+errorFigure (Knight, c)  = "Knight (" <> errorColour c <> ")"
+errorFigure (King, c)    = "King ("   <> errorColour c <> ")"
+errorFigure (Queen, c)   = "Queen ("  <> errorColour c <> ")"
+errorFigure (Empty, c)   = "-"
+
 showFigure :: DisplayMode -> Figure -> String
 showFigure GameMode  = gameFigure
 showFigure DebugMode = debugFigure
+showFigure ErrorMode = errorFigure
 
 gameFile :: Int -> String
 gameFile 1 = "a"
@@ -51,33 +71,12 @@ gameFile 8 = "h"
 debugFile :: Int -> String
 debugFile = show
 
+errorFile = gameFile
+
 showFile :: DisplayMode -> Int -> String
 showFile GameMode  = gameFile
-showFile DebugMode = debugFile 
-
-standardFigure :: Figure -> String
-standardFigure (Pawn, _)   = "P"
-standardFigure (Bishop, _) = "B"
-standardFigure (Rook, _)   = "R"
-standardFigure (Knight, _) = "N"
-standardFigure (King, _)   = "K"
-standardFigure (Queen, _)  = "Q"
-standardFigure (Empty, _)  = ""
-
-debugFigure :: Figure -> String
-debugFigure (Pawn, W)   = "P (W)"
-debugFigure (Pawn, B)   = "P (B)"
-debugFigure (Bishop, W) = "B (W)"
-debugFigure (Bishop, B) = "B (B)"
-debugFigure (King, W)   = "K (W)"
-debugFigure (King, B)   = "K (B)"
-debugFigure (Rook, W)   = "R (W)"
-debugFigure (Rook, B)   = "R (B)"
-debugFigure (Knight, W) = "N (W)"
-debugFigure (Knight, B) = "N (B)"
-debugFigure (Queen, W)  = "Q (W)"
-debugFigure (Queen, B)  = "Q (B)"
-debugFigure (Empty, _)  = "-"
+showFile DebugMode = debugFile
+showFile ErrorMode = errorFile 
 
 gameRank :: Square -> String
 gameRank = show . snd . boardCoord
@@ -85,9 +84,13 @@ gameRank = show . snd . boardCoord
 debugRank :: Square -> String
 debugRank = show . snd . snd
 
+errorRank :: Square -> String
+errorRank = debugRank
+
 showRank :: DisplayMode -> Square -> String
-showRank GameMode = gameRank
+showRank GameMode  = gameRank
 showRank DebugMode = debugRank
+showRank ErrorMode = errorRank
 
 gameCoord :: Square -> String
 gameCoord square = gameFile (fst $ snd square) <> gameRank square
@@ -95,9 +98,13 @@ gameCoord square = gameFile (fst $ snd square) <> gameRank square
 debugCoord :: Square -> String
 debugCoord square = debugFile (fst $ snd square) <> debugRank square
 
+errorCoord :: Square -> String
+errorCoord = gameCoord
+
 showCoord :: DisplayMode -> Square -> String
 showCoord GameMode  = gameCoord
 showCoord DebugMode = debugCoord
+showCoord ErrorMode = errorCoord
 
 gameColour :: Colour -> String
 gameColour W = "White"
@@ -107,19 +114,28 @@ debugColour :: Colour -> String
 debugColour W = "W"
 debugColour B = "B"
 
+errorColour :: Colour -> String
+errorColour W = "White"
+errorColour B = "Black"
+
 showColour :: DisplayMode -> Colour -> String
-showColour GameMode = gameColour
+showColour GameMode  = gameColour
 showColour DebugMode = debugColour
+showColour ErrorMode = errorColour 
 
 gamePosition :: Position -> String
-gamePosition (Pos p c s) = gameFigure (p, c) <> show s
+gamePosition (Pos p c s)  = debugFigure (p, c) <> gameCoord (c, s)
 
 debugPosition :: Position -> String
-debugPosition (Pos p c s) = debugFigure (p, c) <> show s
+debugPosition (Pos p c s) = debugFigure (p, c) <> debugCoord (c, s)
+
+errorPosition :: Position -> String
+errorPosition (Pos p c s) = debugFigure (p, c) <> gameCoord (c, s)
 
 showPosition :: DisplayMode -> Position -> String
 showPosition GameMode  = gamePosition
 showPosition DebugMode = debugPosition
+showPosition ErrorMode = errorPosition
 
 showSquare :: DisplayMode -> Board -> Square -> String
 showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
@@ -136,9 +152,13 @@ debugCastles Long  = "Long"
 debugCastles Short = "Short"
 debugCastles None  = "-"
 
+errorCastles :: Castles -> String
+errorCastles = debugCastles
+
 showCastles :: DisplayMode -> Castles -> String
 showCastles GameMode  = gameCastles
 showCastles DebugMode = debugCastles
+showCastles ErrorMode = errorCastles
 
 gameMove :: Move -> String
 gameMove (Capture pos s)                      = gamePosition pos <> " x " <> show s
@@ -156,9 +176,13 @@ debugMove (Promote pos np (Pos Empty _ e))     = "Promote " <> debugPosition pos
 debugMove (Promote pos np (Pos p c s))         = "Promote " <> debugPosition pos <> " x " <> (debugPosition (Pos p c s)) <> " = " <> debugFigure (np, colour pos)
 debugMove (Castle (Pos _ _ (kx,_), (ex, _)) _) = if (ex < kx) then "Castles Long" else "Castles Short"
 
+errorMove :: Move -> String
+errorMove = debugMove
+
 showMove :: DisplayMode -> Move -> String
 showMove GameMode  = gameMove
 showMove DebugMode = debugMove
+showMove ErrorMode = errorMove
 
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
@@ -184,6 +208,9 @@ debugBoard board = template DebugMode board W
 showBoard :: DisplayMode -> Board -> String
 showBoard GameMode  = gameBoard
 showBoard DebugMode = debugBoard
+
+showGameBoard :: DisplayMode -> Game -> String
+showGameBoard mode = showBoard mode . board
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 

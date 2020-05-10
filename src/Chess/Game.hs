@@ -1,15 +1,14 @@
 module Chess.Game where
 
 import qualified Chess.Internal as Chess
-import Chess.Display
 
+-- FIXME: Define Show Tag in Chess.Display
 data Game = Game { tags  :: [Tag],
-                   board :: Chess.Board,
-                   mode  :: DisplayMode }
+                   board :: Chess.Board }
 
 data Outcome = Win Chess.Colour 
              | Draw 
-             | Other deriving (Show, Ord, Eq)
+             | Other deriving (Ord, Eq)
 
 data Reason  = Abandoned 
              | Adjundication 
@@ -82,7 +81,7 @@ data Tag =  Event String
           | Annotator String  
           | Mode Variant
           | Unknown String String
-          deriving (Show, Eq)
+          deriving (Eq)
 
 instance Ord Tag where
     compare a b = (tagRank a) `compare` (tagRank b)
@@ -97,12 +96,3 @@ tagRank rank = case rank of
     (Black _)    -> 6
     (Result _)   -> 7
     _            -> 8
-
--- Implement this checkmate and all
--- shouldn't this be a game?
-evaluate :: Chess.Board -> Maybe Reason
-evaluate board = let immoble = Chess.immoble board
-                     checked = Chess.check board
-                 in if (checked && immoble) then Just Checkmate
-                    else if immoble         then Just Stalemate
-                    else                         Nothing

@@ -442,7 +442,7 @@ gameParser = do
     _             <- delimitation
     (board, turn) <- boardParser
     result        <- result
-    return G.Game { G.tags = tags, G.board = board, G.mode = GameMode }
+    return G.Game { G.tags = tags, G.board = board }
 
 splitGames :: ByteString -> [String]
 splitGames = accumulate . C.lines

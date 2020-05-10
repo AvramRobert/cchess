@@ -4,7 +4,7 @@ import Chess.Internal (Piece (Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Position (Pos), Square, Board, 
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, check)
-import Chess.Display (gameFile, debugRank, standardFigure)
+import Chess.Display (gameFile, debugRank, debugFigure)
 import Lib.Coll
 import PGN.Common
 
@@ -25,37 +25,37 @@ rankUnambigous (Pos p c (x, y)) = (== 1) . length . filter (hasY y)
 
 unambigousAdvance :: Move -> String
 unambigousAdvance (Advance (Pos Pawn c s) e) = label (c, e)
-unambigousAdvance (Advance (Pos p c s) e)    = standardFigure (p, c) <> label (c, e)
+unambigousAdvance (Advance (Pos p c s) e)    = debugFigure (p, c) <> label (c, e)
 
 fileAmbigousAdvance :: Move -> String
-fileAmbigousAdvance (Advance (Pos p c (xs, ys)) e) = standardFigure (p, c) <> gameFile xs <> label (c, e)
+fileAmbigousAdvance (Advance (Pos p c (xs, ys)) e) = debugFigure (p, c) <> gameFile xs <> label (c, e)
 
 rankAmbigousAdvance :: Move -> String
-rankAmbigousAdvance (Advance (Pos p c start) e) = standardFigure (p, c) <> debugRank (c, start) <> label (c, e)
+rankAmbigousAdvance (Advance (Pos p c start) e) = debugFigure (p, c) <> debugRank (c, start) <> label (c, e)
 
 totalAdvance :: Move -> String
-totalAdvance (Advance (Pos p c start) e) = standardFigure (p, c) <> label (c, start) <> label (c, e)
+totalAdvance (Advance (Pos p c start) e) = debugFigure (p, c) <> label (c, start) <> label (c, e)
 
 unambigousCapture :: Move -> String
 unambigousCapture (Capture (Pos Pawn c (xs, _)) endp)  = gameFile xs <> "x" <> label (c, coord endp)
-unambigousCapture (Capture (Pos p c _)    endp)        = standardFigure (p, c) <> "x" <> label (c, coord endp)
+unambigousCapture (Capture (Pos p c _)    endp)        = debugFigure (p, c) <> "x" <> label (c, coord endp)
 
 fileAmbigousCapture :: Move -> String
-fileAmbigousCapture (Capture (Pos p c (xs, _)) endp) = standardFigure (p, c) <> gameFile xs <> "x" <> label (c, coord endp)
+fileAmbigousCapture (Capture (Pos p c (xs, _)) endp) = debugFigure (p, c) <> gameFile xs <> "x" <> label (c, coord endp)
 
 rankAmbigousCapture :: Move -> String
-rankAmbigousCapture (Capture (Pos p c start) endp) = standardFigure (p, c) <> debugRank (c, start) <> "x" <> label (c, coord endp)
+rankAmbigousCapture (Capture (Pos p c start) endp) = debugFigure (p, c) <> debugRank (c, start) <> "x" <> label (c, coord endp)
 
 totalCapture :: Move -> String
-totalCapture (Capture (Pos p c start) endp) = standardFigure (p, c) <> label (c, start) <> "x" <> label (c, coord endp)
+totalCapture (Capture (Pos p c start) endp) = debugFigure (p, c) <> label (c, start) <> "x" <> label (c, coord endp)
 
 castle :: Move -> Board -> String
 castle (Castle (_, (7, _)) _) _ = "O-O"
 castle (Castle (_, (3, _)) _) _ = "O-O-O"
 
 promote :: Move -> Board -> String
-promote (Promote (Pos _ c _) np (Pos Empty _ end)) _ = label (c, end) <> "=" <> standardFigure (np, c)  
-promote (Promote (Pos p c (xs, _)) _ endp)         _ = gameFile xs <> "x" <> label (c, coord endp) <> "=" <> standardFigure (p, c)  
+promote (Promote (Pos _ c _) np (Pos Empty _ end)) _ = label (c, end) <> "=" <> debugFigure (np, c)  
+promote (Promote (Pos p c (xs, _)) _ endp)         _ = gameFile xs <> "x" <> label (c, coord endp) <> "=" <> debugFigure (p, c)  
 
 enpassant :: Move -> Board -> String
 enpassant (Enpassant (Pos _ c (xs, _)) end _) _ = gameFile xs <> "x" <> label (c, end)
