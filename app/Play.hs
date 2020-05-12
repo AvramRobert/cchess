@@ -57,7 +57,7 @@ exitText :: String
 exitText = "One day at a time."
 
 newGame :: C.Parser State
-newGame = MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance")
+newGame = C.mkParser (MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance"))
 
 move :: G.Game -> C.Parser State
 move = fmap transition . C.evaluatedMoveParser
@@ -66,10 +66,10 @@ move = fmap transition . C.evaluatedMoveParser
           transition (C.Terminate game r) = End  game r  
 
 exit :: C.Parser State
-exit = M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit
+exit = C.mkParser (M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit)
 
 resign :: G.Game -> C.Parser State
-resign game = M.choice [ MC.string' "resign", MC.string' "exit"] $> (Resign game)
+resign game = C.mkParser (M.choice [ MC.string' "resign", MC.string' "exit"] $> (Resign game))
 
 instructions :: State -> Instruction State
 instructions (Menu)              = display menuText >> input (newGame <|> exit)
