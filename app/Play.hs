@@ -6,10 +6,16 @@ import qualified Chess.Display as D
 import qualified Chess.Game    as G
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char as MC
+import qualified Data.Set as S
 import qualified Chess as C
+import qualified Control.Applicative as A
+import Control.Applicative (Alternative, (<|>))
 import Data.Functor (($>))
-import Control.Applicative ((<|>))
+import Lib.Megaparsec (customError)
 import Lib.Freer
+
+-- this thing can actually define its own errors
+newtype Parser a = Parser (M.Parsec C.Error String a)
 
 data State = Menu                
            | Play   G.Game         
@@ -19,7 +25,7 @@ data State = Menu
 
 data Prompt a where
     Display :: String     -> Prompt String
-    Input   :: C.Parser a -> Prompt a
+    Input   :: Parser a -> Prompt a
     Stop    :: Prompt a
 
 type Instruction a = Freer Prompt a
@@ -27,11 +33,36 @@ type Instruction a = Freer Prompt a
 display :: String -> Instruction String
 display = perform . Display
 
-input :: C.Parser State -> Instruction State
+input :: Parser State -> Instruction State
 input = perform . Input
 
 stop :: Instruction State
 stop = perform Stop
+
+instance Functor Parser where 
+    fmap f (Parser p) = Parser (fmap f p)
+
+instance Applicative Parser where 
+    pure = Parser . pure
+    (<*>) (Parser f) (Parser a) = Parser (f <*> a)
+           
+instance Monad Parser where 
+    (>>=) (Parser p) f = Parser (p >>= (extract . f))
+            where extract (Parser p) = p
+
+instance Alternative Parser where
+    empty = Parser A.empty
+    (<|>) (Parser a) (Parser b) = Parser (a <|> b)
+
+instance C.ParserTie Parser where
+    getInput  = Parser   M.getInput
+    setInput  = Parser . M.setInput
+    failWith  = Parser . M.fancyFailure . S.fromList . return . M.ErrorCustom 
+
+runParser :: Parser a -> String -> Either C.Error a
+runParser (Parser p) = either (Left . makeError) Right . M.runParser p ""
+    where makeError    = customError id (const unknownInput)
+          unknownInput = C.Error C.InputError "Unknown input"
 
 menuText :: String
 menuText = unlines ["Welcome to cchess!",
@@ -56,20 +87,20 @@ resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
 exitText :: String
 exitText = "One day at a time."
 
-newGame :: C.Parser State
-newGame = C.mkParser (MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance"))
+newGame :: Parser State
+newGame = Parser (MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance"))
 
-move :: G.Game -> C.Parser State
+move :: G.Game -> Parser State
 move = fmap transition . C.evaluatedMoveParser
     where transition (C.Continue game)    = Play game
           transition (C.Retry game)       = Play game 
           transition (C.Terminate game r) = End  game r  
 
-exit :: C.Parser State
-exit = C.mkParser (M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit)
+exit :: Parser State
+exit = Parser (M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit)
 
-resign :: G.Game -> C.Parser State
-resign game = C.mkParser (M.choice [ MC.string' "resign", MC.string' "exit"] $> (Resign game))
+resign :: G.Game -> Parser State
+resign game = Parser (M.choice [ MC.string' "resign", MC.string' "exit", MC.string' "quit" ] $> (Resign game))
 
 instructions :: State -> Instruction State
 instructions (Menu)              = display menuText >> input (newGame <|> exit)
@@ -82,7 +113,7 @@ process :: Instruction State -> IO ()
 process (Value s)                     = run s
 process (Effect (Stop) _)             = return ()
 process (Effect (Display s) f)        = putStrLn s >> (process $ f s)
-process eff @ (Effect (Input p) f)    = getLine >>= (handle . C.runParser p)
+process eff @ (Effect (Input p) f)    = getLine >>= (handle . runParser p)
     where handle (Right state)        = process (f state)
           handle (Left error)         = putStrLn (C.message error) >> process eff
 

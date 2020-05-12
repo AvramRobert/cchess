@@ -21,7 +21,8 @@ To Do:
            * -> Move all `Chess` related types to the main `Chess.hs` file and use those types everywhere else.
            * -> Move migrate the mostly external usage of `Internal` files to `API` files (example: Play.hs uses internal to distinguish between colours)
      * 11. Add a typeclass in-between the parser I use (Megaparsec) and the outer world. People might be using some other parser for their implementation
-   12. Move the concrete `Parser` to `Play` and just derive a `Bridge` instance for it that you use in conjunction with whatever `Chess` gives you
+     * 12. Move the concrete `Parser` to `Play` and just derive a `Bridge` instance for it that you use in conjunction with whatever `Chess` gives you
+   12.5. Make `Play` have it's own errors ?
    13. Write a read-me, documentation and release
    14. Add some more tests:
        -> Parser 
