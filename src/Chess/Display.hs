@@ -1,4 +1,7 @@
-module Chess.Display where
+module Chess.Display (DisplayMode (GameMode, DebugMode, ErrorMode),
+      showGameBoard, showFigure, showTag, showFile, showRank, showMove, 
+      showPGNMove, showBoard, showGame, showCastles, showColour, showCoord,
+      showPosition, showSquare) where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -9,7 +12,7 @@ import qualified Chess.Game as G
 import qualified PGN.Writer as W
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy, chunksOf)
-import Data.List (intersperse, find)
+import Data.List (intersperse, find, sort)
 
 data DisplayMode = GameMode | DebugMode | ErrorMode deriving (Eq, Show)
 
@@ -288,7 +291,7 @@ showGameBoard mode = showBoard mode . G.board
 
 showGame :: DisplayMode -> G.Game -> String
 showGame _ game = unlines (tags <> padding <> moves <> outcome <> padding)
-      where tags     = fmap (showTag GameMode) $ G.tags game
+      where tags     = fmap (showTag GameMode) $ sort $ G.tags game
             moves    = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.board game
             padding  = ["", ""]
             outcome  = maybe (error "This should never happen") (return . gameOutcome . extract) $ find result (G.tags game)

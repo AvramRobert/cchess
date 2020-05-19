@@ -2,7 +2,6 @@ module Chess.Game where
 
 import qualified Chess.Internal as Chess
 
--- FIXME: Define Show Tag in Chess.Display
 data Game = Game { tags  :: [Tag],
                    board :: Chess.Board }
 
