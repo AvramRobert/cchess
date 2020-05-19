@@ -5,7 +5,7 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Colour(W, B), Position (Pos),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
-import Chess.Game (Game, board)
+import qualified Chess.Game as G
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy)
 
@@ -209,8 +209,74 @@ showBoard :: DisplayMode -> Board -> String
 showBoard GameMode  = gameBoard
 showBoard DebugMode = debugBoard
 
-showGameBoard :: DisplayMode -> Game -> String
-showGameBoard mode = showBoard mode . board
+taggedAs :: (G.Tag -> Maybe (String, String)) -> G.Tag -> String
+taggedAs f tag = bracket $ maybe (standard tag) id $ f tag
+      where standard (G.Event s)        = ("Event", s)
+            standard (G.Site  s)        = ("Site", s)
+            standard (G.Date  s)        = ("Date", s)
+            standard (G.Round s)        = ("Round", s)
+            standard (G.White s)        = ("White", s)
+            standard (G.Black s)        = ("Black", s)
+            standard (G.Result s)       = ("Result", outcome s)
+            standard (G.WhiteElo r)     = ("WhiteElo", elo r)
+            standard (G.BlackElo r)     = ("BlackElo", elo r)
+            standard (G.WhiteTitle t)   = ("Title", show t)
+            standard (G.BlackTitle t)   = ("Title", show t)
+            standard (G.WhiteUSCF s)    = ("WhiteUSCF", s)
+            standard (G.BlackUSCF s)    = ("BlackUSCF", s)
+            standard (G.WhiteNA s)      = ("WhiteNA", address s)
+            standard (G.BlackNA s)      = ("BlackNA", address s)
+            standard (G.WhiteType s)    = ("WhiteType", show s)
+            standard (G.BlackType s)    = ("BlackType", show s)
+            standard (G.EventDate s)    = ("EventDate", s)
+            standard (G.EventSponsor s) = ("EventSponsor", s)
+            standard (G.Section s)      = ("Section", s)
+            standard (G.Stage s)        = ("Stage", s)
+            standard (G.Board s)        = ("Board", s)
+            standard (G.Opening s)      = ("Opening", s)
+            standard (G.Variation s)    = ("Variation", s)
+            standard (G.SubVariation s) = ("SubVariation", s)
+            standard (G.ECO s)          = ("ECO", s)
+            standard (G.NIC s)          = ("NIC", s)
+            standard (G.Time s)         = ("Time", s)
+            standard (G.UTCTime s)      = ("UTCTime", s)
+            standard (G.UTCDate s)      = ("UTCDate", s)
+            standard (G.TimeControl s)  = ("TimeControl", s)
+            standard (G.SetUp s)        = ("SetUp", s)
+            standard (G.FEN s)          = ("FEN", s)
+            standard (G.Termination s)  = ("Termination", show s)
+            standard (G.PlyCount s)     = ("PlyCount", s)
+            standard (G.Annotator s)    = ("Annotator", s)
+            standard (G.Mode s)         = ("Mode", show s)
+            standard (G.Unknown t c)    = (t, c)
+            bracket (title, value)      = "[" <> title <> " \"" <> value <> "\"]"
+            outcome (G.Win W)           = "1-0"
+            outcome (G.Win B)           = "0-1"
+            outcome (G.Draw)            = "1/2-1/2"
+            outcome (G.Other)           = "*"
+            elo (G.Rated r)             = r
+            elo (G.Unrated)             = "-"
+            address (G.Address a)       = a
+            address (G.NoAddress)       = "-"
+
+gameTag :: G.Tag -> String
+gameTag tag = taggedAs normal tag
+      where normal (G.Termination G.Checkmate)   = Just ("Termination", "Normal")
+            normal (G.Termination G.Stalemate)   = Just ("Termination", "Normal")
+            normal (G.Termination G.Resignation) = Just ("Termination", "Normal")
+            normal (G.Termination r)             = Just ("Termination", show r)
+            normal  _                            = Nothing
+ 
+debugTag :: G.Tag -> String
+debugTag tag = taggedAs (const Nothing) tag
+
+showTag :: DisplayMode -> G.Tag -> String
+showTag GameMode  = gameTag
+showTag DebugMode = debugTag
+showTag ErrorMode = gameTag
+
+showGameBoard :: DisplayMode -> G.Game -> String
+showGameBoard mode = showBoard mode . G.board
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 
@@ -268,19 +334,6 @@ template mode board colour = unlines $
           lp    = manyOf " "  ll                                               -- label pad => dependent on the largest string label
           pad   = padBy 4
           pos s = showSquare mode board (colour, s)
-
--- FIXME: Redo these
--- showPieces :: Board -> IO ()
--- showPieces = putStrLn . unlines . join . map fanOut . M.toList . pieces
---       where fanOut (c, pmap) = [show c <> " :: "] <> (map row $ M.toList pmap)
---             row (p, cs) = "     " <> (show p) <> " - " <> (show cs)
-
--- statistics :: Board -> String
--- statistics board = unlines ["Player:     " <> show (player board),
---                             "In-Check:   " <> show (check board),
---                             "Can castle: " <> show (pickCastle $ player board)]
---       where pickCastle B = blackCastle board
---             pickCastle W = whiteCastle board
 
 instance Show Board where
       show = showBoard defaultMode

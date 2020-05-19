@@ -24,7 +24,7 @@ data State = Menu
            | Exit 
 
 data Prompt a where
-    Display :: String     -> Prompt String
+    Display :: String   -> Prompt String
     Input   :: Parser a -> Prompt a
     Stop    :: Prompt a
 

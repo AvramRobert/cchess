@@ -10,3 +10,7 @@ customError f ff = derive . L.head . M.bundleErrors
     where derive (M.FancyError _ errors) = f (strip $ S.findMin errors)
           derive (other)                 = ff other 
           strip  (M.ErrorCustom error)   = error
+
+
+run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
+run parser = M.runParser parser ""

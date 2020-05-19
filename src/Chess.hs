@@ -14,6 +14,7 @@ import qualified PGN.Parser as P
 import qualified PGN.Writer as W
 import Lib.Megaparsec (customError)
 import Data.Functor (($>))
+import Lib.Megaparsec
 
 data Variant = InputError 
              | GameError 
@@ -52,7 +53,7 @@ fromParseError (Left err) = Left (deriveParseError err)
 fromParseError (Right a)  = Right a
 
 runParser :: P.Parser a -> (a -> b) -> String -> Either Error b
-runParser parser f = either (Left . deriveParseError) (Right . f) . P.run parser 
+runParser parser f = either (Left . deriveParseError) (Right . f) . run parser 
 
 runOn :: String -> P.Parser a -> P.Parser (M.State String, Either P.ParseError a)
 runOn input parser = do
@@ -61,7 +62,7 @@ runOn input parser = do
         return (M.runParser' parser state)
 
 runInternalParser :: P.Parser a -> String -> (M.State String, Either Error a)
-runInternalParser parser input = either (\_ -> error "this will never fail") id $ P.run conversion ""
+runInternalParser parser input = either (\_ -> error "this will never fail") id $ run conversion ""
     where convert (state, Right a)  = (state, Right a)
           convert (state, Left err) = (state, Left (deriveParseError err))
           conversion                = fmap convert $ runOn input parser          

@@ -18,6 +18,7 @@ import Data.Functor (($>), (<&>))
 import Data.List (find, sort)
 import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
+import Lib.Megaparsec
 import Chess.Display
 import PGN.Common
 
@@ -469,16 +470,4 @@ parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
 parseBoard :: String -> Either ParseError Chess.Board
-parseBoard = fmap G.board . parseGame 
-    
-run :: (M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> Either (M.ParseErrorBundle s e) a
-run p = runParser p ""
-
---- DEBUG ---
-
-printResult :: (M.Stream s, M.ShowErrorComponent e, Show a) => Either (M.ParseErrorBundle s e) a -> IO ()
-printResult (Left bundle)  = putStrLn $ M.errorBundlePretty bundle
-printResult (Right result) = putStrLn $ show result
-
-runPrint :: (Show a, M.Stream s, M.ShowErrorComponent e) => M.Parsec e s a -> s -> IO ()
-runPrint p = printResult . run p
+parseBoard = fmap G.board . parseGame
