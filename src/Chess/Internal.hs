@@ -9,7 +9,6 @@ import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Debug.Trace (trace)
 
 -- Instead of translating a board on-demand, why not directly encode the pgn form of every move into the board?
 

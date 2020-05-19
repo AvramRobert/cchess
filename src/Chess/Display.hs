@@ -6,8 +6,10 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
 import qualified Chess.Game as G
+import qualified PGN.Writer as W
 import Data.Maybe (maybe)
-import Lib.Coll (maxBy)
+import Lib.Coll (maxBy, chunksOf)
+import Data.List (intersperse, find)
 
 data DisplayMode = GameMode | DebugMode | ErrorMode deriving (Eq, Show)
 
@@ -184,6 +186,9 @@ showMove GameMode  = gameMove
 showMove DebugMode = debugMove
 showMove ErrorMode = errorMove
 
+showPGNMove :: Move -> Board -> Maybe String
+showPGNMove = W.writeMove
+
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
     where half   = round $ (fromIntegral i / 2)
@@ -209,6 +214,12 @@ showBoard :: DisplayMode -> Board -> String
 showBoard GameMode  = gameBoard
 showBoard DebugMode = debugBoard
 
+gameOutcome :: G.Outcome -> String
+gameOutcome (G.Win W) = "1-0"
+gameOutcome (G.Win B) = "0-1"
+gameOutcome (G.Draw)  = "1/2-1/2"
+gameOutcome (G.Other) = "*"
+            
 taggedAs :: (G.Tag -> Maybe (String, String)) -> G.Tag -> String
 taggedAs f tag = bracket $ maybe (standard tag) id $ f tag
       where standard (G.Event s)        = ("Event", s)
@@ -217,7 +228,7 @@ taggedAs f tag = bracket $ maybe (standard tag) id $ f tag
             standard (G.Round s)        = ("Round", s)
             standard (G.White s)        = ("White", s)
             standard (G.Black s)        = ("Black", s)
-            standard (G.Result s)       = ("Result", outcome s)
+            standard (G.Result s)       = ("Result", gameOutcome s)
             standard (G.WhiteElo r)     = ("WhiteElo", elo r)
             standard (G.BlackElo r)     = ("BlackElo", elo r)
             standard (G.WhiteTitle t)   = ("Title", show t)
@@ -250,9 +261,6 @@ taggedAs f tag = bracket $ maybe (standard tag) id $ f tag
             standard (G.Mode s)         = ("Mode", show s)
             standard (G.Unknown t c)    = (t, c)
             bracket (title, value)      = "[" <> title <> " \"" <> value <> "\"]"
-            outcome (G.Win W)           = "1-0"
-            outcome (G.Win B)           = "0-1"
-            outcome (G.Draw)            = "1/2-1/2"
             outcome (G.Other)           = "*"
             elo (G.Rated r)             = r
             elo (G.Unrated)             = "-"
@@ -277,6 +285,16 @@ showTag ErrorMode = gameTag
 
 showGameBoard :: DisplayMode -> G.Game -> String
 showGameBoard mode = showBoard mode . G.board
+
+showGame :: DisplayMode -> G.Game -> String
+showGame _ game = unlines (tags <> padding <> moves <> outcome <> padding)
+      where tags     = fmap (showTag GameMode) $ G.tags game
+            moves    = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.board game
+            padding  = ["", ""]
+            outcome  = maybe (error "This should never happen") (return . gameOutcome . extract) $ find result (G.tags game)
+            result (G.Result _)  = True
+            result _             = False
+            extract (G.Result o) = o
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 
@@ -349,3 +367,6 @@ instance Show Castles where
 
 instance Show Move where
       show = showMove defaultMode
+
+instance Show G.Game where
+      show = showGame defaultMode

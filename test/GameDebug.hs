@@ -23,9 +23,11 @@ mvs = foldr (<>) "" $ intersperse " " $ lines testMoves
 
 newGame = C.newGame "" ""
 
-testBoard = case (C.parseGame testGame) of 
-    (Right game) -> G.board game
-    (Left e)     -> G.board newGame
+wholeGame = case (C.parseGame testGame) of
+    (Right game) -> game
+    (Left e)     -> newGame
+
+testBoard = G.board wholeGame
 
 testPGN = foldr (<>) "" $ intersperse " " $ W.writeMoves testBoard
 

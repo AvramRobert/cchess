@@ -1,18 +1,39 @@
 module PGN.Writer (writeMoves, writeApplyMove, writeMove) where
 
-import Chess.Internal (Piece (Pawn, Empty),
+import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Position (Pos), Square, Board, 
+                       Position (Pos), Square, Board, Coord, 
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, check)
-import Chess.Display (gameFile, debugRank, debugFigure)
 import Lib.Coll
 import PGN.Common
+
+piece :: Piece -> String
+piece Pawn   = "P"
+piece Rook   = "R"
+piece Knight = "N"
+piece Bishop = "B"
+piece Queen  = "Q"
+piece King   = "K"
+piece Empty  = ""
+
+rank :: Coord -> String
+rank (x, y) = show y
+
+file :: Coord -> String
+file (1, _) = "a"
+file (2, _) = "b"
+file (3, _) = "c"
+file (4, _) = "d"
+file (5, _) = "e"
+file (6, _) = "f"
+file (7, _) = "g"
+file (8, _) = "h"
 
 movesFor :: Position -> Board -> [Move]
 movesFor (Pos p c _) board = movesPiece board (p, c)
 
-label :: Square -> String
-label (colour, (x, y)) = gameFile x <> debugRank (colour, (x, y))  
+label :: Coord -> String
+label coord = file coord <> rank coord  
 
 unambigous :: Position -> [Move] -> Bool
 unambigous (Pos p c (x, y)) = (== 1) . length
@@ -24,46 +45,46 @@ rankUnambigous :: Position -> [Move] -> Bool
 rankUnambigous (Pos p c (x, y)) = (== 1) . length . filter (hasY y)
 
 unambigousAdvance :: Move -> String
-unambigousAdvance (Advance (Pos Pawn c s) e) = label (c, e)
-unambigousAdvance (Advance (Pos p c s) e)    = debugFigure (p, c) <> label (c, e)
+unambigousAdvance (Advance (Pos Pawn c s) end) = label end
+unambigousAdvance (Advance (Pos p c s) end)    = piece p <> label end
 
 fileAmbigousAdvance :: Move -> String
-fileAmbigousAdvance (Advance (Pos p c (xs, ys)) e) = debugFigure (p, c) <> gameFile xs <> label (c, e)
+fileAmbigousAdvance (Advance (Pos p c start) end) = piece p <> file start <> label end
 
 rankAmbigousAdvance :: Move -> String
-rankAmbigousAdvance (Advance (Pos p c start) e) = debugFigure (p, c) <> debugRank (c, start) <> label (c, e)
+rankAmbigousAdvance (Advance (Pos p c start) end) = piece p <> rank start <> label end
 
 totalAdvance :: Move -> String
-totalAdvance (Advance (Pos p c start) e) = debugFigure (p, c) <> label (c, start) <> label (c, e)
+totalAdvance (Advance (Pos p c start) end) = piece p <> label start <> label end
 
 unambigousCapture :: Move -> String
-unambigousCapture (Capture (Pos Pawn c (xs, _)) endp)  = gameFile xs <> "x" <> label (c, coord endp)
-unambigousCapture (Capture (Pos p c _)    endp)        = debugFigure (p, c) <> "x" <> label (c, coord endp)
+unambigousCapture (Capture (Pos Pawn c start) endp) = file start <> "x" <> label (coord endp)
+unambigousCapture (Capture (Pos p c _)    endp)     = piece p    <> "x" <> label (coord endp)
 
 fileAmbigousCapture :: Move -> String
-fileAmbigousCapture (Capture (Pos p c (xs, _)) endp) = debugFigure (p, c) <> gameFile xs <> "x" <> label (c, coord endp)
+fileAmbigousCapture (Capture (Pos p c start) endp) = piece p <> file start <> "x" <> label (coord endp)
 
 rankAmbigousCapture :: Move -> String
-rankAmbigousCapture (Capture (Pos p c start) endp) = debugFigure (p, c) <> debugRank (c, start) <> "x" <> label (c, coord endp)
+rankAmbigousCapture (Capture (Pos p c start) endp) = piece p <> rank start <> "x" <> label (coord endp)
 
 totalCapture :: Move -> String
-totalCapture (Capture (Pos p c start) endp) = debugFigure (p, c) <> label (c, start) <> "x" <> label (c, coord endp)
+totalCapture (Capture (Pos p c start) endp) = piece p <> label start <> "x" <> label (coord endp)
 
 castle :: Move -> Board -> String
 castle (Castle (_, (7, _)) _) _ = "O-O"
 castle (Castle (_, (3, _)) _) _ = "O-O-O"
 
 promote :: Move -> Board -> String
-promote (Promote (Pos _ c _) np (Pos Empty _ end)) _ = label (c, end) <> "=" <> debugFigure (np, c)  
-promote (Promote (Pos p c (xs, _)) _ endp)         _ = gameFile xs <> "x" <> label (c, coord endp) <> "=" <> debugFigure (p, c)  
+promote (Promote (Pos _ c _) np (Pos Empty _ end)) _ = label end  <> "=" <> piece np  
+promote (Promote (Pos _ c start) np endp)          _ = file start <> "x" <> label (coord endp) <> "=" <> piece np  
 
 enpassant :: Move -> Board -> String
-enpassant (Enpassant (Pos _ c (xs, _)) end _) _ = gameFile xs <> "x" <> label (c, end)
+enpassant (Enpassant (Pos _ c start) end _) _ = file start <> "x" <> label end
 
 advance :: Move -> Board -> String
 advance move @ (Advance (Pos Pawn _ _) _) board = unambigousAdvance move
 advance move @ (Advance pos end) board = let moves = filter (advancesTo end) $ movesFor pos board
-                                          in if   (unambigous pos moves)     then unambigousAdvance move
+                                          in   if   (unambigous pos moves)     then unambigousAdvance move
                                           else if (fileUnambigous pos moves) then fileAmbigousAdvance move
                                           else if (rankUnambigous pos moves) then rankAmbigousAdvance move
                                           else                                    totalAdvance move
@@ -71,7 +92,7 @@ advance move @ (Advance pos end) board = let moves = filter (advancesTo end) $ m
 capture :: Move -> Board -> String
 capture move @ (Capture (Pos Pawn _ _) _) board = unambigousCapture move
 capture move @ (Capture pos endp)  board = let moves = filter (capturesAt (coord endp)) $ movesFor pos board
-                                           in if   (unambigous pos moves)     then unambigousCapture move
+                                           in   if   (unambigous pos moves)     then unambigousCapture move
                                            else if (fileUnambigous pos moves) then fileAmbigousCapture move
                                            else if (rankUnambigous pos moves) then rankAmbigousCapture move
                                            else                                    totalCapture move
