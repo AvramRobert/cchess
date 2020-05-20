@@ -82,6 +82,14 @@ Positions are the union of `Figure` and `Square` and model the concrete position
 
 ### Moves
 
+```haskell
+data Move = Capture Position Position
+          | Advance Position Coord
+          | Enpassant Position Coord Position
+          | Promote Position Piece Position
+          | Castle (Position, Coord) (Position, Coord)
+```
+
 Moves in *cchess* are modelled as an ADT and cover the following types:
 * *Captures:*
   * ``` Capture Position Position ``` 
