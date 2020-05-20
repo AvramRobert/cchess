@@ -67,7 +67,7 @@ type Figure = (Piece, Colour)
 ```
 
 Figures model a concerete piece, specific to one player (either black or white). 
-It omits the "position" of that piece on the board all-together.
+It omits the *position* of that piece on the board.
 
 This is basically the dual of `Square`.
 
@@ -80,7 +80,7 @@ data Position = Pos Piece Colour Coord
 
 Positions are the union of `Figure` and `Square` and model the concrete position of a player's chess piece on the board. 
 
-#### Moves
+### Moves
 
 Moves in *cchess* are modelled as an ADT and cover the following types:
 * *Captures:*
