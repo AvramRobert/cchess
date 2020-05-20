@@ -204,7 +204,7 @@ Typically, these are some form of application of moves.
   * The transformation is not allowed
   * Contains the untransformed `Game`
 * `Terminate Game Reason`
-  * The transformation was successful and/or the game was terminated for some reason
+  * The transformation was unsuccessful and/or the game was terminated for some reason
   * Contains the (potentially) transformed `Game`
   * Some termination reasons come from evaluating the board, others can be used by the user himself 
 
