@@ -1,6 +1,7 @@
- # cchess - chess, but in the console
+ # cchess
+ ### `chess, but in the console`
 
-### *cchess* is:
+#### What is this?
 * A Haskell library for chess:
   * Features all necessary functionality a creator of a chess app or chess engine might need
   * Supports simulating chess games, querying moves, parsing and/or writing PGN
