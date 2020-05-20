@@ -102,11 +102,11 @@ Moves in *cchess* are modelled as an ADT and cover the following types:
   * Left-hand `Position` advances to `Coord` and captures right-hand `Position`
   
 * *Promote:* with type 
-  * ```haskell Promote Position Piece Position ```
+  * ``` Promote Position Piece Position ```
   * Left-hand `Position` promotes to `Piece` and captures (or advances) to the right-hand `Position`
   * *Note*: if there's nothing to capture, the piece of the right-hand `Position` is `Empty`
 * *Castle* with type
-  * ```haskell Castle (Position, Coord) (Position, Coord) ```
+  * ``` Castle (Position, Coord) (Position, Coord) ```
   * Left-hand tuple models the king's `Position`, which advances to the left-hand `Coord`
   * Right-hand tuple models the rook's `Position`, which advances to the right-hand `Coord`
 
@@ -168,7 +168,7 @@ and *black* players respectively.
 ### Games
 
 ```haskell
-data Game = { tags  :: [Tags], 
+data Game = { tags  :: [Tag], 
               board :: Board }
 
 ```
@@ -208,7 +208,7 @@ Typically, these are some form of application of moves.
   * Contains the (potentially) transformed `Game`
   * Some termination reasons come from evaluating the board, others can be used by the user himself 
 
-#### Errors
+### Errors
 
 ```haskell
 data Error = Error { variant :: Variant, message :: String }
@@ -249,7 +249,6 @@ C.newGame (C.event "My Event")
           (C.white "Geoff")
           (C.black "Dave")
 ```
-
 
 This creates a `Game` wherein the caller himself defines the values of each tag. (you can add additional tags later on) 
 
