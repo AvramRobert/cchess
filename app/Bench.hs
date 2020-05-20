@@ -7,11 +7,10 @@ import qualified PGN.Writer as W
 import System.IO.Unsafe (unsafePerformIO)
 
 pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"
-newGame  = C.newGame "" ""
 
 parseBoard game = case (C.parseGame game) of 
     (Right game) -> G.board game 
-    (Left e)     -> G.board newGame
+    (Left e)     -> G.board C.quickGame
 
 boards = [ parseBoard (pgnGames !! 0),
            parseBoard (pgnGames !! 1),

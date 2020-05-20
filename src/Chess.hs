@@ -1,7 +1,7 @@
 module Chess (
-    newGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
+    newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gameFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
-    getInput, setInput, failWith,
+    getInput, setInput, failWith, tags, movesFor, currentPlayerMoves,
     ParserTie, Result (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
@@ -117,6 +117,13 @@ legalMoves =  C.allMoves . G.board
 currentPlayer :: G.Game -> C.Colour
 currentPlayer = C.player . G.board
 
+movesFor :: C.Colour -> G.Game -> [C.Move]
+movesFor colour game = C.movesFor (G.board game) colour
+
+
+currentPlayerMoves :: G.Game -> [C.Move]
+currentPlayerMoves game = movesFor (currentPlayer game) game
+
 termination :: G.Game -> Maybe G.Reason
 termination game = let board   = G.board game
                        immoble = C.immoble board
@@ -128,7 +135,30 @@ termination game = let board   = G.board game
 evaluate :: G.Game -> Result
 evaluate game = maybe (Continue game) (Terminate game) $ termination game
 
+tags :: G.Game -> [G.Tag]
+tags = G.tags
+
 -- FixMe `newtype` the tags
-newGame :: String -> String -> G.Game
-newGame white black = G.Game { G.tags  = [], 
-                               G.board = C.emptyBoard }
+newGame :: String 
+        -> String 
+        -> String 
+        -> String 
+        -> String 
+        -> String 
+        -> G.Game
+newGame event site date round white black = 
+    G.Game { G.tags  = [ G.Event event,
+                         G.Site site,
+                         G.Date date,
+                         G.Round round,
+                         G.White white,
+                         G.Black black ], 
+             G.board = C.emptyBoard }
+
+quickGame :: G.Game
+quickGame = newGame "CCHESS Quick Game"
+                    "CCHESS Platform"
+                    "Today" -- fix this
+                    "-"
+                    "CCHESS Player 1"
+                    "CCHESS Player 2"

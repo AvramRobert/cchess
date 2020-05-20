@@ -88,7 +88,7 @@ exitText :: String
 exitText = "One day at a time."
 
 newGame :: Parser State
-newGame = Parser (MC.string' "new game" $> (Play $ C.newGame "Whitney" "Clareance"))
+newGame = Parser (MC.string' "new game" $> (Play C.quickGame))
 
 move :: G.Game -> Parser State
 move = fmap transition . C.evaluatedMoveParser

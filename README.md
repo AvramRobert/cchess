@@ -10,5 +10,5 @@
 
 
 For more information, take a look at:
-* <a href="/API.md"> Using the library's Chess API </a>
+* <a href="/API.md"> Using the chess library </a>
 * <a href="/GAME.md"> Playing a round of chess </a>

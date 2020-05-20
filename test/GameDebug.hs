@@ -21,11 +21,9 @@ testMoves = "1.e4 e5 2.Nf3 Nf6 3.Nxe5 d6 4.Nf3 Nxe4 5.d4 d5 6.Bd3 Nc6 7.O-O\nBe7
 
 mvs = foldr (<>) "" $ intersperse " " $ lines testMoves
 
-newGame = C.newGame "" ""
-
 wholeGame = case (C.parseGame testGame) of
     (Right game) -> game
-    (Left e)     -> newGame
+    (Left e)     -> C.quickGame
 
 testBoard = G.board wholeGame
 
