@@ -84,31 +84,21 @@ Positions are the union of `Figure` and `Square` and model the concrete position
 
 Moves in *cchess* are modelled as an ADT and cover the following types:
 * *Captures:*
-  * ```haskell 
-    Capture Position Position 
-    ``` 
+  * ``` Capture Position Position ``` 
   * Left-hand `Position` captures right-hand `Position`
 * *Advances:* 
-  * ```haskell
-    Advance Position Coord
-    ```
+  * ``` Advance Position Coord ```
   * Left-hand `Position` advances to `Coord`
 * *Enpassant captures:* 
-  * ```haskell
-  * Enpassant Position Coord Position
-    ```
+  * ``` Enpassant Position Coord Position ```
   * Left-hand `Position` advances to `Coord` and captures right-hand `Position`
   
 * *Promote:* with type 
-  * ```haskell
-    Promote Position Piece Position
-    ```
+  * ```haskell Promote Position Piece Position ```
   * Left-hand `Position` promotes to `Piece` and captures (or advances) to the right-hand `Position`
   * *Note*: if there's nothing to capture, the piece of the right-hand `Position` is `Empty`
 * *Castle* with type
-  * ```haskell
-    Castle (Position, Coord) (Position, Coord)
-    ```
+  * ```haskell Castle (Position, Coord) (Position, Coord) ```
   * Left-hand tuple models the king's `Position`, which advances to the left-hand `Coord`
   * Right-hand tuple models the rook's `Position`, which advances to the right-hand `Coord`
 
@@ -253,6 +243,6 @@ C.newGame (C.event "My Event")
 ```
 
 
-This creates a `Game` whereby the called himself defines the values of each tag. (you can add additional tags later on) 
+This creates a `Game` wherein the caller himself defines the values of each tag. (you can add additional tags later on) 
 
 All of these parameters are `newtype`s and `Chess` contains functions for creating each one of them.
