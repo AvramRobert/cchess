@@ -92,7 +92,7 @@ data Move = Capture Position Position
           | Castle (Position, Coord) (Position, Coord)
 ```
 
-Moves data type models chess moves and covers the following types:
+This data type represents the way *cchess* models chess moves. It covers the following instances:
 * *Captures:*
   * ```haskell
     Capture Position Position 
@@ -228,9 +228,9 @@ Typically, these are some form of application of moves.
 * ```haskell
   Terminate Game Reason
   ```
-  * The transformation was unsuccessful and/or the game was terminated for some reason
-  * Contains the (potentially) transformed `Game`
-  * Some termination reasons come from evaluating the board, others can be used by the user himself 
+  * The transformation was successful and has terminated the game in some way.
+  * Contains the transformed `Game`
+  * Some termination reasons are a direct consequence of evaluating the board, others can be used by the user himself
 
 ### Errors
 
