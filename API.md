@@ -1,4 +1,4 @@
-# cchess API Documentation
+# API Documentation
 
 *cchess* features mostly all functionality necessary for implementing chess-related apps. These are:
 * Game creation 
@@ -139,7 +139,7 @@ data Board = Board {
 }
 ```
 
-This is the record that models a complete chess board. It's primarily used internally. \
+This is the record that models a complete chess board. It's primarily only of internal relevance. \
 Shouldn't really both you directly.
 
 * `player`
@@ -178,10 +178,7 @@ data Tag =  Event String
 This models all the tags a chess game can be labeled with. 
 
 Every game in *cchess* is designed to be a valid, standard-complying chess game. \
-As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. 
-
-They are the event's *name*, *site*, *date*, *round* and the names of the *white*
-and *black* players respectively. (see **Creating a game**)  
+As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. (see **Creating a game**) 
 
 ### Games
 
@@ -277,9 +274,11 @@ C.newGame (C.event "My Event")
           (C.black "Dave")
 ```
 
-This creates a `Game` wherein the caller himself defines the values of each tag. (you can add additional tags later on) 
+As previously mentioned, every game in *cchess* is designed to be a standard-complying game. \
+This means that every newly created game has to define values for the following 6 tags: \
+**Name**, **Site**, **Date**, **Round** and the names of the **White** and **Black** players respectively. (you can add additional tags later on) 
 
-All of these parameters are `newtype`s and `Chess` contains functions for creating each one of them.
+`Chess` contains functions for creating each one of them.
 
 ### Querying and applying moves
 
@@ -327,7 +326,7 @@ case (C.applyMove legalMove game) of
 
 #### Reading moves
 
-Moves can be read and parse from PGN notation. Given that parsing is an error-prone effect, functions of this kind return `Either Error Move`.
+Moves can be read and parsed directly from PGN notation. Given that parsing is an error-prone effect, functions of this kind return `Either Error Move`.
 
 ```haskell
 
@@ -356,3 +355,31 @@ case (C.parseApplyMove "c3" game) of
 
 #### Integrating with your own parsers
 
+*cchess*' functionality is designed to be integratable into other parsers. In particular, it's reading and/or application of moves can be generically bound to them.
+
+This library uses `Megaparsec`, but say if you were personally using `Attoparsec` or
+`Parsec`, then you could fairly simply integrate its functionality by implementing this type class for your parser type.
+
+```haskell 
+class ParserTie p where
+  getInput :: p String
+  setInput :: String -> p ()
+  failWith :: Error -> p a
+```
+
+For any parser `p (* -> *)`, if you can tell me how to get its current input, set its input to something else and make it fail based on the errors *cchess* uses, then I can make it integrate with your own parser.
+
+There are of course separate functions that return a `Parser` variant of the API's functionality:
+
+```haskell
+
+-- parses a `Move`
+C.moveParser :: (C.ParserTie p, Monad p) => C.Game -> p C.Move
+
+-- parses and applies the `Move` to the `Game`, returns the new `Game` and the `Move`
+C.appliedMoveParser :: (C.ParserTie p, Monad p) => C.Game -> p (C.Game, C.Move) -- parses and
+
+-- parses and applies the `Move`, evaluates the resulting `Game`
+C.evaluatedMoveParser :: (C.ParserTie p, Monad p) => C.Game -> p Result
+
+```
