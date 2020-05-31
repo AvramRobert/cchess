@@ -1,10 +1,12 @@
 module Chess (
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
-    gameFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
+    gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
     getInput, setInput, failWith, tags, movesFor, currentPlayerMoves,
     ParserTie, Result (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
+
+-- TODO: THis show re-export Chess.Display
 
 import qualified Text.Megaparsec as M        
 import qualified Chess.Game as G
@@ -82,11 +84,12 @@ moveParser = fmap snd . appliedMoveParser
 evaluatedMoveParser :: (ParserTie p, Monad p) => G.Game -> p Result
 evaluatedMoveParser game = fmap (evaluate . fst) $ appliedMoveParser game
 
+-- this could, at complile time, check if the string ends with a `.pgn`
 pgnFromFile :: String -> IO [String]
 pgnFromFile = P.fromPGNFile' 
 
-gameFromFile :: String -> IO (Either Error [G.Game])
-gameFromFile = fmap fromParseError . P.fromPGNFile
+gamesFromFile :: String -> IO (Either Error [G.Game])
+gamesFromFile = fmap fromParseError . P.fromPGNFile
 
 parseGame :: String -> Either Error G.Game
 parseGame = fromParseError . P.parseGame
