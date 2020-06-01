@@ -271,6 +271,8 @@ C.newGame (C.event "My Event")
           (C.black "Dave")
 ```
 
+This creates a new game, where the caller himself defines the values for all mandatory chess tags. 
+
 As previously mentioned, every game in *cchess* is designed to be a standard-complying game. \
 This means that every newly created game has to define values for the following 6 tags: \
 **Name**, **Site**, **Date**, **Round** and the names of the **White** and **Black** players respectively. (you can add additional tags later on) 

@@ -1,7 +1,7 @@
 module Chess (
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
-    getInput, setInput, failWith, tags, movesFor, currentPlayerMoves,
+    getInput, setInput, failWith, tags, movesFor, currentPlayerMoves, tag,
     ParserTie, Result (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
@@ -140,6 +140,9 @@ evaluate game = maybe (Continue game) (Terminate game) $ termination game
 
 tags :: G.Game -> [G.Tag]
 tags = G.tags
+
+tag :: [G.Tag] -> G.Game -> G.Game
+tag tags game = game { G.tags = G.tags game <> tags } -- this should remove duplicates
 
 -- FixMe `newtype` the tags
 newGame :: String 
