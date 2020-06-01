@@ -149,7 +149,7 @@ Shouldn't really both you directly.
   * Stores if the board is in check
   
 * `past`
-  * Stores moves done in the past
+  * Stores moves made in the past
   
 * `coordinates` and `pieces`
   * They are two isomorphic structures, that store the current configuration of the board
@@ -185,7 +185,6 @@ As such, every new game created with *cchess* is required to populate the minimu
 ```haskell
 data Game = { tags  :: [Tag], 
               board :: Board }
-
 ```
 
 This record models an entire chess game and is the record used throught the entire API. 
@@ -304,8 +303,8 @@ C.evaluate game -- tells you if the game is a draw, stalemate or checkmate
 
 #### Applying a move
 
-Once a move has been chosen, it can be applied on the game and the application
-will return a `Result` indicating the outcome of the application.
+Once a move has been chosen, it can be applied on the game. The application
+will return a `Result` denoting its outcome.
 
 ```haskell
 game = C.quickGame
@@ -439,7 +438,7 @@ C.appliedMoveParser :: (C.ParserTie p, Monad p) => C.Game -> p (C.Game, C.Move) 
 -- parses and applies the `Move`, evaluates the resulting `Game`
 C.evaluatedMoveParser :: (C.ParserTie p, Monad p) => C.Game -> p Result
 ```
-*cchess* itself uses this abstraction in its implementation of the console chess game. (see <a href="/GAME.md"> Playing a round of chess</a>)
+*cchess* itself uses this abstraction in its implementation of the console chess game.
 
 ### Writing
 
@@ -457,7 +456,7 @@ A `Game` can be directly serialised as a string.
 C.writeMove :: Move -> Game -> String
 ```
 
-And, as mentioned, individual moves can be written-out in PGN notation. \
+And, as mentioned, individual moves can be written-out in PGN notation.
 
 *Why does this need a Game?* - you ask
 
