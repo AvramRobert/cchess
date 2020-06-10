@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Chess.Game where
 
 import qualified Chess.Internal as Chess
@@ -32,6 +34,7 @@ data Address = Address String | NoAddress deriving (Show, Eq)
 
 data PlayerType = Human | Computer deriving (Show, Eq)
 
+-- use GADTs to describe these
 -- http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
 data Tag =  Event String
           | Site String

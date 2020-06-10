@@ -144,15 +144,30 @@ tags = G.tags
 tag :: [G.Tag] -> G.Game -> G.Game
 tag tags game = game { G.tags = G.tags game <> tags } -- this should remove duplicates
 
+newtype Event = Event { unwrapEvent :: String }
+newtype Site = Site { unwrapSite :: String }
+newtype Date = Date { unwrapDate :: String }
+newtype Round = Round { unwrapRound :: String }
+newtype WhiteName = WhiteName { unwrapWhite :: String }
+newtype BlackName = BlackName { unwrapBlack :: String }
+
+event = Event
+site = Site
+date = Date
+round = Round
+whiteName = WhiteName
+blackName = BlackName
+
+
 -- FixMe `newtype` the tags
-newGame :: String 
-        -> String 
-        -> String 
-        -> String 
-        -> String 
-        -> String 
+newGame :: Event 
+        -> Site 
+        -> Date 
+        -> Round 
+        -> WhiteName 
+        -> BlackName 
         -> G.Game
-newGame event site date round white black = 
+newGame (Event event) (Site site) (Date date) (Round round) (WhiteName white) (BlackName black) = 
     G.Game { G.tags  = [ G.Event event,
                          G.Site site,
                          G.Date date,
@@ -162,9 +177,9 @@ newGame event site date round white black =
              G.board = C.emptyBoard }
 
 quickGame :: G.Game
-quickGame = newGame "CCHESS Quick Game"
-                    "CCHESS Platform"
-                    "Today" -- fix this
-                    "-"
-                    "CCHESS Player 1"
-                    "CCHESS Player 2"
+quickGame = newGame (event "CCHESS Quick Game")
+                    (site  "CCHESS Platform")
+                    (date  "Today")
+                    (Chess.round "-")
+                    (whiteName "CCHESS Player 1")
+                    (blackName "CCHESS Player 2")
