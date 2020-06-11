@@ -31,8 +31,8 @@ data Address = Address String | NoAddress deriving (Show, Eq)
 
 data PlayerType = Human | Computer deriving (Show, Eq)
 
-newtype Event = Event String
-newtype Site = Site String
+newtype Event = Event String deriving (Show)
+newtype Site = Site String deriving (Show)
 newtype Date = Date String
 newtype Round = Round String
 newtype White = White String
@@ -75,65 +75,39 @@ newtype Annotator = Annotator String
 newtype Mode = Mode Variant
 newtype Unknown = Unknown (String, String)
 
-data DynTag where
-  DynTag :: Tag a -> DynTag 
-
 data Tag a where
-  TEvent :: String -> Tag Event
-  TSite  :: String -> Tag Site
-  TDate :: String  -> Tag Date
-  TRound :: String -> Tag Round
-  TWhite :: String -> Tag White
-  TBlack :: String -> Tag Black
-  TResult :: Outcome -> Tag Result
-  TWhiteElo :: Rating -> Tag WhiteElo
-  TBlackElo :: Rating -> Tag BlackElo
-  TWhiteTitle :: Title -> Tag WhiteTitle
-  TBlackTitle :: Title -> Tag BlackTitle
-  TWhiteUSCF :: String -> Tag WhiteUSCF
-  TBlackUSCF :: String -> Tag BlackUSCF
-  TWhiteNA :: Address -> Tag WhiteNA
-  TBlackNA :: Address -> Tag BlackNA
-  TEventDate :: String -> Tag EventDate
-  TEventSponsor :: String -> Tag EventSponsor
-  TSection :: String -> Tag Section
-  TStage :: String -> Tag Stage
-  TBoard :: String -> Tag Board
-  TOpening :: String -> Tag Opening
-  TVariation :: String -> Tag Variation
-  TSubVariation :: String -> Tag SubVariation
-  TECO :: String -> Tag ECO
-  TNIC :: String -> Tag NIC
-  TTime :: String -> Tag Time
-  TUTCTime :: String -> Tag UTCTime
-  TUTCDate :: String -> Tag UTCDate
-  TTimeControl :: String -> Tag TimeControl
-  TSetUp :: String -> Tag SetUp
-  TFEN :: String -> Tag FEN
-  TTermination :: Reason -> Tag Termination
-  TPlyCount :: String -> Tag PlyCount
-  TAnnotator :: String -> Tag Annotator
-  TMode :: Variant -> Tag Mode
-  TUnknown :: String -> String -> Tag Unknown
+  TEvent :: Tag Event
+  TSite :: Tag Site
 
-event :: String -> Tag Event
-event = TEvent
+data HTag where
+  HTag :: Tag a -> a -> HTag 
 
-data Game = Game { tags :: [DynTag], board :: Chess.Board }
+class Tagged a where
+  tag :: Tag a
 
-recurseFind :: (forall a . Tag a -> Maybe b) -> [DynTag] -> Maybe b
-recurseFind f []                = Nothing
-recurseFind f ((DynTag t) : ts) = maybe (recurseFind f ts) Just $ f t 
+data Game = Game { tags :: [HTag], board :: Chess.Board }
 
-add :: Tag a -> Game -> Game
-add t game = game { tags = (DynTag t) : (tags game) }
+instance Tagged Event where tag = TEvent
+instance Tagged Site where tag = TSite
 
-findAny :: (forall a . Tag a -> Maybe b) -> Game -> Maybe b
-findAny f (Game tags board) = recurseFind f tags 
+unwrap :: Tag a -> HTag -> Maybe a
+unwrap TEvent (HTag TEvent e) = Just e
+unwrap TSite  (HTag TSite e)  = Just e
 
-event' :: Tag a -> Maybe Event
-event' (TEvent s) = Just $ Event s
-event' _          = Nothing
+locate :: Tag a -> [HTag] -> Maybe a
+locate tag ([])     = Nothing
+locate tag (h : hs) = case (unwrap tag h) of 
+  (Just a)  -> Just a
+  (Nothing) -> locate tag hs
 
-getEvent :: Game -> Maybe Event
-getEvent = findAny event'
+hide :: Tagged a => a -> HTag
+hide = HTag tag
+
+add :: Tagged a => a -> Game -> Game
+add a (Game hs b) = Game ((hide a) : hs) b 
+
+getEvent = locate TEvent
+getSite = locate TSite
+
+newGame :: Event -> Site -> Game
+newGame e s = Game { tags = [hide e, hide s], board = Chess.emptyBoard }
