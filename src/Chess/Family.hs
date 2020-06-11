@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, RankNTypes #-}
 
 module Chess.Family where
 
@@ -73,54 +73,67 @@ newtype Termination = Termination Reason
 newtype PlyCount = PlyCount String
 newtype Annotator = Annotator String
 newtype Mode = Mode Variant
+newtype Unknown = Unknown (String, String)
+
+data DynTag where
+  DynTag :: Tag a -> DynTag 
 
 data Tag a where
-  EventT        :: String     -> Tag Event
-  SiteT         :: String     -> Tag Site
-  RoundT        :: String     -> Tag Round
-  DateT         :: String     -> Tag Date
-  ResultT       :: Outcome    -> Tag Outcome
-  WhiteEloT     :: Rating     -> Tag WhiteElo
-  BlackEloT     :: Rating     -> Tag BlackElo
-  WhiteTitleT   :: Title      -> Tag WhiteTitle
-  BlackTitleT   :: Title      -> Tag BlackTitle
-  WhiteUSCFT    :: String     -> Tag WhiteUSCF
-  BlackUSCFT    :: String     -> Tag BlackUSCF
-  WhiteNAT      :: Address    -> Tag WhiteNA
-  BlackNAT      :: Address    -> Tag BlackNA
-  WhiteTypeT    :: PlayerType -> Tag WhiteType
-  BlackTypeT    :: PlayerType -> Tag BlackType
-  EventDateT    :: String     -> Tag EventDate
-  EventSponsorT :: String     -> Tag EventSponsor
-  SectionT      :: String     -> Tag Section
-  StageT        :: String     -> Tag Stage
-  BoardT        :: String     -> Tag Board 
-  OpeningT      :: String     -> Tag Opening
-  VariationT    :: String     -> Tag Variation
-  SubVariationT :: String     -> Tag SubVariation
-  ECOT          :: String     -> Tag ECO 
-  NICT          :: String     -> Tag NIC
-  TimeT         :: String     -> Tag Time
-  UTCTimeT      :: String     -> Tag UTCTime
-  UTCDateT      :: String     -> Tag UTCDate
-  TimeControlT  :: String     -> Tag TimeControl
-  SetUpT        :: String     -> Tag SetUp
-  FENT          :: String     -> Tag FEN
-  TerminationT  :: Reason     -> Tag Termination
-  PlyCountT     :: String     -> Tag PlyCount
-  AnnotatorT    :: String     -> Tag Annotator
-  ModeT         :: Variant    -> Tag Mode 
-  UnknownT      :: String     -> String -> Tag a
+  TEvent :: String -> Tag Event
+  TSite  :: String -> Tag Site
+  TDate :: String  -> Tag Date
+  TRound :: String -> Tag Round
+  TWhite :: String -> Tag White
+  TBlack :: String -> Tag Black
+  TResult :: Outcome -> Tag Result
+  TWhiteElo :: Rating -> Tag WhiteElo
+  TBlackElo :: Rating -> Tag BlackElo
+  TWhiteTitle :: Title -> Tag WhiteTitle
+  TBlackTitle :: Title -> Tag BlackTitle
+  TWhiteUSCF :: String -> Tag WhiteUSCF
+  TBlackUSCF :: String -> Tag BlackUSCF
+  TWhiteNA :: Address -> Tag WhiteNA
+  TBlackNA :: Address -> Tag BlackNA
+  TEventDate :: String -> Tag EventDate
+  TEventSponsor :: String -> Tag EventSponsor
+  TSection :: String -> Tag Section
+  TStage :: String -> Tag Stage
+  TBoard :: String -> Tag Board
+  TOpening :: String -> Tag Opening
+  TVariation :: String -> Tag Variation
+  TSubVariation :: String -> Tag SubVariation
+  TECO :: String -> Tag ECO
+  TNIC :: String -> Tag NIC
+  TTime :: String -> Tag Time
+  TUTCTime :: String -> Tag UTCTime
+  TUTCDate :: String -> Tag UTCDate
+  TTimeControl :: String -> Tag TimeControl
+  TSetUp :: String -> Tag SetUp
+  TFEN :: String -> Tag FEN
+  TTermination :: Reason -> Tag Termination
+  TPlyCount :: String -> Tag PlyCount
+  TAnnotator :: String -> Tag Annotator
+  TMode :: Variant -> Tag Mode
+  TUnknown :: String -> String -> Tag Unknown
 
 event :: String -> Tag Event
-event = EventT
+event = TEvent
 
-site :: String -> Tag Site
-site = SiteT
+data Game = Game { tags :: [DynTag], board :: Chess.Board }
 
-newgame :: Tag Event -> Tag Site -> String
-newgame (EventT s) (SiteT x) = s <> " :: " <> x
+recurseFind :: (forall a . Tag a -> Maybe b) -> [DynTag] -> Maybe b
+recurseFind f []                = Nothing
+recurseFind f ((DynTag t) : ts) = maybe (recurseFind f ts) Just $ f t 
 
-extract :: [Tag a] -> Maybe a
-extract [] = Nothing
-extract ((EventT e) : _) = Just (Event e)
+add :: Tag a -> Game -> Game
+add t game = game { tags = (DynTag t) : (tags game) }
+
+findAny :: (forall a . Tag a -> Maybe b) -> Game -> Maybe b
+findAny f (Game tags board) = recurseFind f tags 
+
+event' :: Tag a -> Maybe Event
+event' (TEvent s) = Just $ Event s
+event' _          = Nothing
+
+getEvent :: Game -> Maybe Event
+getEvent = findAny event'
