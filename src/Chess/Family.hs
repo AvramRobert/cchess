@@ -75,39 +75,73 @@ newtype Annotator = Annotator String
 newtype Mode = Mode Variant
 newtype Unknown = Unknown (String, String)
 
+-- data Tag a where
+--   TEvent :: Tag Event
+--   TSite :: Tag Site
+
+-- data HTag where
+--   HTag :: Tag a -> a -> HTag 
+
+-- class Tagged a where
+--   tag :: Tag a
+
+-- data Game = Game { tags :: [HTag], board :: Chess.Board }
+
+-- instance Tagged Event where tag = TEvent
+-- instance Tagged Site where tag = TSite
+
+-- unwrap :: Tag a -> HTag -> Maybe a
+-- unwrap TEvent (HTag TEvent e) = Just e
+-- unwrap TSite  (HTag TSite e)  = Just e
+
+-- locate :: Tag a -> [HTag] -> Maybe a
+-- locate tag ([])     = Nothing
+-- locate tag (h : hs) = case (unwrap tag h) of 
+--   (Just a)  -> Just a
+--   (Nothing) -> locate tag hs
+
+-- hide :: Tagged a => a -> HTag
+-- hide = HTag tag
+
+-- add :: Tagged a => a -> Game -> Game
+-- add a (Game hs b) = Game ((hide a) : hs) b 
+
+-- getEvent = locate TEvent
+-- getSite = locate TSite
+
+-- newGame :: Event -> Site -> Game
+-- newGame e s = Game { tags = [hide e, hide s], board = Chess.emptyBoard }
+
+data Type a where
+  TEvent :: Type Event
+  TSite :: Type Site
+
 data Tag a where
-  TEvent :: Tag Event
-  TSite :: Tag Site
+  EventTag :: Event -> Tag Event
+  SiteTag :: Site -> Tag Site
 
-data HTag where
-  HTag :: Tag a -> a -> HTag 
+data Dyn where
+  Dyn :: Tag a -> Dyn
 
-class Tagged a where
-  tag :: Tag a
+data Game = Game { tags :: [Dyn] }
 
-data Game = Game { tags :: [HTag], board :: Chess.Board }
+match :: Type a -> Tag b -> Maybe a
+match TEvent (EventTag e) = Just e
+match TSite  (SiteTag s)  = Just s
+match _ _                 = Nothing
 
-instance Tagged Event where tag = TEvent
-instance Tagged Site where tag = TSite
+determine :: Type a -> [Dyn] -> Maybe a
+determine _ []               = Nothing
+determine typ ((Dyn tag):ds) = maybe (determine typ ds) Just (match typ tag)
 
-unwrap :: Tag a -> HTag -> Maybe a
-unwrap TEvent (HTag TEvent e) = Just e
-unwrap TSite  (HTag TSite e)  = Just e
+locate :: Type a -> Game -> Maybe a
+locate t (Game tags) = determine t tags
 
-locate :: Tag a -> [HTag] -> Maybe a
-locate tag ([])     = Nothing
-locate tag (h : hs) = case (unwrap tag h) of 
-  (Just a)  -> Just a
-  (Nothing) -> locate tag hs
+add :: Tag a -> Game -> Game
+add t (Game tags) = Game ((Dyn t) : tags)
+ 
+newgame :: Tag Event -> Tag Site -> Game
+newgame e s = Game { tags = [Dyn e, Dyn s] } 
 
-hide :: Tagged a => a -> HTag
-hide = HTag tag
-
-add :: Tagged a => a -> Game -> Game
-add a (Game hs b) = Game ((hide a) : hs) b 
-
-getEvent = locate TEvent
-getSite = locate TSite
-
-newGame :: Event -> Site -> Game
-newGame e s = Game { tags = [hide e, hide s], board = Chess.emptyBoard }
+event = EventTag . Event
+site = SiteTag . Site 
