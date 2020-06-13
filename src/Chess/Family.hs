@@ -112,36 +112,41 @@ newtype Unknown = Unknown (String, String)
 -- newGame :: Event -> Site -> Game
 -- newGame e s = Game { tags = [hide e, hide s], board = Chess.emptyBoard }
 
-data Type a where
-  TEvent :: Type Event
-  TSite :: Type Site
-
 data Tag a where
-  EventTag :: Event -> Tag Event
-  SiteTag :: Site -> Tag Site
+  TEvent :: Tag Event
+  TSite :: Tag Site
+
+data Entry a where
+  Entry :: Tag a -> a -> Entry a
 
 data Dyn where
-  Dyn :: Tag a -> Dyn
+  Dyn :: Entry a -> Dyn
 
 data Game = Game { tags :: [Dyn] }
 
-match :: Type a -> Tag b -> Maybe a
-match TEvent (EventTag e) = Just e
-match TSite  (SiteTag s)  = Just s
+match :: Tag a -> Entry b -> Maybe a
+match TEvent (Entry TEvent v) = Just v
+match TSite  (Entry TSite v)  = Just v
 match _ _                 = Nothing
 
-determine :: Type a -> [Dyn] -> Maybe a
+determine :: Tag a -> [Dyn] -> Maybe a
 determine _ []               = Nothing
-determine typ ((Dyn tag):ds) = maybe (determine typ ds) Just (match typ tag)
+determine tag ((Dyn entry):es) = maybe (determine tag es) Just (match tag entry)
 
-locate :: Type a -> Game -> Maybe a
-locate t (Game tags) = determine t tags
+locate :: Tag a -> Game -> Maybe a
+locate tag (Game entries) = determine tag entries
 
-add :: Tag a -> Game -> Game
-add t (Game tags) = Game ((Dyn t) : tags)
+add :: Entry a -> Game -> Game
+add entry (Game entries) = Game ((Dyn entry) : entries)
  
-newgame :: Tag Event -> Tag Site -> Game
+newgame :: Entry Event -> Entry Site -> Game
 newgame e s = Game { tags = [Dyn e, Dyn s] } 
 
-event = EventTag . Event
-site = SiteTag . Site 
+event = Entry TEvent . Event
+getEvent = locate TEvent
+site = Entry TSite . Site 
+
+-- there's one last alternative: I define every type of tag as an opaque type like: data Event
+-- Use them just as references in the GADT's `Tag Event` and so on
+-- Use two constructors: Tag a and Entry a => which represent the type of a tag and the concrete entry
+-- I then have something like: 
