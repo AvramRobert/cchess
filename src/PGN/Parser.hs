@@ -21,6 +21,7 @@ import Lib.Coll
 import Lib.Megaparsec
 import Chess.Display
 import PGN.Common
+import qualified Chess.Family as F
 
 data ChessError = CaptureError Chess.Coord Chess.Figure |
                   AdvanceError Chess.Coord Chess.Figure |
@@ -159,9 +160,9 @@ tagParsers = [try $ extract characters "event" G.Event,
 -- I have to parse without ordering and the order them properly later on
 tagsParser :: Parser [G.Tag]
 tagsParser = (M.optional (M.choice tagParsers) >>= process)
-    where process (Just h)        = fmap (\hs -> h:hs) tagsParser
-          process (Nothing)       = return []
-
+    where process (Just h)  = fmap (\hs -> h:hs) tagsParser
+          process (Nothing) = return []
+          
 headline :: String -> Parser a -> Parser a
 headline header p = do
         _ <- delimitation

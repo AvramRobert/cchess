@@ -84,7 +84,7 @@ enpassant (Enpassant (Pos _ c start) end _) _ = file start <> "x" <> label end
 advance :: Move -> Board -> String
 advance move @ (Advance (Pos Pawn _ _) _) board = unambigousAdvance move
 advance move @ (Advance pos end) board = let moves = filter (advancesTo end) $ movesFor pos board
-                                          in   if   (unambigous pos moves)     then unambigousAdvance move
+                                          in   if (unambigous pos moves)     then unambigousAdvance move
                                           else if (fileUnambigous pos moves) then fileAmbigousAdvance move
                                           else if (rankUnambigous pos moves) then rankAmbigousAdvance move
                                           else                                    totalAdvance move
@@ -92,7 +92,7 @@ advance move @ (Advance pos end) board = let moves = filter (advancesTo end) $ m
 capture :: Move -> Board -> String
 capture move @ (Capture (Pos Pawn _ _) _) board = unambigousCapture move
 capture move @ (Capture pos endp)  board = let moves = filter (capturesAt (coord endp)) $ movesFor pos board
-                                           in   if   (unambigous pos moves)     then unambigousCapture move
+                                           in   if (unambigous pos moves)     then unambigousCapture move
                                            else if (fileUnambigous pos moves) then fileAmbigousCapture move
                                            else if (rankUnambigous pos moves) then rankAmbigousCapture move
                                            else                                    totalCapture move

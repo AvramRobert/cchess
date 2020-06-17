@@ -1,12 +1,14 @@
-{-# LANGUAGE GADTs, RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 
 module Chess.Family where
 
+import qualified Chess.Display as Display
 import qualified Chess.Internal as Chess
 
+-- The `Show` for these things should be in Chess.Display
 data Outcome = Win Chess.Colour 
              | Draw 
-             | Other deriving (Ord, Eq)
+             | Other deriving (Ord, Eq, Show)
 
 data Reason  = Abandoned 
              | Adjundication 
@@ -33,120 +35,150 @@ data PlayerType = Human | Computer deriving (Show, Eq)
 
 newtype Event = Event String deriving (Show)
 newtype Site = Site String deriving (Show)
-newtype Date = Date String
-newtype Round = Round String
-newtype White = White String
-newtype Black = Black String
-newtype Result = Result Outcome
+newtype Date = Date String deriving (Show)
+newtype Round = Round String deriving (Show)
+newtype White = White String deriving (Show)
+newtype Black = Black String deriving (Show)
+newtype Result = Result Outcome deriving (Show)
 
-newtype WhiteElo = WhiteElo Rating
-newtype BlackElo = BlackElo Rating
-newtype WhiteTitle = WhiteTitle Title
-newtype BlackTitle = BlackTitle Title
-newtype WhiteUSCF = WhiteUSCF String
-newtype BlackUSCF = BlackUSCF String
-newtype WhiteNA = WhiteNA Address
-newtype BlackNA = BlackNA Address
-newtype WhiteType = WhiteType PlayerType
-newtype BlackType = BlackType PlayerType
-newtype EventDate = EventDate String
-newtype EventSponsor = EventSponsor String
-newtype Section = Section String
-newtype Stage = Stage String
-newtype Board = Board String 
+newtype WhiteElo = WhiteElo Rating deriving (Show)
+newtype BlackElo = BlackElo Rating deriving (Show)
+newtype WhiteTitle = WhiteTitle Title deriving (Show)
+newtype BlackTitle = BlackTitle Title deriving (Show)
+newtype WhiteUSCF = WhiteUSCF String deriving (Show)
+newtype BlackUSCF = BlackUSCF String deriving (Show)
+newtype WhiteNA = WhiteNA Address deriving (Show)
+newtype BlackNA = BlackNA Address deriving (Show)
+newtype WhiteType = WhiteType PlayerType deriving (Show)
+newtype BlackType = BlackType PlayerType deriving (Show)
+newtype EventDate = EventDate String deriving (Show)
+newtype EventSponsor = EventSponsor String deriving (Show)
+newtype Section = Section String deriving (Show)
+newtype Stage = Stage String deriving (Show)
+newtype Board = Board String deriving (Show)
 
-newtype Opening = Opening String
-newtype Variation = Variantion String
-newtype SubVariation = SubVariation String
+newtype Opening = Opening String deriving (Show)
+newtype Variation = Variantion String deriving (Show)
+newtype SubVariation = SubVariation String deriving (Show)
 
-newtype ECO = ECO String
-newtype NIC = NIC String
-newtype Time = Time String
-newtype UTCTime = UTCTime String
-newtype UTCDate = UTCDate String
-newtype TimeControl = TimeControl String
+newtype ECO = ECO String deriving (Show)
+newtype NIC = NIC String deriving (Show)
+newtype Time = Time String deriving (Show)
+newtype UTCTime = UTCTime String deriving (Show)
+newtype UTCDate = UTCDate String deriving (Show)
+newtype TimeControl = TimeControl String deriving (Show)
 
-newtype SetUp = SetUp String
-newtype FEN = FEN String
+newtype SetUp = SetUp String deriving (Show)
+newtype FEN = FEN String deriving (Show)
 
-newtype Termination = Termination Reason
-newtype PlyCount = PlyCount String
-newtype Annotator = Annotator String
-newtype Mode = Mode Variant
-newtype Unknown = Unknown (String, String)
-
--- data Tag a where
---   TEvent :: Tag Event
---   TSite :: Tag Site
-
--- data HTag where
---   HTag :: Tag a -> a -> HTag 
-
--- class Tagged a where
---   tag :: Tag a
-
--- data Game = Game { tags :: [HTag], board :: Chess.Board }
-
--- instance Tagged Event where tag = TEvent
--- instance Tagged Site where tag = TSite
-
--- unwrap :: Tag a -> HTag -> Maybe a
--- unwrap TEvent (HTag TEvent e) = Just e
--- unwrap TSite  (HTag TSite e)  = Just e
-
--- locate :: Tag a -> [HTag] -> Maybe a
--- locate tag ([])     = Nothing
--- locate tag (h : hs) = case (unwrap tag h) of 
---   (Just a)  -> Just a
---   (Nothing) -> locate tag hs
-
--- hide :: Tagged a => a -> HTag
--- hide = HTag tag
-
--- add :: Tagged a => a -> Game -> Game
--- add a (Game hs b) = Game ((hide a) : hs) b 
-
--- getEvent = locate TEvent
--- getSite = locate TSite
-
--- newGame :: Event -> Site -> Game
--- newGame e s = Game { tags = [hide e, hide s], board = Chess.emptyBoard }
+newtype Termination = Termination Reason deriving (Show)
+newtype PlyCount = PlyCount String deriving (Show)
+newtype Annotator = Annotator String deriving (Show)
+newtype Mode = Mode Variant deriving (Show)
+newtype Unknown = Unknown (String, String) deriving (Show)
 
 data Tag a where
-  TEvent :: Tag Event
-  TSite :: Tag Site
+  EventTag        :: Tag Event
+  SiteTag         :: Tag Site
+  DateTag         :: Tag Date
+  RoundTag        :: Tag Round
+  WhiteTag        :: Tag White
+  BlackTag        :: Tag Black
+  ResultTag       :: Tag Result
+  WhiteEloTag     :: Tag WhiteElo
+  BlackEloTag     :: Tag BlackElo
+  WhiteTitleTag   :: Tag WhiteTitle
+  BlackTitleTag   :: Tag BlackTitle
+  WhiteUSCFTag    :: Tag WhiteUSCF
+  BlackUSCFTag    :: Tag BlackUSCF
+  WhiteNATag      :: Tag WhiteNA
+  BlackNATag      :: Tag BlackNA
+  WhiteTypeTag    :: Tag WhiteType
+  BlackTypeTag    :: Tag BlackType
+  EventDateTag    :: Tag EventDate
+  EventSponsorTag :: Tag EventSponsor
+  SectionTag      :: Tag Section
+  StageTag        :: Tag Stage
+  BoardTag        :: Tag Board
+  OpeningTag      :: Tag Opening
+  VariationTag    :: Tag Variation
+  SubVariationTag :: Tag SubVariation
+  ECOTag          :: Tag ECO
+  NICTag          :: Tag NIC
+  TimeTag         :: Tag Time
+  UTCTimeTag      :: Tag UTCTime
+  UTCDateTag      :: Tag UTCDate
+  TimeControlTag  :: Tag TimeControl
+  SetUpTag        :: Tag SetUp
+  FENTag          :: Tag FEN
+  TerminationTag  :: Tag Termination
+  PlyCountTag     :: Tag PlyCount
+  AnnotatorTag    :: Tag Annotator
+  ModeTag         :: Tag Mode
+  UnknownTag      :: Tag Unknown
 
 data Entry a where
   Entry :: Tag a -> a -> Entry a
 
-data Dyn where
-  Dyn :: Entry a -> Dyn
+data HEntry where
+  HEntry :: Entry a -> HEntry
 
-data Game = Game { tags :: [Dyn] }
+data Game = Game { entries :: [HEntry], 
+                   board   :: Chess.Board }
 
 match :: Tag a -> Entry b -> Maybe a
-match TEvent (Entry TEvent v) = Just v
-match TSite  (Entry TSite v)  = Just v
-match _ _                 = Nothing
+match EventTag (Entry EventTag v)               = Just v
+match SiteTag  (Entry SiteTag v)                = Just v
+match DateTag  (Entry DateTag v)                = Just v
+match RoundTag (Entry RoundTag v)               = Just v
+match WhiteTag (Entry WhiteTag v)               = Just v
+match BlackTag (Entry BlackTag v)               = Just v
+match ResultTag (Entry ResultTag v)             = Just v
+match WhiteEloTag (Entry WhiteEloTag v)         = Just v
+match BlackEloTag (Entry BlackEloTag v)         = Just v
+match WhiteTitleTag (Entry WhiteTitleTag v)     = Just v
+match BlackTitleTag (Entry BlackTitleTag v)     = Just v
+match WhiteUSCFTag (Entry WhiteUSCFTag v)       = Just v
+match BlackUSCFTag (Entry BlackUSCFTag v)       = Just v
+match WhiteNATag (Entry WhiteNATag v)           = Just v
+match BlackNATag (Entry BlackNATag v)           = Just v
+match WhiteTypeTag (Entry WhiteTypeTag v)       = Just v
+match BlackTypeTag (Entry BlackTypeTag v)       = Just v
+match EventSponsorTag (Entry EventSponsorTag v) = Just v
+match SectionTag (Entry SectionTag v)           = Just v
+match StageTag (Entry StageTag v)               = Just v
+match BoardTag (Entry BoardTag v)               = Just v
+match OpeningTag (Entry OpeningTag v)           = Just v
+match VariationTag (Entry VariationTag v)       = Just v
+match SubVariationTag (Entry SubVariationTag v) = Just v
+match ECOTag (Entry ECOTag v)                   = Just v
+match NICTag (Entry NICTag v)                   = Just v
+match TimeTag (Entry TimeTag v)                 = Just v
+match UTCTimeTag (Entry UTCTimeTag v)           = Just v
+match UTCDateTag (Entry UTCDateTag v)           = Just v
+match TimeControlTag (Entry TimeControlTag v)   = Just v
+match SetUpTag (Entry SetUpTag v)               = Just v
+match FENTag (Entry FENTag v)                   = Just v
+match TerminationTag (Entry TerminationTag v)   = Just v
+match PlyCountTag (Entry PlyCountTag v)         = Just v
+match AnnotatorTag (Entry AnnotatorTag v)       = Just v
+match ModeTag (Entry ModeTag v)                 = Just v
+match UnknownTag (Entry UnknownTag v)           = Just v
+match _ _                                       = Nothing
 
-determine :: Tag a -> [Dyn] -> Maybe a
-determine _ []               = Nothing
-determine tag ((Dyn entry):es) = maybe (determine tag es) Just (match tag entry)
+determine :: Tag a -> [HEntry] -> Maybe a
+determine _ []                    = Nothing
+determine tag ((HEntry entry):es) = maybe (determine tag es) Just (match tag entry)
 
 locate :: Tag a -> Game -> Maybe a
-locate tag (Game entries) = determine tag entries
+locate tag (Game entries board) = determine tag entries
 
 add :: Entry a -> Game -> Game
-add entry (Game entries) = Game ((Dyn entry) : entries)
+add entry (Game entries board) = Game { entries = (HEntry entry) : entries, board = board }
  
 newgame :: Entry Event -> Entry Site -> Game
-newgame e s = Game { tags = [Dyn e, Dyn s] } 
+newgame e s = Game { entries = [HEntry e, HEntry s], board = Chess.emptyBoard } 
 
-event = Entry TEvent . Event
-getEvent = locate TEvent
-site = Entry TSite . Site 
-
--- there's one last alternative: I define every type of tag as an opaque type like: data Event
--- Use them just as references in the GADT's `Tag Event` and so on
--- Use two constructors: Tag a and Entry a => which represent the type of a tag and the concrete entry
--- I then have something like: 
+event = Entry EventTag . Event
+getEvent = locate EventTag
+site = Entry SiteTag . Site
