@@ -113,7 +113,7 @@ tagline title content = do
         _ <- delimitation
         return (t, a)
 
-entryParser :: [Parser G.HEntry]s
+entryParser :: [Parser G.HEntry]
 entryParser = [try $ extract "Event" characters G.event, 
                try $ extract "Site" characters G.site, 
                try $ extract "Date" characters G.date,
