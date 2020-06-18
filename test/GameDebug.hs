@@ -25,7 +25,7 @@ wholeGame = case (C.parseGame testGame) of
     (Right game) -> game
     (Left e)     -> C.quickGame
 
-testBoard = G.board wholeGame
+testBoard = G.gameBoard wholeGame
 
 testPGN = foldr (<>) "" $ intersperse " " $ W.writeMoves testBoard
 

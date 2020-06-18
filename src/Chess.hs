@@ -1,7 +1,7 @@
 module Chess (
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
-    getInput, setInput, failWith, tags, movesFor, currentPlayerMoves, tag,
+    getInput, setInput, failWith, movesFor, currentPlayerMoves,
     ParserTie, Result (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
@@ -75,8 +75,8 @@ bootstrap parser = getInput >>= (reattach . runInternalParser parser)
           reattach (state, Left err) = setInput (M.stateInput state) >> failWith err 
 
 appliedMoveParser :: (ParserTie p, Monad p) => G.Game -> p (G.Game, C.Move)
-appliedMoveParser game = fmap add $ bootstrap $ P.appliedMoveParser $ G.board game
-    where add (board, move) = (game { G.board = board }, move)
+appliedMoveParser game = fmap add $ bootstrap $ P.appliedMoveParser $ G.gameBoard game
+    where add (board, move) = (game { G.gameBoard = board }, move)
 
 moveParser :: (ParserTie p, Monad p) => G.Game -> p C.Move
 moveParser = fmap snd . appliedMoveParser
@@ -98,37 +98,37 @@ parseManyGames :: String -> Either Error [G.Game]
 parseManyGames = sequence . fmap parseGame . P.fromString'
 
 writeGame :: G.Game -> String
-writeGame = unlines . W.writeMoves . G.board
+writeGame = unlines . W.writeMoves . G.gameBoard
 
 writeMove :: C.Move -> G.Game -> Maybe String
-writeMove move = W.writeMove move . G.board
+writeMove move = W.writeMove move . G.gameBoard
 
 applyMove :: C.Move -> G.Game -> Result
-applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (G.board game) move 
-    where add board = game { G.board = board }
+applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (G.gameBoard game) move 
+    where add board = game { G.gameBoard = board }
 
 parseMove :: String -> G.Game -> Either Error C.Move
-parseMove move game = runParser (P.moveParser (G.board game)) id move
+parseMove move game = runParser (P.moveParser (G.gameBoard game)) id move
 
 parseApplyMove :: String -> G.Game -> Either Error Result
-parseApplyMove move game = runParser (P.appliedMoveParser (G.board game)) (evaluate . add) move
-    where add (board, _) = game { G.board = board }
+parseApplyMove move game = runParser (P.appliedMoveParser (G.gameBoard game)) (evaluate . add) move
+    where add (board, _) = game { G.gameBoard = board }
 
 legalMoves :: G.Game -> [C.Move]
-legalMoves =  C.allMoves . G.board
+legalMoves =  C.allMoves . G.gameBoard
 
 currentPlayer :: G.Game -> C.Colour
-currentPlayer = C.player . G.board
+currentPlayer = C.player . G.gameBoard
 
 movesFor :: C.Colour -> G.Game -> [C.Move]
-movesFor colour game = C.movesFor (G.board game) colour
+movesFor colour game = C.movesFor (G.gameBoard game) colour
 
 
 currentPlayerMoves :: G.Game -> [C.Move]
 currentPlayerMoves game = movesFor (currentPlayer game) game
 
 termination :: G.Game -> Maybe G.Reason
-termination game = let board   = G.board game
+termination game = let board   = G.gameBoard game
                        immoble = C.immoble board
                        checked = C.check board
                    in if (checked && immoble) then Just G.Checkmate
@@ -138,48 +138,27 @@ termination game = let board   = G.board game
 evaluate :: G.Game -> Result
 evaluate game = maybe (Continue game) (Terminate game) $ termination game
 
-tags :: G.Game -> [G.Tag]
-tags = G.tags
-
-tag :: [G.Tag] -> G.Game -> G.Game
-tag tags game = game { G.tags = G.tags game <> tags } -- this should remove duplicates
-
-newtype Event = Event { unwrapEvent :: String }
-newtype Site = Site { unwrapSite :: String }
-newtype Date = Date { unwrapDate :: String }
-newtype Round = Round { unwrapRound :: String }
-newtype WhiteName = WhiteName { unwrapWhite :: String }
-newtype BlackName = BlackName { unwrapBlack :: String }
-
-event = Event
-site = Site
-date = Date
-round = Round
-whiteName = WhiteName
-blackName = BlackName
-
-
 -- FixMe `newtype` the tags
-newGame :: Event 
-        -> Site 
-        -> Date 
-        -> Round 
-        -> WhiteName 
-        -> BlackName 
+newGame :: G.Entry G.Event 
+        -> G.Entry G.Site 
+        -> G.Entry G.Date 
+        -> G.Entry G.Round 
+        -> G.Entry G.White 
+        -> G.Entry G.Black 
         -> G.Game
-newGame (Event event) (Site site) (Date date) (Round round) (WhiteName white) (BlackName black) = 
-    G.Game { G.tags  = [ G.Event event,
-                         G.Site site,
-                         G.Date date,
-                         G.Round round,
-                         G.White white,
-                         G.Black black ], 
-             G.board = C.emptyBoard }
+newGame event site date round white black =
+    G.Game { G.entries = [G.HEntry event, 
+                          G.HEntry site,
+                          G.HEntry date,
+                          G.HEntry round,
+                          G.HEntry white,
+                          G.HEntry black],
+             G.gameBoard = C.emptyBoard }
 
 quickGame :: G.Game
-quickGame = newGame (event "CCHESS Quick Game")
-                    (site  "CCHESS Platform")
-                    (date  "Today")
-                    (Chess.round "-")
-                    (whiteName "CCHESS Player 1")
-                    (blackName "CCHESS Player 2")
+quickGame = newGame (G.event "CCHESS Quick Game")
+                    (G.site  "CCHESS Platform")
+                    (G.date  "Today")
+                    (G.round "-")
+                    (G.white "CCHESS Player 1")
+                    (G.black "CCHESS Player 2")

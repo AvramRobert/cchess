@@ -9,8 +9,8 @@ import System.IO.Unsafe (unsafePerformIO)
 pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"
 
 parseBoard game = case (C.parseGame game) of 
-    (Right game) -> G.board game 
-    (Left e)     -> G.board C.quickGame
+    (Right game) -> G.gameBoard game 
+    (Left e)     -> G.gameBoard C.quickGame
 
 boards = [ parseBoard (pgnGames !! 0),
            parseBoard (pgnGames !! 1),

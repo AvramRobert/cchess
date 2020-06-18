@@ -21,7 +21,6 @@ import Lib.Coll
 import Lib.Megaparsec
 import Chess.Display
 import PGN.Common
-import qualified Chess.Family as F
 
 data ChessError = CaptureError Chess.Coord Chess.Figure |
                   AdvanceError Chess.Coord Chess.Figure |
@@ -114,53 +113,53 @@ tagline title content = do
         _ <- delimitation
         return (t, a)
 
-tagParsers :: [Parser G.Tag]
-tagParsers = [try $ extract characters "event" G.Event, 
-              try $ extract characters "site" G.Site, 
-              try $ extract characters "date" G.Date,
-              try $ extract characters "round" G.Round,
-              try $ extract characters "white" G.White,
-              try $ extract characters "black" G.Black,
-              try $ extract result     "result" G.Result,
-              try $ extract rating     "whiteelo" G.WhiteElo,
-              try $ extract rating     "blackelo" G.BlackElo,
-              try $ extract title      "whitetitle" G.WhiteTitle,
-              try $ extract title      "blacktitle" G.BlackTitle,
-              try $ extract characters "whiteuscf" G.WhiteUSCF,
-              try $ extract characters "blackuscf" G.BlackUSCF,
-              try $ extract address    "whitena" G.WhiteNA,
-              try $ extract address    "blackna" G.BlackNA,
-              try $ extract playerType "whitetype" G.WhiteType,
-              try $ extract playerType "blacktype" G.BlackType,
-              try $ extract characters "eventdate" G.EventDate,
-              try $ extract characters "eventsponsor" G.EventSponsor,
-              try $ extract characters "section" G.Section,
-              try $ extract characters "stage" G.Stage,
-              try $ extract characters "board" G.Board,
-              try $ extract characters "opening" G.Opening,
-              try $ extract characters "variation" G.Variation,
-              try $ extract characters "subvariation" G.SubVariation,
-              try $ extract characters "eco" G.ECO,
-              try $ extract characters "nic" G.NIC,
-              try $ extract characters "time" G.Time,
-              try $ extract characters "utctime" G.UTCTime,
-              try $ extract characters "utcdate" G.UTCDate,
-              try $ extract characters "timecontrol" G.TimeControl,
-              try $ extract characters "setup" G.SetUp,
-              try $ extract characters "fen" G.FEN,
-              try $ extract reason     "termination" G.Termination,
-              try $ extract characters "plycount" G.PlyCount,
-              try $ extract characters "annotator" G.Annotator,
-              try $ extract variant    "mode" G.Mode,
-              unknown]
-    where extract what title to = tagline (string' title) what <&> (to . snd)
-          unknown               = tagline characters characters <&> (\(t, c) -> G.Unknown t c)
+entryParser :: [Parser G.HEntry]s
+entryParser = [try $ extract "Event" characters G.event, 
+               try $ extract "Site" characters G.site, 
+               try $ extract "Date" characters G.date,
+               try $ extract "Round" characters G.round,
+               try $ extract "White" characters G.white,
+               try $ extract "Black" characters G.black,
+               try $ extract "Result" result G.result,
+               try $ extract "WhiteElo" rating G.whiteElo,
+               try $ extract "Blackelo" rating G.blackElo,
+               try $ extract "WhiteTitle" title G.whiteTitle,
+               try $ extract "BlackTitle" title G.blackTitle,
+               try $ extract "WhiteUSCF" characters G.whiteUSCF,
+               try $ extract "BlackUSCF" characters G.blackUSCF,
+               try $ extract "WhiteNA" address G.whiteNA,
+               try $ extract "BlackNA" address G.blackNA,
+               try $ extract "WhiteType" playerType G.whiteType,
+               try $ extract "BlackType" playerType G.blackType,
+               try $ extract "EventDate" characters G.eventDate,
+               try $ extract "EventSponsor" characters G.eventSponsor,
+               try $ extract "Section" characters G.section,
+               try $ extract "Stage" characters G.stage,
+               try $ extract "Board" characters G.board,
+               try $ extract "Opening" characters G.opening,
+               try $ extract "Variation" characters G.variation,
+               try $ extract "SubVariation" characters G.subVariation,
+               try $ extract "ECO" characters G.eco,
+               try $ extract "NIC" characters G.nic,
+               try $ extract "Time" characters G.time,
+               try $ extract "UTCTime" characters G.utcTime,
+               try $ extract "UTCDate" characters G.utcDate,
+               try $ extract "TimeControl" characters G.timeControl,
+               try $ extract "Setup" characters G.setup,
+               try $ extract "FEN" characters G.fen,
+               try $ extract "Termination" reason G.termination,
+               try $ extract "PlyCount" characters G.plyCount,
+               try $ extract "Annotator" characters G.annotator,
+               try $ extract "Mode" variant G.mode,
+               unknown]
+    where extract title what as = tagline (string' title) what <&> (G.HEntry . as . snd)
+          unknown               = tagline characters characters <&> (G.HEntry . G.unknown)
 
 -- Some PGN files exports don't abide to the format rules..
 -- I have to parse without ordering and the order them properly later on
-tagsParser :: Parser [G.Tag]
-tagsParser = (M.optional (M.choice tagParsers) >>= process)
-    where process (Just h)  = fmap (\hs -> h:hs) tagsParser
+entriesParser :: Parser [G.HEntry]
+entriesParser = (M.optional (M.choice entryParser) >>= process)
+    where process (Just h)  = fmap (\hs -> h:hs) entriesParser
           process (Nothing) = return []
           
 headline :: String -> Parser a -> Parser a
@@ -440,11 +439,11 @@ boardParser = parseOn Chess.emptyBoard
 gameParser :: Parser G.Game
 gameParser = do
     _             <- delimitation
-    tags          <- tagsParser
+    entries       <- entriesParser
     _             <- delimitation
     (board, turn) <- boardParser
     result        <- result
-    return G.Game { G.tags = tags, G.board = board }
+    return G.Game { G.entries = entries, G.gameBoard = board }
 
 splitGames :: ByteString -> [String]
 splitGames = accumulate . C.lines
@@ -471,4 +470,4 @@ parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
 parseBoard :: String -> Either ParseError Chess.Board
-parseBoard = fmap G.board . parseGame
+parseBoard = fmap G.gameBoard . parseGame

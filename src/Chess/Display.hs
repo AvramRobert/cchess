@@ -1,5 +1,7 @@
+{-# LANGUAGE GADTs, RankNTypes #-}
+
 module Chess.Display (DisplayMode (GameMode, DebugMode, ErrorMode),
-      showGameBoard, showFigure, showTag, showFile, showRank, showMove, 
+      showGameBoard, showFigure, showHEntry, showEntry, showFile, showRank, showMove, 
       showPGNMove, showBoard, showGame, showCastles, showColour, showCoord,
       showPosition, showSquare, showOutcome) where
 
@@ -225,81 +227,87 @@ gameOutcome (G.Other) = "*"
 
 showOutcome :: DisplayMode -> G.Outcome -> String
 showOutcome _ = gameOutcome
-            
-taggedAs :: (G.Tag -> Maybe (String, String)) -> G.Tag -> String
-taggedAs f tag = bracket $ maybe (standard tag) id $ f tag
-      where standard (G.Event s)        = ("Event", s)
-            standard (G.Site  s)        = ("Site", s)
-            standard (G.Date  s)        = ("Date", s)
-            standard (G.Round s)        = ("Round", s)
-            standard (G.White s)        = ("White", s)
-            standard (G.Black s)        = ("Black", s)
-            standard (G.Result s)       = ("Result", gameOutcome s)
-            standard (G.WhiteElo r)     = ("WhiteElo", elo r)
-            standard (G.BlackElo r)     = ("BlackElo", elo r)
-            standard (G.WhiteTitle t)   = ("Title", show t)
-            standard (G.BlackTitle t)   = ("Title", show t)
-            standard (G.WhiteUSCF s)    = ("WhiteUSCF", s)
-            standard (G.BlackUSCF s)    = ("BlackUSCF", s)
-            standard (G.WhiteNA s)      = ("WhiteNA", address s)
-            standard (G.BlackNA s)      = ("BlackNA", address s)
-            standard (G.WhiteType s)    = ("WhiteType", show s)
-            standard (G.BlackType s)    = ("BlackType", show s)
-            standard (G.EventDate s)    = ("EventDate", s)
-            standard (G.EventSponsor s) = ("EventSponsor", s)
-            standard (G.Section s)      = ("Section", s)
-            standard (G.Stage s)        = ("Stage", s)
-            standard (G.Board s)        = ("Board", s)
-            standard (G.Opening s)      = ("Opening", s)
-            standard (G.Variation s)    = ("Variation", s)
-            standard (G.SubVariation s) = ("SubVariation", s)
-            standard (G.ECO s)          = ("ECO", s)
-            standard (G.NIC s)          = ("NIC", s)
-            standard (G.Time s)         = ("Time", s)
-            standard (G.UTCTime s)      = ("UTCTime", s)
-            standard (G.UTCDate s)      = ("UTCDate", s)
-            standard (G.TimeControl s)  = ("TimeControl", s)
-            standard (G.SetUp s)        = ("SetUp", s)
-            standard (G.FEN s)          = ("FEN", s)
-            standard (G.Termination s)  = ("Termination", show s)
-            standard (G.PlyCount s)     = ("PlyCount", s)
-            standard (G.Annotator s)    = ("Annotator", s)
-            standard (G.Mode s)         = ("Mode", show s)
-            standard (G.Unknown t c)    = (t, c)
-            bracket (title, value)      = "[" <> title <> " \"" <> value <> "\"]"
-            outcome (G.Other)           = "*"
-            elo (G.Rated r)             = r
-            elo (G.Unrated)             = "-"
-            address (G.Address a)       = a
-            address (G.NoAddress)       = "-"
 
-gameTag :: G.Tag -> String
-gameTag tag = taggedAs normal tag
-      where normal (G.Termination G.Checkmate)   = Just ("Termination", "Normal")
-            normal (G.Termination G.Stalemate)   = Just ("Termination", "Normal")
-            normal (G.Termination G.Resignation) = Just ("Termination", "Normal")
-            normal (G.Termination r)             = Just ("Termination", show r)
-            normal  _                            = Nothing
+elo :: G.Rating -> String
+elo (G.Rated r) = r
+elo (G.Unrated) = "-"
+
+address :: G.Address -> String
+address (G.Address a) = a
+address (G.NoAddress) = "-"
+
+standard :: forall a . G.Tag a -> a -> (String, String)
+standard G.EventTag  (G.Event s)              = ("Event", s)
+standard G.SiteTag   (G.Site s)               = ("Site", s)
+standard G.DateTag   (G.Date s)               = ("Date", s)
+standard G.RoundTag  (G.Round s)              = ("Round", s)
+standard G.WhiteTag  (G.White s)              = ("White", s)
+standard G.BlackTag  (G.Black s)              = ("Black", s)
+standard G.ResultTag (G.Result s)             = ("Result", gameOutcome s)
+standard G.WhiteEloTag (G.WhiteElo r)         = ("WhiteElo", elo r)
+standard G.BlackEloTag (G.BlackElo r)         = ("BlackElo", elo r)
+standard G.WhiteTitleTag (G.WhiteTitle t)     = ("Title", show t)
+standard G.BlackTitleTag (G.BlackTitle t)     = ("Title", show t)
+standard G.WhiteUSCFTag (G.WhiteUSCF s)       = ("WhiteUSCF", s)
+standard G.BlackUSCFTag (G.BlackUSCF s)       = ("BlackUSCF", s)
+standard G.WhiteNATag (G.WhiteNA s)           = ("WhiteNA", address s)
+standard G.BlackNATag (G.BlackNA s)           = ("BlackNA", address s)
+standard G.WhiteTypeTag (G.WhiteType s)       = ("WhiteType", show s)
+standard G.BlackTypeTag (G.BlackType s)       = ("BlackType", show s)
+standard G.EventDateTag (G.EventDate s)       = ("EventDate", s)
+standard G.EventSponsorTag (G.EventSponsor s) = ("EventSponsor", s)
+standard G.SectionTag (G.Section s)           = ("Section", s)
+standard G.StageTag (G.Stage s)               = ("Stage", s)
+standard G.BoardTag (G.Board s)               = ("Board", s)
+standard G.OpeningTag (G.Opening s)           = ("Opening", s)
+standard G.VariationTag (G.Variation s)       = ("Variation", s)
+standard G.SubVariationTag (G.SubVariation s) = ("SubVariation", s)
+standard G.ECOTag (G.ECO s)                   = ("ECO", s)
+standard G.NICTag (G.NIC s)                   = ("NIC", s)
+standard G.TimeTag (G.Time s)                 = ("Time", s)
+standard G.UTCTimeTag (G.UTCTime s)           = ("UTCTime", s)
+standard G.UTCDateTag (G.UTCDate s)           = ("UTCDate", s)
+standard G.TimeControlTag (G.TimeControl s)   = ("TimeControl", s)
+standard G.SetUpTag (G.SetUp s)               = ("SetUp", s)
+standard G.FENTag (G.FEN s)                   = ("FEN", s)
+standard G.TerminationTag (G.Termination s)   = ("Termination", show s)
+standard G.PlyCountTag (G.PlyCount s)         = ("PlyCount", s)
+standard G.AnnotatorTag (G.Annotator s)       = ("Annotator", s)
+standard G.ModeTag (G.Mode s)                 = ("Mode", show s)
+standard G.UnknownTag (G.Unknown s)           = s
+                        
+taggedAs :: forall a . (G.Entry a -> Maybe (String, String)) -> G.Entry a -> String
+taggedAs f entry @ (G.Entry tag entity) = case (f entry) of (Just item) -> bracket item
+                                                            (Nothing)   -> bracket (standard tag entity)
+      where bracket (title, value)                        = "[" <> title <> " \"" <> value <> "\"]"
+
+gameEntry :: forall a . G.Entry a -> String
+gameEntry = taggedAs (fmap normal . G.match G.TerminationTag)
+      where normal (G.Termination G.Checkmate)   = ("Termination", "Normal") 
+            normal (G.Termination G.Stalemate)   = ("Termination", "Normal") 
+            normal (G.Termination G.Resignation) = ("Termination", "Normal") 
+            normal (G.Termination r)             = ("Termination", show r)
  
-debugTag :: G.Tag -> String
-debugTag tag = taggedAs (const Nothing) tag
+debugEntry :: forall a . G.Entry a -> String
+debugEntry = taggedAs (const Nothing)
 
-showTag :: DisplayMode -> G.Tag -> String
-showTag GameMode  = gameTag
-showTag DebugMode = debugTag
-showTag ErrorMode = gameTag
+showEntry :: forall a . DisplayMode -> G.Entry a -> String
+showEntry GameMode  = gameEntry
+showEntry DebugMode = debugEntry
+showEntry ErrorMode = gameEntry
+
+showHEntry :: DisplayMode -> G.HEntry -> String
+showHEntry mode (G.HEntry entry) = showEntry mode entry
 
 showGameBoard :: DisplayMode -> G.Game -> String
-showGameBoard mode = showBoard mode . G.board
+showGameBoard mode = showBoard mode . G.gameBoard
 
 showGame :: DisplayMode -> G.Game -> String
 showGame _ game = unlines (tags <> padding <> moves <> outcome <> padding)
-      where tags     = fmap (showTag GameMode) $ sort $ G.entries game
-            moves    = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.board game
+      where tags     = fmap (showHEntry GameMode) $ sort $ G.entries game
+            moves    = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
             padding  = ["", ""]
-            outcome  = maybe (error "This should never happen") (return . gameOutcome . extract) $ find result (G.tags game)
-            result (G.Result _)  = True
-            result _             = False
+            outcome  = maybe (error "This should never happen") (return . gameOutcome . extract) $ G.locate G.ResultTag game
             extract (G.Result o) = o
 
 template :: DisplayMode -> Board -> Colour -> String

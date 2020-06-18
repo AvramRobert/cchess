@@ -4,27 +4,6 @@ module Chess.Game where
 
 import qualified Chess.Internal as Chess
 
-instance Eq HEntry where
-  (==) (HEntry this) (HEntry that) = equate this that
-
-instance Ord HEntry where
-  compare (HEntry a) (HEntry b) = (rank a) `compare` (rank b)
-    where rank (Entry EventTag _)  = 1
-          rank (Entry SiteTag _)   = 2
-          rank (Entry DateTag _)   = 3
-          rank (Entry RoundTag _)  = 4
-          rank (Entry WhiteTag _)  = 5
-          rank (Entry BlackTag _)  = 6
-          rank (Entry ResultTag _) = 7
-          rank _                   = 8
-
-equality :: Tag a -> a -> a -> Bool
-equality EventTag = (==)
-
-equate :: Entry a -> Entry b -> Bool
-equate (Entry tag value) that = maybe False (equals value) (match tag that)
-  where equals = equality tag
-
 -- The `Show` for these things should be in Chess.Display
 data Outcome = Win Chess.Colour 
              | Draw 
@@ -54,48 +33,48 @@ data Address = Address String | NoAddress deriving (Show, Eq)
 data PlayerType = Human | Computer deriving (Show, Eq)
 
 newtype Event = Event String deriving (Show, Eq)
-newtype Site = Site String deriving (Show)
-newtype Date = Date String deriving (Show)
-newtype Round = Round String deriving (Show)
-newtype White = White String deriving (Show)
-newtype Black = Black String deriving (Show)
-newtype Result = Result Outcome
+newtype Site = Site String deriving (Show, Eq)
+newtype Date = Date String deriving (Show, Eq)
+newtype Round = Round String deriving (Show, Eq)
+newtype White = White String deriving (Show, Eq)
+newtype Black = Black String deriving (Show, Eq)
+newtype Result = Result Outcome deriving (Eq)
 
-newtype WhiteElo = WhiteElo Rating deriving (Show)
-newtype BlackElo = BlackElo Rating deriving (Show)
-newtype WhiteTitle = WhiteTitle Title deriving (Show)
-newtype BlackTitle = BlackTitle Title deriving (Show)
-newtype WhiteUSCF = WhiteUSCF String deriving (Show)
-newtype BlackUSCF = BlackUSCF String deriving (Show)
-newtype WhiteNA = WhiteNA Address deriving (Show)
-newtype BlackNA = BlackNA Address deriving (Show)
-newtype WhiteType = WhiteType PlayerType deriving (Show)
-newtype BlackType = BlackType PlayerType deriving (Show)
-newtype EventDate = EventDate String deriving (Show)
-newtype EventSponsor = EventSponsor String deriving (Show)
-newtype Section = Section String deriving (Show)
-newtype Stage = Stage String deriving (Show)
-newtype Board = Board String deriving (Show)
+newtype WhiteElo = WhiteElo Rating deriving (Show, Eq)
+newtype BlackElo = BlackElo Rating deriving (Show, Eq)
+newtype WhiteTitle = WhiteTitle Title deriving (Show, Eq)
+newtype BlackTitle = BlackTitle Title deriving (Show, Eq)
+newtype WhiteUSCF = WhiteUSCF String deriving (Show, Eq)
+newtype BlackUSCF = BlackUSCF String deriving (Show, Eq)
+newtype WhiteNA = WhiteNA Address deriving (Show, Eq)
+newtype BlackNA = BlackNA Address deriving (Show, Eq)
+newtype WhiteType = WhiteType PlayerType deriving (Show, Eq)
+newtype BlackType = BlackType PlayerType deriving (Show, Eq)
+newtype EventDate = EventDate String deriving (Show, Eq)
+newtype EventSponsor = EventSponsor String deriving (Show, Eq)
+newtype Section = Section String deriving (Show, Eq)
+newtype Stage = Stage String deriving (Show, Eq)
+newtype Board = Board String deriving (Show, Eq)
 
-newtype Opening = Opening String deriving (Show)
-newtype Variation = Variantion String deriving (Show)
-newtype SubVariation = SubVariation String deriving (Show)
+newtype Opening = Opening String deriving (Show, Eq)
+newtype Variation = Variation String deriving (Show, Eq)
+newtype SubVariation = SubVariation String deriving (Show, Eq)
 
-newtype ECO = ECO String deriving (Show)
-newtype NIC = NIC String deriving (Show)
-newtype Time = Time String deriving (Show)
-newtype UTCTime = UTCTime String deriving (Show)
-newtype UTCDate = UTCDate String deriving (Show)
-newtype TimeControl = TimeControl String deriving (Show)
+newtype ECO = ECO String deriving (Show, Eq)
+newtype NIC = NIC String deriving (Show, Eq)
+newtype Time = Time String deriving (Show, Eq)
+newtype UTCTime = UTCTime String deriving (Show, Eq)
+newtype UTCDate = UTCDate String deriving (Show, Eq)
+newtype TimeControl = TimeControl String deriving (Show, Eq)
 
-newtype SetUp = SetUp String deriving (Show)
-newtype FEN = FEN String deriving (Show)
+newtype SetUp = SetUp String deriving (Show, Eq)
+newtype FEN = FEN String deriving (Show, Eq)
 
-newtype Termination = Termination Reason deriving (Show)
-newtype PlyCount = PlyCount String deriving (Show)
-newtype Annotator = Annotator String deriving (Show)
-newtype Mode = Mode Variant deriving (Show)
-newtype Unknown = Unknown (String, String) deriving (Show)
+newtype Termination = Termination Reason deriving (Show, Eq)
+newtype PlyCount = PlyCount String deriving (Show, Eq)
+newtype Annotator = Annotator String deriving (Show, Eq)
+newtype Mode = Mode Variant deriving (Show, Eq)
+newtype Unknown = Unknown (String, String) deriving (Show, Eq)
 
 data Tag a where
   EventTag        :: Tag Event
@@ -143,8 +122,64 @@ data Entry a where
 data HEntry where
   HEntry :: Entry a -> HEntry
 
-data Game = Game { entries :: [HEntry], 
-                   board   :: Chess.Board }
+data Game = Game { entries   :: [HEntry], 
+                   gameBoard :: Chess.Board }
+
+instance Eq HEntry where
+  (==) (HEntry this) (HEntry that) = equate this that
+
+instance Ord HEntry where
+  compare (HEntry a) (HEntry b) = (rank a) `compare` (rank b)
+    where rank (Entry EventTag _)  = 1
+          rank (Entry SiteTag _)   = 2
+          rank (Entry DateTag _)   = 3
+          rank (Entry RoundTag _)  = 4
+          rank (Entry WhiteTag _)  = 5
+          rank (Entry BlackTag _)  = 6
+          rank (Entry ResultTag _) = 7
+          rank _                   = 8
+
+equality :: Tag a -> a -> a -> Bool
+equality EventTag        = (==)
+equality SiteTag         = (==)
+equality DateTag         = (==)
+equality RoundTag        = (==)
+equality WhiteTag        = (==)
+equality BlackTag        = (==)
+equality ResultTag       = (==)
+equality WhiteEloTag     = (==)
+equality WhiteTitleTag   = (==)
+equality BlackTitleTag   = (==)
+equality WhiteUSCFTag    = (==)
+equality BlackUSCFTag    = (==)
+equality WhiteNATag      = (==)
+equality BlackNATag      = (==)
+equality WhiteTypeTag    = (==)
+equality BlackTypeTag    = (==)
+equality EventSponsorTag = (==)
+equality SectionTag      = (==)
+equality StageTag        = (==)
+equality BoardTag        = (==)
+equality OpeningTag      = (==)
+equality VariationTag    = (==)
+equality SubVariationTag = (==)
+equality ECOTag          = (==)
+equality NICTag          = (==)
+equality TimeTag         = (==)
+equality UTCTimeTag      = (==)
+equality UTCDateTag      = (==)
+equality TimeControlTag  = (==)
+equality SetUpTag        = (==)
+equality FENTag          = (==)
+equality TerminationTag  = (==)
+equality PlyCountTag     = (==)
+equality AnnotatorTag    = (==)
+equality ModeTag         = (==)
+equality UnknownTag      = (==)
+
+equate :: Entry a -> Entry b -> Bool
+equate (Entry tag value) that = maybe False (equals value) (match tag that)
+  where equals = equality tag
 
 match :: Tag a -> Entry b -> Maybe a
 match EventTag (Entry EventTag v)               = Just v
@@ -194,11 +229,57 @@ locate :: Tag a -> Game -> Maybe a
 locate tag (Game entries board) = determine tag entries
 
 add :: Entry a -> Game -> Game
-add entry (Game entries board) = Game { entries = (HEntry entry) : entries, board = board }
+add entry (Game entries board) = Game { entries = (HEntry entry) : entries, gameBoard = board }
  
 newgame :: Entry Event -> Entry Site -> Game
-newgame e s = Game { entries = [HEntry e, HEntry s], board = Chess.emptyBoard } 
+newgame e s = Game { entries = [HEntry e, HEntry s], gameBoard = Chess.emptyBoard } 
 
 event = Entry EventTag . Event
-getEvent = locate EventTag
 site = Entry SiteTag . Site
+date = Entry DateTag . Date
+round = Entry RoundTag . Round
+white = Entry WhiteTag . White
+black = Entry BlackTag . Black
+result = Entry ResultTag . Result
+whiteElo = Entry WhiteEloTag . WhiteElo
+blackElo = Entry BlackEloTag . BlackElo
+whiteTitle = Entry WhiteTitleTag . WhiteTitle
+blackTitle = Entry BlackTitleTag . BlackTitle
+whiteUSCF = Entry WhiteUSCFTag . WhiteUSCF
+blackUSCF = Entry BlackUSCFTag . BlackUSCF
+whiteNA  = Entry WhiteNATag . WhiteNA
+blackNA = Entry BlackNATag . BlackNA
+whiteType = Entry WhiteTypeTag . WhiteType
+blackType = Entry BlackTypeTag . BlackType
+eventDate = Entry EventDateTag . EventDate
+eventSponsor = Entry EventSponsorTag . EventSponsor
+section = Entry SectionTag . Section
+stage = Entry StageTag . Stage
+board = Entry BoardTag . Board
+opening = Entry OpeningTag . Opening
+variation = Entry VariationTag . Variation
+subVariation = Entry SubVariationTag . SubVariation
+eco = Entry ECOTag . ECO
+nic = Entry NICTag . NIC
+time = Entry TimeTag . Time
+utcTime = Entry UTCTimeTag . UTCTime
+utcDate = Entry UTCDateTag . UTCDate
+timeControl = Entry TimeControlTag . TimeControl
+setup = Entry SetUpTag . SetUp
+fen = Entry FENTag . FEN
+termination = Entry TerminationTag . Termination
+plyCount = Entry PlyCountTag . PlyCount
+annotator = Entry AnnotatorTag . Annotator
+mode = Entry ModeTag . Mode
+unknown = Entry UnknownTag . Unknown
+
+rated = Rated
+unrated = Unrated
+
+address = Address
+noAddress = NoAddress
+
+overTheBoard = OTB
+internetServer = ICS
+
+getEvent = locate EventTag
