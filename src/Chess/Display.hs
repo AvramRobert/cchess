@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 
 module Chess.Display (DisplayMode (GameMode, DebugMode, ErrorMode),
       showGameBoard, showFigure, showHEntry, showEntry, showFile, showRank, showMove, 
@@ -236,7 +236,7 @@ address :: G.Address -> String
 address (G.Address a) = a
 address (G.NoAddress) = "-"
 
-standard :: forall a . G.Tag a -> a -> (String, String)
+standard :: G.Tag a -> a -> (String, String)
 standard G.EventTag  (G.Event s)              = ("Event", s)
 standard G.SiteTag   (G.Site s)               = ("Site", s)
 standard G.DateTag   (G.Date s)               = ("Date", s)
@@ -276,22 +276,22 @@ standard G.AnnotatorTag (G.Annotator s)       = ("Annotator", s)
 standard G.ModeTag (G.Mode s)                 = ("Mode", show s)
 standard G.UnknownTag (G.Unknown s)           = s
                         
-taggedAs :: forall a . (G.Entry a -> Maybe (String, String)) -> G.Entry a -> String
+taggedAs :: (G.Entry a -> Maybe (String, String)) -> G.Entry a -> String
 taggedAs f entry @ (G.Entry tag entity) = case (f entry) of (Just item) -> bracket item
                                                             (Nothing)   -> bracket (standard tag entity)
       where bracket (title, value)                        = "[" <> title <> " \"" <> value <> "\"]"
 
-gameEntry :: forall a . G.Entry a -> String
+gameEntry :: G.Entry a -> String
 gameEntry = taggedAs (fmap normal . G.match G.TerminationTag)
       where normal (G.Termination G.Checkmate)   = ("Termination", "Normal") 
             normal (G.Termination G.Stalemate)   = ("Termination", "Normal") 
             normal (G.Termination G.Resignation) = ("Termination", "Normal") 
             normal (G.Termination r)             = ("Termination", show r)
  
-debugEntry :: forall a . G.Entry a -> String
+debugEntry :: G.Entry a -> String
 debugEntry = taggedAs (const Nothing)
 
-showEntry :: forall a . DisplayMode -> G.Entry a -> String
+showEntry :: DisplayMode -> G.Entry a -> String
 showEntry GameMode  = gameEntry
 showEntry DebugMode = debugEntry
 showEntry ErrorMode = gameEntry

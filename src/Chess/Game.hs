@@ -231,9 +231,6 @@ locate tag (Game entries board) = determine tag entries
 add :: Entry a -> Game -> Game
 add entry (Game entries board) = Game { entries = (HEntry entry) : entries, gameBoard = board }
  
-newgame :: Entry Event -> Entry Site -> Game
-newgame e s = Game { entries = [HEntry e, HEntry s], gameBoard = Chess.emptyBoard } 
-
 event        = Entry EventTag . Event
 site         = Entry SiteTag . Site
 date         = Entry DateTag . Date
