@@ -137,7 +137,6 @@ termination game = let board   = G.gameBoard game
 evaluate :: G.Game -> Result
 evaluate game = maybe (Continue game) (Terminate game) $ termination game
 
--- FixMe `newtype` the tags
 newGame :: G.Entry G.Event 
         -> G.Entry G.Site 
         -> G.Entry G.Date 

@@ -5,9 +5,14 @@ module Chess.Game where
 import qualified Chess.Internal as Chess
 
 -- The `Show` for these things should be in Chess.Display
-data Outcome = Win Chess.Colour 
+data Outcome = WhiteWin
+             | BlackWin
              | Draw 
-             | Other deriving (Ord, Eq)
+             | Other deriving (Show, Ord, Eq)
+
+data Rating = Rated String | Unrated deriving (Show, Eq)
+
+data Address = Address String | NoAddress deriving (Show, Eq)
 
 data Reason  = Abandoned 
              | Adjundication 
@@ -26,10 +31,6 @@ data Variant = OTB | ICS deriving (Show, Eq) -- Over The Board | Internet Chess 
 
 data Title = GM | FM | IM | UT deriving (Show, Eq) -- Grandmaster, FIDE Master, International Master, Untitled
 
-data Rating = Rated String | Unrated deriving (Show, Eq)
-
-data Address = Address String | NoAddress deriving (Show, Eq)
-
 data PlayerType = Human | Computer deriving (Show, Eq)
 
 newtype Event = Event String deriving (Show, Eq)
@@ -38,7 +39,7 @@ newtype Date = Date String deriving (Show, Eq)
 newtype Round = Round String deriving (Show, Eq)
 newtype White = White String deriving (Show, Eq)
 newtype Black = Black String deriving (Show, Eq)
-newtype Result = Result Outcome deriving (Eq)
+newtype Result = Result Outcome deriving (Show, Eq)
 
 newtype WhiteElo = WhiteElo Rating deriving (Show, Eq)
 newtype BlackElo = BlackElo Rating deriving (Show, Eq)

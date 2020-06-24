@@ -3,7 +3,7 @@
 module Chess.Display (DisplayMode (GameMode, DebugMode, ErrorMode),
       showGameBoard, showFigure, showHEntry, showEntry, showFile, showRank, showMove, 
       showPGNMove, showBoard, showGame, showCastles, showColour, showCoord,
-      showPosition, showSquare, showOutcome) where
+      showPosition, showSquare) where
 
 import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -219,14 +219,11 @@ showBoard :: DisplayMode -> Board -> String
 showBoard GameMode  = gameBoard
 showBoard DebugMode = debugBoard
 
-gameOutcome :: G.Outcome -> String
-gameOutcome (G.Win W) = "1-0"
-gameOutcome (G.Win B) = "0-1"
-gameOutcome (G.Draw)  = "1/2-1/2"
-gameOutcome (G.Other) = "*"
-
-showOutcome :: DisplayMode -> G.Outcome -> String
-showOutcome _ = gameOutcome
+outcome :: G.Outcome -> String
+outcome G.WhiteWin = "1-0"
+outcome G.BlackWin = "0-1"
+outcome G.Draw     = "1/2-1/2"
+outcome G.Other    = "*"
 
 elo :: G.Rating -> String
 elo (G.Rated r) = r
@@ -243,7 +240,7 @@ standard G.DateTag   (G.Date s)               = ("Date", s)
 standard G.RoundTag  (G.Round s)              = ("Round", s)
 standard G.WhiteTag  (G.White s)              = ("White", s)
 standard G.BlackTag  (G.Black s)              = ("Black", s)
-standard G.ResultTag (G.Result s)             = ("Result", gameOutcome s)
+standard G.ResultTag (G.Result s)             = ("Result", outcome s)
 standard G.WhiteEloTag (G.WhiteElo r)         = ("WhiteElo", elo r)
 standard G.BlackEloTag (G.BlackElo r)         = ("BlackElo", elo r)
 standard G.WhiteTitleTag (G.WhiteTitle t)     = ("Title", show t)
@@ -303,11 +300,11 @@ showGameBoard :: DisplayMode -> G.Game -> String
 showGameBoard mode = showBoard mode . G.gameBoard
 
 showGame :: DisplayMode -> G.Game -> String
-showGame _ game = unlines (tags <> padding <> moves <> outcome <> padding)
-      where tags     = fmap (showHEntry GameMode) $ sort $ G.entries game
-            moves    = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
-            padding  = ["", ""]
-            outcome  = maybe (error "This should never happen") (return . gameOutcome . extract) $ G.locate G.ResultTag game
+showGame _ game = unlines (tags <> padding <> moves <> gameOutcome <> padding)
+      where tags                 = fmap (showHEntry GameMode) $ sort $ G.entries game
+            moves                = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
+            padding              = ["", ""]
+            gameOutcome          = maybe (error "This should never happen") (return . outcome . extract) $ G.locate G.ResultTag game
             extract (G.Result o) = o
 
 template :: DisplayMode -> Board -> Colour -> String

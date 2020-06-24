@@ -65,8 +65,8 @@ characters :: Parser String
 characters = M.manyTill asciiChar (M.lookAhead $ char '"')
 
 result :: Parser G.Outcome
-result = M.choice [try (string "1-0")     $> (G.Win Chess.W),
-                   try (string "0-1")     $> (G.Win Chess.B),
+result = M.choice [try (string "1-0")     $> G.WhiteWin,
+                   try (string "0-1")     $> G.BlackWin,
                    try (string "1/2-1/2") $> G.Draw,
                    try (string "*")       $> G.Other]
 
