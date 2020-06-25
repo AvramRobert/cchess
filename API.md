@@ -1,6 +1,6 @@
 # API Documentation
 
-*cchess* features mostly all functionality necessary for implementing chess-related apps. These are:
+*cchess* features most of the functionality necessary for implementing chess-related apps. These are:
 * Game creation 
 * Game simulation
 * Game querying
@@ -92,7 +92,7 @@ data Move = Capture Position Position
           | Castle (Position, Coord) (Position, Coord)
 ```
 
-This data type represents the way *cchess* models chess moves. It covers the following instances:
+This data type denotes how chess moves are modelled and covers the following instances:
 * *Captures:*
   * ```haskell
     Capture Position Position 
@@ -122,8 +122,8 @@ This data type represents the way *cchess* models chess moves. It covers the fol
   * ```haskell
     Castle (Position, Coord) (Position, Coord) 
     ```
-  * Left-hand tuple models the king's `Position`, which advances to the left-hand `Coord`
-  * Right-hand tuple models the rook's `Position`, which advances to the right-hand `Coord`
+  * Left-hand tuple marks the king's `Position`, which advances to the left-hand `Coord`
+  * Right-hand tuple makes the rook's `Position`, which advances to the right-hand `Coord`
 
 ### Boards
 
@@ -139,30 +139,30 @@ data Board = Board {
 }
 ```
 
-This is the record that models a complete chess board. It's primarily only of internal relevance. \
-Shouldn't really both you directly.
+This is the record that models a complete chess board. It's only of internal relevance and shouldn't really bother you directly. It keeps track of the following:
 
 * `player`
-  * Stores the current player on the board
+  * Current player on the board
   
 * `check`
-  * Stores if the board is in check
+  * Is the board in check or not
   
 * `past`
-  * Stores moves made in the past
+  * Moves made in the past
   
 * `coordinates` and `pieces`
-  * They are two isomorphic structures, that store the current configuration of the board
-  * There's two of them, because certain functionality can be done faster by using one as opposed to the other
+  * Configuration of the board
+  * These two are isomorphic structures, but store the current configuration of the board in slightly different ways
+  * There's two of them, because certain things can be done faster by using one as opposed to the other
   
 * `blackCastle` and `whiteCastle`
   * ```haskell
     data Castles = Short | Long | Both | None
     ``` 
-  * Stores what type of castling is available to the white and black players respectively
+  * What type of castling is available to the white and black players respectively
 
 
-### Tags
+### Tags and Entries
 
 ```haskell
 data Tag =  Event String

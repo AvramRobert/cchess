@@ -2,11 +2,11 @@
  ### `chess, but in the console`
 
 #### What is this?
-* A Haskell library for chess:
-  * Features all necessary functionality a creator of a chess app or chess engine might need
-  * Supports simulating chess games, querying moves, parsing and/or writing PGN
+1. A Haskell library for chess:
+   * Contains all necessary functionality a creator of a chess app or chess engine might need
 
-* A minimalistic chess app for playing chess in the console
+2. A minimalistic way of playing chess in the console:
+   * For those who just can't be bothered  
 
 
 For more information, take a look at:
