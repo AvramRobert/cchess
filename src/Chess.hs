@@ -1,22 +1,21 @@
 module Chess (
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
-    getInput, setInput, failWith, movesFor, currentPlayerMoves, G.add, G.locate,
-    ParserTie, Result (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
+    getInput, setInput, failWith, movesFor, currentPlayerMoves,
+    ParserTie, ChessResult (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
 
 -- TODO: THis show re-export Chess.Display
 
 import qualified Text.Megaparsec as M        
-import qualified Chess.Game as G
 import qualified Chess.Internal as C
 import qualified Chess.Display as D
 import qualified PGN.Parser as P
 import qualified PGN.Writer as W
-import Lib.Megaparsec (customError)
+import Chess.Game
+import Lib.Megaparsec (customError, run)
 import Data.Functor (($>))
-import Lib.Megaparsec
 
 data Variant = InputError 
              | GameError 
@@ -27,9 +26,9 @@ data Error = Error { variant :: Variant,
                      message :: String }
             deriving (Show, Eq, Ord)
 
-data Result = Terminate G.Game G.Reason
-            | Continue  G.Game
-            | Retry     G.Game
+data ChessResult = Terminate Game Reason
+                 | Continue  Game
+                 | Retry     Game
 
 class ParserTie p where
     getInput  :: p String
@@ -74,89 +73,89 @@ bootstrap parser = getInput >>= (reattach . runInternalParser parser)
     where reattach (state, Right r)  = setInput (M.stateInput state) $> r
           reattach (state, Left err) = setInput (M.stateInput state) >> failWith err 
 
-appliedMoveParser :: (ParserTie p, Monad p) => G.Game -> p (G.Game, C.Move)
-appliedMoveParser game = fmap add $ bootstrap $ P.appliedMoveParser $ G.gameBoard game
-    where add (board, move) = (game { G.gameBoard = board }, move)
+appliedMoveParser :: (ParserTie p, Monad p) => Game -> p (Game, C.Move)
+appliedMoveParser game = fmap add $ bootstrap $ P.appliedMoveParser $ gameBoard game
+    where add (board, move) = (game { gameBoard = board }, move)
 
-moveParser :: (ParserTie p, Monad p) => G.Game -> p C.Move
+moveParser :: (ParserTie p, Monad p) => Game -> p C.Move
 moveParser = fmap snd . appliedMoveParser
 
-evaluatedMoveParser :: (ParserTie p, Monad p) => G.Game -> p Result
+evaluatedMoveParser :: (ParserTie p, Monad p) => Game -> p ChessResult
 evaluatedMoveParser game = fmap (evaluate . fst) $ appliedMoveParser game
 
 -- this could, at complile time, check if the string ends with a `.pgn`
 pgnFromFile :: String -> IO [String]
 pgnFromFile = P.fromPGNFile' 
 
-gamesFromFile :: String -> IO (Either Error [G.Game])
+gamesFromFile :: String -> IO (Either Error [Game])
 gamesFromFile = fmap fromParseError . P.fromPGNFile
 
-parseGame :: String -> Either Error G.Game
+parseGame :: String -> Either Error Game
 parseGame = fromParseError . P.parseGame
 
-parseManyGames :: String -> Either Error [G.Game]
+parseManyGames :: String -> Either Error [Game]
 parseManyGames = sequence . fmap parseGame . P.fromString'
 
-writeGame :: G.Game -> String
-writeGame = unlines . W.writeMoves . G.gameBoard
+writeGame :: Game -> String
+writeGame = unlines . W.writeMoves . gameBoard
 
-writeMove :: C.Move -> G.Game -> Maybe String
-writeMove move = W.writeMove move . G.gameBoard
+writeMove :: C.Move -> Game -> Maybe String
+writeMove move = W.writeMove move . gameBoard
 
-applyMove :: C.Move -> G.Game -> Result
-applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (G.gameBoard game) move 
-    where add board = game { G.gameBoard = board }
+applyMove :: C.Move -> Game -> ChessResult
+applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (gameBoard game) move 
+    where add board = game { gameBoard = board }
 
-parseMove :: String -> G.Game -> Either Error C.Move
-parseMove move game = runParser (P.moveParser (G.gameBoard game)) id move
+parseMove :: String -> Game -> Either Error C.Move
+parseMove move game = runParser (P.moveParser (gameBoard game)) id move
 
-parseApplyMove :: String -> G.Game -> Either Error Result
-parseApplyMove move game = runParser (P.appliedMoveParser (G.gameBoard game)) (evaluate . add) move
-    where add (board, _) = game { G.gameBoard = board }
+parseApplyMove :: String -> Game -> Either Error ChessResult
+parseApplyMove move game = runParser (P.appliedMoveParser (gameBoard game)) (evaluate . add) move
+    where add (board, _) = game { gameBoard = board }
 
-legalMoves :: G.Game -> [C.Move]
-legalMoves =  C.allMoves . G.gameBoard
+legalMoves :: Game -> [C.Move]
+legalMoves =  C.allMoves . gameBoard
 
-currentPlayer :: G.Game -> C.Colour
-currentPlayer = C.player . G.gameBoard
+currentPlayer :: Game -> C.Colour
+currentPlayer = C.player . gameBoard
 
-movesFor :: C.Colour -> G.Game -> [C.Move]
-movesFor colour game = C.movesFor (G.gameBoard game) colour
+movesFor :: C.Colour -> Game -> [C.Move]
+movesFor colour game = C.movesFor (gameBoard game) colour
 
-currentPlayerMoves :: G.Game -> [C.Move]
+currentPlayerMoves :: Game -> [C.Move]
 currentPlayerMoves game = movesFor (currentPlayer game) game
 
-termination :: G.Game -> Maybe G.Reason
-termination game = let board   = G.gameBoard game
-                       immoble = C.immoble board
-                       checked = C.check board
-                   in if (checked && immoble) then Just G.Checkmate
-                      else if immoble         then Just G.Stalemate
-                      else                         Nothing
+terminationReason :: Game -> Maybe Reason
+terminationReason game = let board   = gameBoard game
+                             immoble = C.immoble board
+                             checked = C.check board
+                         in if (checked && immoble) then Just Checkmate
+                         else if immoble         then Just Stalemate
+                         else                         Nothing
 
-evaluate :: G.Game -> Result
-evaluate game = maybe (Continue game) (Terminate game) $ termination game
+evaluate :: Game -> ChessResult
+evaluate game = maybe (Continue game) (Terminate game) $ terminationReason game
 
-newGame :: G.Entry G.Event 
-        -> G.Entry G.Site 
-        -> G.Entry G.Date 
-        -> G.Entry G.Round 
-        -> G.Entry G.White 
-        -> G.Entry G.Black 
-        -> G.Game
+newGame :: Entry Event 
+        -> Entry Site 
+        -> Entry Date 
+        -> Entry Round 
+        -> Entry White 
+        -> Entry Black 
+        -> Game
 newGame event site date round white black =
-    G.Game { G.entries = [G.HEntry event, 
-                          G.HEntry site,
-                          G.HEntry date,
-                          G.HEntry round,
-                          G.HEntry white,
-                          G.HEntry black],
-             G.gameBoard = C.emptyBoard }
+    Game { entries = [HEntry event, 
+                          HEntry site,
+                          HEntry date,
+                          HEntry round,
+                          HEntry white,
+                          HEntry black],
+             gameBoard = C.emptyBoard }
 
-quickGame :: G.Game
-quickGame = newGame (G.event "CCHESS Quick Game")
-                    (G.site  "CCHESS Platform")
-                    (G.date  "Today")
-                    (G.round "-")
-                    (G.white "CCHESS Player 1")
-                    (G.black "CCHESS Player 2")
+quickGame :: Game
+quickGame = newGame (event "CCHESS Quick Game")
+                    (site  "CCHESS Platform")
+                    (date  "Today")
+                    (Chess.Game.round "-")
+                    (white "CCHESS Player 1")
+                    (black "CCHESS Player 2")

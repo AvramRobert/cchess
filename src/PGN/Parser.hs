@@ -98,7 +98,7 @@ reason = M.choice [try (string' "abandoned")        $> G.Abandoned,
                    try (string' "time forfeit")     $> G.TimeForfeit,
                    try (string' "Unterminated")     $> G.Unterminated]
 
-variant :: Parser G.Variant
+variant :: Parser G.Mode
 variant = M.choice [try (string' "otb") $> G.OTB,
                     try (string' "ics") $> G.ICS]
 

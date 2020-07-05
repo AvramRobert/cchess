@@ -270,7 +270,7 @@ standard G.FENTag (G.FEN s)                   = ("FEN", s)
 standard G.TerminationTag (G.Termination s)   = ("Termination", show s)
 standard G.PlyCountTag (G.PlyCount s)         = ("PlyCount", s)
 standard G.AnnotatorTag (G.Annotator s)       = ("Annotator", s)
-standard G.ModeTag (G.Mode s)                 = ("Mode", show s)
+standard G.ModeTag s                          = ("Mode", show s)
 standard G.UnknownTag (G.Unknown s)           = s
                         
 taggedAs :: (G.Entry a -> Maybe (String, String)) -> G.Entry a -> String

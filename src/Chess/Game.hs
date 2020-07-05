@@ -1,10 +1,9 @@
 {-# LANGUAGE GADTs #-}
 
-module Chess.Game where
+module Chess.Game where -- deal with the exports of this shit
 
 import qualified Chess.Internal as Chess
 
--- The `Show` for these things should be in Chess.Display
 data Outcome = WhiteWin
              | BlackWin
              | Draw 
@@ -26,8 +25,6 @@ data Reason  = Abandoned
              | TimeForfeit 
              | Unterminated
              deriving (Show, Eq)
-
-data Variant = OTB | ICS deriving (Show, Eq) -- Over The Board | Internet Chess Server
 
 data Title = GM | FM | IM | UT deriving (Show, Eq) -- Grandmaster, FIDE Master, International Master, Untitled
 
@@ -74,7 +71,7 @@ newtype FEN = FEN String deriving (Show, Eq)
 newtype Termination = Termination Reason deriving (Show, Eq)
 newtype PlyCount = PlyCount String deriving (Show, Eq)
 newtype Annotator = Annotator String deriving (Show, Eq)
-newtype Mode = Mode Variant deriving (Show, Eq)
+data Mode = OTB | ICS deriving (Show, Eq)
 newtype Unknown = Unknown (String, String) deriving (Show, Eq)
 
 data Tag a where
@@ -268,7 +265,7 @@ fen          = Entry FENTag . FEN
 termination  = Entry TerminationTag . Termination
 plyCount     = Entry PlyCountTag . PlyCount
 annotator    = Entry AnnotatorTag . Annotator
-mode         = Entry ModeTag . Mode
+mode         = Entry ModeTag
 unknown      = Entry UnknownTag . Unknown
 
 rated   = Rated
@@ -279,5 +276,3 @@ noAddress = NoAddress
 
 overTheBoard   = OTB
 internetServer = ICS
-
-getEvent = locate EventTag
