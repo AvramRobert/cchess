@@ -165,7 +165,6 @@ This is the record that models a complete chess board. It's only of internal rel
 ### Tags and Entries
 
 ```haskell
-
 newtype Event = Event String
 newtype Site  = Site String
 newtype Date  = Date String
@@ -182,18 +181,28 @@ data Entry a where
 
 -- more in Chess
 ```
-These things model the way the tags of a chess game. 
+These things model the tags of a chess game. (and their respective entries) 
 
 Every game in *cchess* is designed to be a valid, standard-complying chess game. \
-As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. (see **Creating a game**) 
+As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. Additional entries can be added later-on. (see **Creating a game**) 
 
-They are modelled this way to guarantee the correctness of each entry through type-safety.
+These are a tad bit unusual, as they've been modelled in such a way that their usage type-wise guarantees their chess-affine "correctness".
 
+Basically all tag values per-se are `newtype`s and are unrelated to each other. \
+What bolts them together is the `Tag` GADT, whose instances define a type reference for each one of the newtypes. 
+
+The basic idea is, if you want to find/add an actual tag value, you have specify its referenced tag type from the `Tag` GADT.
 ### Games
 
 ```haskell
 data Game = { entries   :: [HEntry], 
               gameBoard :: Board }
+```
+
+where 
+```haskell
+data HEntry where
+  HEntry :: Entry a -> HEntry
 ```
 This record models an entire chess game and is the record used throught the entire API. 
 
@@ -307,7 +316,6 @@ C.currentPlayerMoves game -- returns all legal moves for the current player
 C.movesFor C.W game -- returns all legal moves for a particular colour
 
 C.evaluate game -- tells you if the game is a draw, stalemate or checkmate
-
 -- ... more in Chess
 ```
 
@@ -325,6 +333,25 @@ case (C.applyMove legalMove game) of
   (C.Continue game')         -> putStrLn "Application successful!"
   (C.Retry game')            -> putStrLn "This move cannot be applied. Try with another"
   (C.Terminate game' reason) -> putStrLn "Application successful and it ended game!"
+```
+
+#### Working with tags and entries
+
+When working with tags and entries, you have to specify the type of the tag. These types are all put together in the `Tag` GADT and can be accessed from `Chess`.
+
+Example:
+```haskell
+-- Finding the `Event` entry from a game
+
+G.locate G.EventTag game -- => Maybe Event
+```
+
+For creating entries properly, `cchess` provides helper functions:
+
+```haskell
+-- Adding the `WhiteElo` entry to a game
+
+G.add (G.whiteElo "1233") game
 ```
 
 ## Rendering a game
@@ -368,7 +395,7 @@ There are explicit `show` functions for every data type *cchess* has and they al
 Given that parsing is an error-prone effect, functions of this kind return:
 
 ```haskell
-  Either Error a
+Either Error a
 ```
 
 ### Parsing 
