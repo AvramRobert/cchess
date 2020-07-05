@@ -165,34 +165,42 @@ This is the record that models a complete chess board. It's only of internal rel
 ### Tags and Entries
 
 ```haskell
-data Tag =  Event String
-          | Site String
-          | Date String
-          | Round String
-          | White String
-          | Black String
-          | Result Outcome
-          | ... -- more in Chess.Game
 
+newtype Event = Event String
+newtype Site  = Site String
+newtype Date  = Date String
+...
+
+data Tag a where
+  EventTag :: Tag Event
+  SiteTag  :: Tag Site
+  DateTag  :: Tag Date
+  ..
+
+data Entry a where
+  Entry :: Tag a -> a -> Entry a
+
+-- more in Chess
 ```
-This models all the tags a chess game can be labeled with. 
+These things model the way the tags of a chess game. 
 
 Every game in *cchess* is designed to be a valid, standard-complying chess game. \
 As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. (see **Creating a game**) 
 
+They are modelled this way to guarantee the correctness of each entry through type-safety.
+
 ### Games
 
 ```haskell
-data Game = { tags  :: [Tag], 
-              board :: Board }
+data Game = { entries   :: [HEntry], 
+              gameBoard :: Board }
 ```
-
 This record models an entire chess game and is the record used throught the entire API. 
 
 Both attributes it contains are rather self-explanatory, but to reiterate:
-* `tags`
-  * All the chess `Tag`s specified for the game 
-* `board`
+* `entries`
+  * All the chess tag entries specified for the game 
+* `gameBoard`
   * The chess `Board` on which the game is going to be played
   
 ### Results
