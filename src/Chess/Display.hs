@@ -233,45 +233,48 @@ address :: G.Address -> String
 address (G.Address a) = a
 address (G.NoAddress) = "-"
 
-standard :: G.Tag a -> a -> (String, String)
-standard G.EventTag  (G.Event s)              = ("Event", s)
-standard G.SiteTag   (G.Site s)               = ("Site", s)
-standard G.DateTag   (G.Date s)               = ("Date", s)
-standard G.RoundTag  (G.Round s)              = ("Round", s)
-standard G.WhiteTag  (G.White s)              = ("White", s)
-standard G.BlackTag  (G.Black s)              = ("Black", s)
-standard G.ResultTag (G.Result s)             = ("Result", outcome s)
-standard G.WhiteEloTag (G.WhiteElo r)         = ("WhiteElo", elo r)
-standard G.BlackEloTag (G.BlackElo r)         = ("BlackElo", elo r)
-standard G.WhiteTitleTag (G.WhiteTitle t)     = ("Title", show t)
-standard G.BlackTitleTag (G.BlackTitle t)     = ("Title", show t)
-standard G.WhiteUSCFTag (G.WhiteUSCF s)       = ("WhiteUSCF", s)
-standard G.BlackUSCFTag (G.BlackUSCF s)       = ("BlackUSCF", s)
-standard G.WhiteNATag (G.WhiteNA s)           = ("WhiteNA", address s)
-standard G.BlackNATag (G.BlackNA s)           = ("BlackNA", address s)
-standard G.WhiteTypeTag (G.WhiteType s)       = ("WhiteType", show s)
-standard G.BlackTypeTag (G.BlackType s)       = ("BlackType", show s)
-standard G.EventDateTag (G.EventDate s)       = ("EventDate", s)
-standard G.EventSponsorTag (G.EventSponsor s) = ("EventSponsor", s)
-standard G.SectionTag (G.Section s)           = ("Section", s)
-standard G.StageTag (G.Stage s)               = ("Stage", s)
-standard G.BoardTag (G.Board s)               = ("Board", s)
-standard G.OpeningTag (G.Opening s)           = ("Opening", s)
-standard G.VariationTag (G.Variation s)       = ("Variation", s)
-standard G.SubVariationTag (G.SubVariation s) = ("SubVariation", s)
-standard G.ECOTag (G.ECO s)                   = ("ECO", s)
-standard G.NICTag (G.NIC s)                   = ("NIC", s)
-standard G.TimeTag (G.Time s)                 = ("Time", s)
-standard G.UTCTimeTag (G.UTCTime s)           = ("UTCTime", s)
-standard G.UTCDateTag (G.UTCDate s)           = ("UTCDate", s)
-standard G.TimeControlTag (G.TimeControl s)   = ("TimeControl", s)
-standard G.SetUpTag (G.SetUp s)               = ("SetUp", s)
-standard G.FENTag (G.FEN s)                   = ("FEN", s)
-standard G.TerminationTag (G.Termination s)   = ("Termination", show s)
-standard G.PlyCountTag (G.PlyCount s)         = ("PlyCount", s)
-standard G.AnnotatorTag (G.Annotator s)       = ("Annotator", s)
-standard G.ModeTag s                          = ("Mode", show s)
-standard G.UnknownTag (G.Unknown s)           = s
+tupled :: a -> b -> (a, b)
+tupled a b = (a, b)
+
+standard :: G.Tag a b -> b -> (String, String)
+standard G.Event        = tupled "Event"
+standard G.Site         = tupled "Site"
+standard G.Date         = tupled "Date"
+standard G.Round        = tupled "Round"
+standard G.White        = tupled "White"
+standard G.Black        = tupled "Black"
+standard G.Result       = tupled "Result" . outcome
+standard G.WhiteElo     = tupled "WhiteElo" . elo
+standard G.BlackElo     = tupled "BlackElo" . elo
+standard G.WhiteTitle   = tupled "WhiteTitle" . show
+standard G.BlackTitle   = tupled "BlackTitle" . show
+standard G.WhiteUSCF    = tupled "WhiteUSCF"
+standard G.BlackUSCF    = tupled "BlackUSCF"
+standard G.WhiteNA      = tupled "WhiteNA" . address
+standard G.BlackNA      = tupled "BlackNA" . address
+standard G.WhiteType    = tupled "WhiteType" . show
+standard G.BlackType    = tupled "BlackType" . show
+standard G.EventDate    = tupled "EventDate"
+standard G.EventSponsor = tupled "EventSponsor"
+standard G.Section      = tupled "Section"
+standard G.Stage        = tupled "Stage"
+standard G.Board        = tupled "Board"
+standard G.Opening      = tupled "Opening"
+standard G.Variation    = tupled "Variation"
+standard G.SubVariation = tupled "SubVariation"
+standard G.ECO          = tupled "ECO"
+standard G.NIC          = tupled "NIC"
+standard G.Time         = tupled "Time"
+standard G.UTCTime      = tupled "UTCTime"
+standard G.UTCDate      = tupled "UTCDate"
+standard G.TimeControl  = tupled "TimeControl"
+standard G.SetUp        = tupled "SetUp"
+standard G.FEN          = tupled "FEN"
+standard G.Termination  = tupled "Termination" . show
+standard G.PlyCount     = tupled "PlyCount"
+standard G.Annotator    = tupled "Annotator"
+standard G.Mode         = tupled "Mode" . show
+standard G.Unknown      = id
                         
 taggedAs :: (G.Entry a -> Maybe (String, String)) -> G.Entry a -> String
 taggedAs f entry @ (G.Entry tag entity) = case (f entry) of (Just item) -> bracket item
@@ -279,11 +282,11 @@ taggedAs f entry @ (G.Entry tag entity) = case (f entry) of (Just item) -> brack
       where bracket (title, value)                        = "[" <> title <> " \"" <> value <> "\"]"
 
 gameEntry :: G.Entry a -> String
-gameEntry = taggedAs (fmap normal . G.match G.TerminationTag)
-      where normal (G.Termination G.Checkmate)   = ("Termination", "Normal") 
-            normal (G.Termination G.Stalemate)   = ("Termination", "Normal") 
-            normal (G.Termination G.Resignation) = ("Termination", "Normal") 
-            normal (G.Termination r)             = ("Termination", show r)
+gameEntry = taggedAs (fmap normal . G.match G.Termination)
+      where normal G.Checkmate   = ("Termination", "Normal") 
+            normal G.Stalemate   = ("Termination", "Normal") 
+            normal G.Resignation = ("Termination", "Normal") 
+            normal r             = ("Termination", show r)
  
 debugEntry :: G.Entry a -> String
 debugEntry = taggedAs (const Nothing)
@@ -304,8 +307,7 @@ showGame _ game = unlines (tags <> padding <> moves <> gameOutcome <> padding)
       where tags                 = fmap (showHEntry GameMode) $ sort $ G.entries game
             moves                = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
             padding              = ["", ""]
-            gameOutcome          = maybe (error "This should never happen") (return . outcome . extract) $ G.locate G.ResultTag game
-            extract (G.Result o) = o
+            gameOutcome          = maybe (error "This should never happen") (return . outcome) $ G.locate G.Result game
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 

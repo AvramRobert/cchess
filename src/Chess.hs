@@ -1,19 +1,31 @@
 module Chess (
-    newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
-    gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, termination, variant, message,
-    getInput, setInput, failWith, movesFor, currentPlayerMoves,
     ParserTie, ChessResult (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
-    C.Board, C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord) where 
-
--- TODO: THis show re-export Chess.Display
+    C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord, G.Game,
+    G.Event, G.Site, G.Date, G.Round, G.White, G.Black, G.Result, G.WhiteElo, G.BlackElo,
+    G.WhiteTitle, G.BlackTitle, G.WhiteUSCF, G.BlackUSCF, G.WhiteNA, G.BlackNA, G.WhiteType,
+    G.BlackType, G.EventDate, G.EventSponsor, G.Section, G.Stage, G.Board, G.Opening, G.Variation,
+    G.SubVariation, G.ECO, G.NIC, G.Time, G.UTCTime, G.UTCDate, G.TimeControl, G.SetUp, G.FEN, 
+    G.Termination, G.PlyCount, G.Annotator, G.Mode, G.Unknown, G.Address (Address, NoAddress),
+    G.Rating (G.Rated, G.Unrated), G.Outcome (G.WhiteWin, G.BlackWin, G.Draw, G.Other),
+    G.Title (G.GM, G.FM, G.IM, G.UT), G.PlayerType (G.Human, G.Computer), G.GameMode (G.OTB, G.ICS),
+    G.Reason (G.Abandoned, G.Adjundication, G.Death, G.Emergency, G.Normal, G.Checkmate, 
+              G.Resignation, G.Stalemate, G.Infraction, G.TimeForfeit, G.Unterminated),
+    newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
+    gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, terminationReason, variant, message,
+    getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
+    G.locate, G.tag, G.event, G.site, G.date, G.round, G.white, G.black, G.result, G.whiteElo, G.blackElo,
+    G.whiteTitle, G.blackTitle, G.whiteUSCF, G.blackUSCF, G.whiteNA, G.blackNA, G.whiteType, G.blackType,
+    G.subVariation, G.eco, G.nic, G.time, G.utcTime, G.utcDate, G.timeControl, G.setup, G.fen, G.termination,
+    G.plyCount, G.annotator, G.mode, G.unknown, G.rating, G.address, G.overTheBoard, G.internetServer) where 
 
 import qualified Text.Megaparsec as M        
 import qualified Chess.Internal as C
 import qualified Chess.Display as D
+import qualified Chess.Game as G
 import qualified PGN.Parser as P
 import qualified PGN.Writer as W
-import Chess.Game
+import Chess.Game (Game (Game), entries, gameBoard, createGame, Reason)
 import Lib.Megaparsec (customError, run)
 import Data.Functor (($>))
 
@@ -129,33 +141,17 @@ terminationReason :: Game -> Maybe Reason
 terminationReason game = let board   = gameBoard game
                              immoble = C.immoble board
                              checked = C.check board
-                         in if (checked && immoble) then Just Checkmate
-                         else if immoble         then Just Stalemate
-                         else                         Nothing
+                         in if (checked && immoble) then Just G.Checkmate
+                         else if immoble            then Just G.Stalemate
+                         else                            Nothing
 
 evaluate :: Game -> ChessResult
 evaluate game = maybe (Continue game) (Terminate game) $ terminationReason game
 
-newGame :: Entry Event 
-        -> Entry Site 
-        -> Entry Date 
-        -> Entry Round 
-        -> Entry White 
-        -> Entry Black 
-        -> Game
-newGame event site date round white black =
-    Game { entries = [HEntry event, 
-                          HEntry site,
-                          HEntry date,
-                          HEntry round,
-                          HEntry white,
-                          HEntry black],
-             gameBoard = C.emptyBoard }
-
-quickGame :: Game
-quickGame = newGame (event "CCHESS Quick Game")
-                    (site  "CCHESS Platform")
-                    (date  "Today")
-                    (Chess.Game.round "-")
-                    (white "CCHESS Player 1")
-                    (black "CCHESS Player 2")
+newGame   = createGame
+quickGame = newGame (G.event "CCHESS Quick Game")
+                    (G.site  "CCHESS Platform")
+                    (G.date  "Today")
+                    (G.round "-")
+                    (G.white "CCHESS Player 1")
+                    (G.black "CCHESS Player 2")

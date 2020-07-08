@@ -165,33 +165,32 @@ This is the record that models a complete chess board. It's only of internal rel
 ### Tags and Entries
 
 ```haskell
-newtype Event = Event String
-newtype Site  = Site String
-newtype Date  = Date String
+data Event
+data Site
+data Date
 ...
 
-data Tag a where
-  EventTag :: Tag Event
-  SiteTag  :: Tag Site
-  DateTag  :: Tag Date
+data Tag a b where
+  Event  :: Tag Event String
+  Site   :: Tag Site String
+  Date   :: Tag Date String
   ..
 
 data Entry a where
   Entry :: Tag a -> a -> Entry a
-
--- more in Chess
 ```
-These things model the tags of a chess game. (and their respective entries) 
+These things model the tags (and their respective entries) of a chess game. 
 
 Every game in *cchess* is designed to be a valid, standard-complying chess game. \
-As such, every new game created with *cchess* is required to populate the minimum amount of chess game tags the standard forsees. Additional entries can be added later-on. (see **Creating a game**) 
+As such, every new game created with is required to populate the minimum amount of chess tags the standard forsees. \
+Additional entries can be added later-on. (see **Creating a game**) 
 
 These are a tad bit unusual, as they've been modelled in such a way that their usage type-wise guarantees their chess-affine "correctness".
 
-Basically all tag values per-se are `newtype`s and are unrelated to each other. \
-What bolts them together is the `Tag` GADT, whose instances define a type reference for each one of the newtypes. 
+Basically every tag `Tag a b` is composed of two types: the nominal type `a` that guarantees its uniqueness, and a content type `b` that specifies its actual contents.
+These are then bolted together using a GADT and act as a type reference for each tag.
 
-The basic idea is, if you want to find/add an actual tag value, you have specify its referenced tag type from the `Tag` GADT.
+The basic idea is, if you want to find/add an actual tag value, you have to specify its type reference from the `Tag` GADT. (example in **Working with tags and entries**)
 ### Games
 
 ```haskell
@@ -221,7 +220,7 @@ data Result = Continue Game | Retry Game | Terminate Game Reason
 where 
 
 ```haskell
-data Reason = Checkmate | Stalemate | Resignation | ... -- more in Chess.Game
+data Reason = Checkmate | Stalemate | Resignation | ...
 ```
 
 Results model the outcomes of transformations applied on the board.
@@ -340,18 +339,16 @@ case (C.applyMove legalMove game) of
 When working with tags and entries, you have to specify the type of the tag. These types are all put together in the `Tag` GADT and can be accessed from `Chess`.
 
 Example:
+1. Extracting a tag from a game:
 ```haskell
--- Finding the `Event` entry from a game
-
-G.locate G.EventTag game -- => Maybe Event
+C.locate G.Event game -- => Maybe String
 ```
 
-For creating entries properly, `cchess` provides helper functions:
-
+2. Creating a tag and addint it to a game: 
 ```haskell
--- Adding the `WhiteElo` entry to a game
+-- For creating entries properly, `cchess` provides helper functions:
 
-G.add (G.whiteElo "1233") game
+C.tag (C.whiteElo "1233") game
 ```
 
 ## Rendering a game
@@ -464,7 +461,7 @@ class ParserTie p where
 For any parser `p :: * -> *`, if you can tell me how to get its current input, set its input and make it fail based on the errors *cchess* uses, then I can make it integrate with your own parser.
 
 There are of course separate functions that return a `Parser` variant of the API's functionality:
-
+s
 ```haskell
 -- parses a `Move`
 C.moveParser :: (C.ParserTie p, Monad p) => C.Game -> p C.Move
