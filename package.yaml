@@ -27,6 +27,7 @@ dependencies:
 - bytestring
 - time
 - criterion
+- process
 
 library:
   source-dirs: src
@@ -44,6 +45,7 @@ executables:
     - containers
     - megaparsec
     - bytestring
+    - process
 
 tests:
   cchess-test:

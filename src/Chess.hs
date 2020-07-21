@@ -29,6 +29,8 @@ import Chess.Game (Game (Game), entries, gameBoard, createGame, Reason)
 import Lib.Megaparsec (customError, run)
 import Data.Functor (($>))
 
+type ParserState a = M.State a P.ChessError
+
 data Variant = InputError 
              | GameError 
              | ParseError
@@ -68,13 +70,13 @@ fromParseError (Right a)  = Right a
 runParser :: P.Parser a -> (a -> b) -> String -> Either Error b
 runParser parser f = either (Left . deriveParseError) (Right . f) . run parser 
 
-runOn :: String -> P.Parser a -> P.Parser (M.State String, Either P.ParseError a)
+runOn :: String -> P.Parser a -> P.Parser (ParserState String, Either P.ParseError a)
 runOn input parser = do
         _     <- M.setInput input
         state <- M.getParserState
         return (M.runParser' parser state)
 
-runInternalParser :: P.Parser a -> String -> (M.State String, Either Error a)
+runInternalParser :: P.Parser a -> String -> (ParserState String, Either Error a)
 runInternalParser parser input = either (\_ -> error "this will never fail") id $ run conversion ""
     where convert (state, Right a)  = (state, Right a)
           convert (state, Left err) = (state, Left (deriveParseError err))

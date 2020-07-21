@@ -320,7 +320,7 @@ capturePawn = fileAmbigousCapture
 
 -- there's a pawn at file `ox` that can advnace to `x, y`
 advancePawn :: [Chess.Move] -> Parser Chess.Move
-advancePawn = unambigousAdvance 
+advancePawn moves = M.choice [try $ unambigousAdvance moves, try $ explicitAdvance moves] 
 
 -- there's a pawn at promoting position `x, y -+ 1` and can promote at `x, y`
 promotePawn :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
