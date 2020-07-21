@@ -13,7 +13,7 @@ module Chess (
               G.Resignation, G.Stalemate, G.Infraction, G.TimeForfeit, G.Unterminated),
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, terminationReason, variant, message,
-    getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
+    applyMove, parseApplyMove, getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
     G.locate, G.tag, G.event, G.site, G.date, G.round, G.white, G.black, G.result, G.whiteElo, G.blackElo,
     G.whiteTitle, G.blackTitle, G.whiteUSCF, G.blackUSCF, G.whiteNA, G.blackNA, G.whiteType, G.blackType,
     G.subVariation, G.eco, G.nic, G.time, G.utcTime, G.utcDate, G.timeControl, G.setup, G.fen, G.termination,
@@ -43,6 +43,7 @@ data Error = Error { variant :: Variant,
 data ChessResult = Terminate Game Reason
                  | Continue  Game
                  | Retry     Game
+                 deriving (Show)
 
 class ParserTie p where
     getInput  :: p String

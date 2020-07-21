@@ -1,21 +1,23 @@
-module PGN.Writer (writeMoves, writeApplyMove, writeMove) where
+module PGN.Writer (writeMoves, writeApplyMove, writeMove, fen) where
 
 import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
-                       Position (Pos), Square, Board, Coord, 
+                       Position (Pos), Square, Board, Coord, Colour (W, B),
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, check, lookAt, coordinates)
 import Lib.Coll
 import PGN.Common
+import Data.Char (toLower)
+import Data.Maybe (fromJust)
 
 rows = 
-    [[(1,1), (1,2), (1,3), (1,4), (1,5), (1,6), (1,7), (1,8)],
-     [(2,1), (2,2), (2,3), (2,4), (2,5), (2,6), (2,7), (2,8)],
-     [(3,1), (3,2), (3,3), (3,4), (3,5), (3,6), (3,7), (3,8)],
-     [(4,1), (4,2), (4,3), (4,4), (4,5), (4,6), (4,7), (4,8)],
-     [(5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7), (5,8)],
-     [(6,1), (6,2), (6,3), (6,4), (6,5), (6,6), (6,7), (6,8)],
-     [(7,1), (7,2), (7,3), (7,4), (7,5), (7,6), (7,7), (7,8)],
-     [(8,1), (8,2), (8,3), (8,4), (8,5), (8,6), (8,7), (8,8)]]
+    [[(1,8), (2,8), (3,8), (4,8), (5,8), (6,8), (7,8), (8,8)],
+     [(1,7), (2,7), (3,7), (4,7), (5,7), (6,7), (7,7), (8,7)],
+     [(1,6), (2,6), (3,6), (4,6), (5,6), (6,6), (7,6), (8,6)],
+     [(1,5), (2,5), (3,5), (4,5), (5,5), (6,5), (7,5), (8,5)],
+     [(1,4), (2,4), (3,4), (4,4), (5,4), (6,4), (7,4), (8,4)],
+     [(1,3), (2,3), (3,3), (4,3), (5,3), (6,3), (7,3), (8,3)],
+     [(1,2), (2,2), (3,2), (4,2), (5,2), (6,2), (7,2), (8,2)],
+     [(1,1), (2,1), (3,1), (4,1), (5,1), (6,1), (7,1), (8,1)]]
 
 piece :: Piece -> String
 piece Pawn   = "P"
@@ -138,5 +140,20 @@ writeMoves = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (e
           index (i, m1:[])          = show i <> "." <> m1 <> " "
           index (i, [])             = ""
 
-fen :: Board -> String
-fen _ = "" 
+fen :: Board -> [String]
+fen board = map fenify rows
+    where fenify               = track "" 0
+          note e 0             = e
+          note e n             = e <> show n
+          track e n []         = note e n
+          track e n (x:xs)     = maybe (track e (n + 1) xs) (\en -> track ((note e n) <> en) 0 xs) $ elm $ fromJust $ lookAt board x
+          normalise W c        = Just [c]
+          normalise B c        = Just [toLower c]
+          elm (Pos Empty _ _)  = Nothing
+          elm (Pos Pawn c _)   = normalise c 'P'
+          elm (Pos King c _)   = normalise c 'K'
+          elm (Pos Rook c _)   = normalise c 'R'
+          elm (Pos Knight c _) = normalise c 'N'
+          elm (Pos Bishop c _) = normalise c 'B'
+          elm (Pos Queen c _)  = normalise c 'Q'
+

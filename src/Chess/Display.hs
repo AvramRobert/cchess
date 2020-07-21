@@ -302,12 +302,13 @@ showHEntry mode (G.HEntry entry) = showEntry mode entry
 showGameBoard :: DisplayMode -> G.Game -> String
 showGameBoard mode = showBoard mode . G.gameBoard
 
+-- FIXME: There's a closed paren being rendered here at the end from somewhere
 showGame :: DisplayMode -> G.Game -> String
 showGame _ game = unlines (tags <> padding <> moves <> gameOutcome <> padding)
       where tags                 = fmap (showHEntry GameMode) $ sort $ G.entries game
             moves                = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
             padding              = ["", ""]
-            gameOutcome          = maybe (error "This should never happen") (return . outcome) $ G.locate G.Result game
+            gameOutcome          = maybe (return "") (return . outcome) $ G.locate G.Result game
 
 template :: DisplayMode -> Board -> Colour -> String
 template mode board colour = unlines $ 
