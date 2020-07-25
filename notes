@@ -3,6 +3,8 @@ Problems:
 Optimisations:
     a) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
     b) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
+    c) ChessResult can be generalised and abstracted such that one may be able to define Monad et al. for it. -> would make working with chess transforms easier
+    d) Add `parseMoves` and `parseApplyMoves` to support applying handling more than one move in a go
     
 To Do:
      * 1. Add proper checkmate verification

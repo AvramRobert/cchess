@@ -13,7 +13,7 @@ module Chess (
               G.Resignation, G.Stalemate, G.Infraction, G.TimeForfeit, G.Unterminated),
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, terminationReason, variant, message,
-    applyMove, parseApplyMove, getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
+    applyMove, parseMove, parseApplyMove, writeFen, getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
     G.locate, G.tag, G.event, G.site, G.date, G.round, G.white, G.black, G.result, G.whiteElo, G.blackElo,
     G.whiteTitle, G.blackTitle, G.whiteUSCF, G.blackUSCF, G.whiteNA, G.blackNA, G.whiteType, G.blackType,
     G.subVariation, G.eco, G.nic, G.time, G.utcTime, G.utcDate, G.timeControl, G.setup, G.fen, G.termination,
@@ -116,6 +116,9 @@ writeGame = unlines . W.writeMoves . gameBoard
 
 writeMove :: C.Move -> Game -> Maybe String
 writeMove move = W.writeMove move . gameBoard
+
+writeFen :: Game -> String
+writeFen = W.fen . gameBoard
 
 applyMove :: C.Move -> Game -> ChessResult
 applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (gameBoard game) move 

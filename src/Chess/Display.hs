@@ -42,6 +42,7 @@ gameFigure (Queen, W)  = "♕"
 gameFigure (Queen, B)  = "♛"
 gameFigure (Empty, _)  = "-"
 
+-- colour is important here, black is lower case
 debugFigure :: Figure -> String
 debugFigure (Pawn, _)   = "P"
 debugFigure (Bishop, _) = "B"
@@ -103,7 +104,7 @@ gameCoord :: Square -> String
 gameCoord square = gameFile (fst $ snd square) <> gameRank square
 
 debugCoord :: Square -> String
-debugCoord square = debugFile (fst $ snd square) <> debugRank square
+debugCoord square = "(" <> debugFile (fst $ snd square) <> "," <> debugRank square <> ")"
 
 errorCoord :: Square -> String
 errorCoord = gameCoord
@@ -134,7 +135,7 @@ gamePosition :: Position -> String
 gamePosition (Pos p c s)  = debugFigure (p, c) <> gameCoord (c, s)
 
 debugPosition :: Position -> String
-debugPosition (Pos p c s) = debugFigure (p, c) <> debugCoord (c, s)
+debugPosition (Pos p c s) = debugFigure (p, c) <> " " <> debugCoord (c, s)
 
 errorPosition :: Position -> String
 errorPosition (Pos p c s) = debugFigure (p, c) <> gameCoord (c, s)
@@ -302,7 +303,6 @@ showHEntry mode (G.HEntry entry) = showEntry mode entry
 showGameBoard :: DisplayMode -> G.Game -> String
 showGameBoard mode = showBoard mode . G.gameBoard
 
--- FIXME: There's a closed paren being rendered here at the end from somewhere
 showGame :: DisplayMode -> G.Game -> String
 showGame _ game = unlines (tags <> padding <> moves <> gameOutcome <> padding)
       where tags                 = fmap (showHEntry GameMode) $ sort $ G.entries game

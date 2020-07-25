@@ -178,7 +178,7 @@ fenPlayer board = case (player board) of W -> "w"
 fenBoard :: Board -> String
 fenBoard board = tail $ foldr (\r s -> s <> "/" <> track r 0 "") "" rows
     where track [] n e     = write n e
-          track (x:xs) n e = maybe (track xs (n + 1) e) (track xs 0 . write n . (<> e)) $ fenElement $ fromJust $ lookAt board x
+          track (x:xs) n e = maybe (track xs (n + 1) e) (\en -> track xs 0 $ (write n e <> en)) $ fenElement $ fromJust $ lookAt board x
           write 0 e        = e
           write n e        = e <> show n
 
