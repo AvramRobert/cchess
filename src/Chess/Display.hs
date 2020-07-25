@@ -87,7 +87,7 @@ showFile DebugMode = debugFile
 showFile ErrorMode = errorFile 
 
 gameRank :: Square -> String
-gameRank = show . snd . boardCoord
+gameRank = show . snd . snd -- . boardCoord
 
 debugRank :: Square -> String
 debugRank = show . snd . snd
@@ -145,8 +145,11 @@ showPosition GameMode  = gamePosition
 showPosition DebugMode = debugPosition
 showPosition ErrorMode = errorPosition
 
+-- showSquare :: DisplayMode -> Board -> Square -> String
+-- showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
+
 showSquare :: DisplayMode -> Board -> Square -> String
-showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . boardCoord
+showSquare mode board = maybe (show Empty) (showFigure mode . figure) . lookAt board . snd
 
 gameCastles :: Castles -> String
 gameCastles Both  = "O-O-O / O-O"

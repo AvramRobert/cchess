@@ -6,7 +6,7 @@ import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Position (Pos), Square, Board, Coord, Colour (W, B),
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, 
                        check, lookAt, coordinates, whiteCastle, blackCastle, player, 
-                       halfmoves, totalmoves)
+                       halfmoves, fullmoves)
 import Lib.Coll
 import PGN.Common
 import Data.Char (toLower)
@@ -159,17 +159,9 @@ fenCastle board = case (whiteCastle board, blackCastle board) of
 
 fenPassant :: Board -> String
 fenPassant board = case (first $ past board) of
-        (Just (Advance (Pos Pawn W (x, 2)) (_, 4))) -> file x <> "3"
-        (Just (Advance (Pos Pawn B (x, 7)) (_, 5))) -> file x <> "6"
+        (Just (Advance (Pos Pawn W (x, 2)) (_, 4))) -> file (x, 2) <> "3"
+        (Just (Advance (Pos Pawn B (x, 7)) (_, 5))) -> file (x, 7) <> "6"
         (_)                                         -> "-"
-    where file 1 = "a"
-          file 2 = "b"
-          file 3 = "c"
-          file 4 = "d"
-          file 5 = "e"
-          file 6 = "f"
-          file 7 = "g"
-          file 8 = "h"
 
 fenPlayer :: Board -> String
 fenPlayer board = case (player board) of W -> "w"
@@ -183,7 +175,7 @@ fenBoard board = tail $ foldr (\r s -> s <> "/" <> track r 0 "") "" rows
           write n e        = e <> show n
 
 fenStats :: Board -> String
-fenStats board = (show $ halfmoves board) <> " " <> (show $ totalmoves board)
+fenStats board = (show $ halfmoves board) <> " " <> (show $ fullmoves board)
 
 fenElement :: Position -> Maybe String
 fenElement (Pos Empty _ _)  = Nothing
@@ -196,3 +188,15 @@ fenElement (Pos Queen c _)  = Just $ fenNormalise c "Q"
 
 fen :: Board -> String
 fen board = (fenBoard board) <> " " <> (fenPlayer board) <> " " <> (fenCastle board) <> " " <> (fenPassant board) <> " " <> (fenStats board)
+
+tag :: Coord -> String
+tag c = file c <> rank c
+
+-- rename this and `fen`
+square :: Move -> String
+square (Capture (Pos _ _ s) (Pos _ _ e))    = tag s <> tag e
+square (Advance (Pos _ _ s) e)              = tag s <> tag e
+square (Enpassant (Pos _ _ s) e _)          = tag s <> tag e
+square (Promote (Pos _ _ s) _ (Pos _ _ e))  = tag s <> tag e
+square (Castle (Pos _ _ (5, _), (7, _)) _)  = "O-O"
+square (Castle (Pos _ _ (5, _), (3, _)) _)  = "O-O-O"

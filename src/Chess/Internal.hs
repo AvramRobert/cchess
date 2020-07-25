@@ -42,7 +42,7 @@ data Board = Board { player      :: Colour,
                      blackCastle :: Castles,
                      whiteCastle :: Castles,
                      halfmoves   :: Int,
-                     totalmoves  :: Int }
+                     fullmoves   :: Int }
              deriving (Eq, Ord)
 
 develop :: Dir -> Square -> Square
@@ -353,16 +353,17 @@ trackMove move board = board { past = move : (past board) }
 computeChecks :: Board -> Board
 computeChecks board = board { check = checked board }
 
+-- total moves is incremented after black's move
 countMoves :: Move -> Board -> Board
-countMoves move board = if (reset move)
-                        then board { halfmoves = 0, totalmoves = (totalmoves board) + 1 }
-                        else board { halfmoves = (halfmoves board) + 1, totalmoves = (totalmoves board) + 1}
-      where reset (Capture _ _)              = True
-            reset (Advance (Pos Pawn _ _) _) = True
-            reset (Enpassant _ _ _)          = True
-            reset (Promote _ _ _)            = True
-            reset  _                         = False
-
+countMoves move board = board { halfmoves = half move, fullmoves = (fullmoves board) + increment }
+      where half (Capture _ _)              = 0
+            half (Advance (Pos Pawn _ _) _) = 0
+            half (Enpassant _ _ _)          = 0
+            half (Promote _ _ _)            = 0
+            half _                          = (halfmoves board) + 1
+            increment                       = case (past board) of (x:y:_) -> 1
+                                                                   _       -> 0
+            
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = forceApply board move
                         colour = player board
@@ -378,7 +379,7 @@ permitApply board = permit board
 
 -- `checked` is applied on the current board with the current player. Make sure to change the players to compute it propely 
 forceApply :: Board -> Move -> Board
-forceApply board move = computeChecks 
+forceApply board move = computeChecks
                       $ changePlayers
                       $ countMoves move
                       $ computeCastles move 
@@ -410,7 +411,7 @@ emptyBoard = Board { player      = W,
                      blackCastle = Both,
                      whiteCastle = Both,
                      halfmoves   = 0,
-                     totalmoves  = 0,
+                     fullmoves   = 0,
                      coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
                      pieces      = M.fromList $ map byPiece $ groupOn colour $ filter (not . (== Empty) . piece) $ positions }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),
