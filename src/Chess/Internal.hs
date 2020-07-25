@@ -40,7 +40,9 @@ data Board = Board { player      :: Colour,
                      coordinates :: Coordinates,
                      pieces      :: Pieces, 
                      blackCastle :: Castles,
-                     whiteCastle :: Castles }
+                     whiteCastle :: Castles,
+                     halfmoves   :: Int,
+                     totalmoves  :: Int }
              deriving (Eq, Ord)
 
 develop :: Dir -> Square -> Square
@@ -351,6 +353,16 @@ trackMove move board = board { past = move : (past board) }
 computeChecks :: Board -> Board
 computeChecks board = board { check = checked board }
 
+countMoves :: Move -> Board -> Board
+countMoves move board = if (reset move)
+                        then board { halfmoves = 0, totalmoves = (totalmoves board) + 1 }
+                        else board { halfmoves = (halfmoves board) + 1, totalmoves = (totalmoves board) + 1}
+      where reset (Capture _ _)              = True
+            reset (Advance (Pos Pawn _ _) _) = True
+            reset (Enpassant _ _ _)          = True
+            reset (Promote _ _ _)            = True
+            reset  _                         = False
+
 permit :: Board -> Move -> Maybe Board
 permit board move = let board' = forceApply board move
                         colour = player board
@@ -368,6 +380,7 @@ permitApply board = permit board
 forceApply :: Board -> Move -> Board
 forceApply board move = computeChecks 
                       $ changePlayers
+                      $ countMoves move
                       $ computeCastles move 
                       $ trackMove move 
                       $ changePlacement move board
@@ -396,6 +409,8 @@ emptyBoard = Board { player      = W,
                      check       = False,
                      blackCastle = Both,
                      whiteCastle = Both,
+                     halfmoves   = 0,
+                     totalmoves  = 0,
                      coordinates = M.fromList $ map (\p -> (coord p, p)) $ positions,
                      pieces      = M.fromList $ map byPiece $ groupOn colour $ filter (not . (== Empty) . piece) $ positions }
       where figs  = [([Rook, Knight, Bishop, Queen, King,  Bishop, Knight, Rook], W),

@@ -1,15 +1,17 @@
-module PGN.Writer (writeMoves, writeApplyMove, writeMove, fen) where
+module PGN.Writer (writeMoves, writeApplyMove, writeMove, fen, fenBoard) where
 
 import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Castles (None, Both, Long, Short),
                        Position (Pos), Square, Board, Coord, Colour (W, B),
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, 
-                       check, lookAt, coordinates, whiteCastle, blackCastle, player)
+                       check, lookAt, coordinates, whiteCastle, blackCastle, player, 
+                       halfmoves, totalmoves)
 import Lib.Coll
 import PGN.Common
 import Data.Char (toLower)
 import Data.Maybe (fromJust)
+import Control.Monad (mfilter)
 
 rows = 
     [
@@ -143,32 +145,54 @@ writeMoves = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (e
           index (i, m1:[])          = show i <> "." <> m1 <> " "
           index (i, [])             = ""
 
+fenNormalise :: Colour -> String -> String
+fenNormalise W = id
+fenNormalise B = map toLower
+
+fenCastle :: Board -> String
+fenCastle board = case (whiteCastle board, blackCastle board) of
+        (None, None)   -> "-"
+        (white, black) -> castle W white <> castle B black
+    where castle c Both  = fenNormalise c "KG"
+          castle c Short = fenNormalise c "K"
+          castle c Long  = fenNormalise c "Q" 
+
+fenPassant :: Board -> String
+fenPassant board = case (first $ past board) of
+        (Just (Advance (Pos Pawn W (x, 2)) (_, 4))) -> file x <> "3"
+        (Just (Advance (Pos Pawn B (x, 7)) (_, 5))) -> file x <> "6"
+        (_)                                         -> "-"
+    where file 1 = "a"
+          file 2 = "b"
+          file 3 = "c"
+          file 4 = "d"
+          file 5 = "e"
+          file 6 = "f"
+          file 7 = "g"
+          file 8 = "h"
+
+fenPlayer :: Board -> String
+fenPlayer board = case (player board) of W -> "w"
+                                         B -> "b"
+
+fenBoard :: Board -> String
+fenBoard board = tail $ foldr (\r s -> s <> "/" <> track r 0 "") "" rows
+    where track [] n e     = write n e
+          track (x:xs) n e = maybe (track xs (n + 1) e) (track xs 0 . write n . (<> e)) $ fenElement $ fromJust $ lookAt board x
+          write 0 e        = e
+          write n e        = e <> show n
+
+fenStats :: Board -> String
+fenStats board = (show $ halfmoves board) <> " " <> (show $ totalmoves board)
+
+fenElement :: Position -> Maybe String
+fenElement (Pos Empty _ _)  = Nothing
+fenElement (Pos Pawn c _)   = Just $ fenNormalise c "P"
+fenElement (Pos Bishop c _) = Just $ fenNormalise c "B"
+fenElement (Pos Rook c _)   = Just $ fenNormalise c "R"
+fenElement (Pos Knight c _) = Just $ fenNormalise c "N"
+fenElement (Pos King c _)   = Just $ fenNormalise c "K"
+fenElement (Pos Queen c _)  = Just $ fenNormalise c "Q"
+
 fen :: Board -> String
-fen board = fenBoard <> " " <> fenPlayer <> " " <> fenCastle <> " " <> fenPassant <> " " <> fenHalfmove <> " " <> fenTotal
-    where fenBoard              = tail $ foldr (\r s -> s <> "/"  <> track r 0 "") "" rows
-          fenCastle             = castle W (whiteCastle board) <> castle B (blackCastle board)
-          fenPlayer             = case (player board) of W -> "w"; _ -> "b"
-          fenPassant            = "-" -- look at the last move, if it's a jump => then write the position of the square behind this pawn (where the opponent would move if it would've captured it)
-          fenHalfmove           = show $ countUntil (oneOf [capture, pawnAdvance]) $ past board -- this is probably very inefficient, I could probably make this part of the board 
-          fenTotal              = show $ length $ past board
-          castle c Both         = normalise c "KQ"
-          castle c Short        = normalise c "K"
-          castle c Long         = normalise c "Q"
-          castle c None         = ""
-          note 0 e              = e
-          note n e              = e <> show n
-          track [] n e          = note n e
-          track (x:xs) n e      = maybe (track xs (n + 1) e) (track xs 0 . note n . (<> e)) $ elm $ fromJust $ lookAt board x
-          normalise W c         = c
-          normalise B c         = map toLower c
-          elm (Pos Empty _ _)   = Nothing
-          elm (Pos Pawn c _)    = Just $ normalise c "P"
-          elm (Pos King c _)    = Just $ normalise c "K"
-          elm (Pos Rook c _)    = Just $ normalise c "R"
-          elm (Pos Knight c _)  = Just $ normalise c "N"
-          elm (Pos Bishop c _)  = Just $ normalise c "B"
-          elm (Pos Queen c _)   = Just $ normalise c "Q"
-          capture (Capture _ _) = True
-          capture  _            = False
-          pawnAdvance (Advance (Pos Pawn _ _) _) = True
-          pawnAdvance _                          = False
+fen board = (fenBoard board) <> " " <> (fenPlayer board) <> " " <> (fenCastle board) <> " " <> (fenPassant board) <> " " <> (fenStats board)
