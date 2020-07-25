@@ -18,8 +18,10 @@ import Lib.Freer
 newtype Parser a = Parser (M.Parsec C.Error String a)
 
 data State = Menu                
-           | Play   G.Game         
-           | Resign G.Game       
+           | Play   G.Game
+           | Fen    G.Game
+           | FenB   G.Game         
+           | Resign G.Game
            | End    G.Game G.Reason   
            | Exit 
 
@@ -71,8 +73,11 @@ menuText = unlines ["Welcome to cchess!",
                     "- New Game", 
                     "- Exit"]
 
-playText :: G.Game -> String
-playText game = unlines [D.showGameBoard D.GameMode game, "Input a move"]
+boardText :: G.Game -> String
+boardText = D.showGameBoard D.GameMode
+
+playText :: String
+playText = unlines ["", "Input a move"]
 
 -- I could re-add the suggestion that a game is drawn/drawable
 outcomeText :: G.Reason  -> String
@@ -86,6 +91,12 @@ resignText c = unlines ["", "Result: (W) " <> w <> " - " <> b <> " (B)"]
 
 exitText :: String
 exitText = "One day at a time."
+
+fenText :: G.Game -> String
+fenText game = unlines ["", C.writeFen game]
+
+fenBText :: G.Game -> String
+fenBText game = unlines ["", C.writeFenBoard game]
 
 newGame :: Parser State
 newGame = Parser (MC.string' "new game" $> (Play C.quickGame))
@@ -102,9 +113,17 @@ exit = Parser (M.choice [ MC.string' "exit", MC.string' "quit" ] $> Exit)
 resign :: G.Game -> Parser State
 resign game = Parser (M.choice [ MC.string' "resign", MC.string' "exit", MC.string' "quit" ] $> (Resign game))
 
+fen :: G.Game -> Parser State
+fen game = Parser (MC.string' "fen" ) $> (Fen game)
+
+fenB :: G.Game -> Parser State
+fenB game = Parser (MC.string' "fenboard") $> (FenB game)
+
 instructions :: State -> Instruction State
 instructions (Menu)              = display menuText >> input (newGame <|> exit)
-instructions (Play game)         = display (playText game) >> input (move game <|> resign game)
+instructions (Play game)         = display (boardText game) >> display playText >> input (move game <|> fenB game <|> fen game <|> resign game)
+instructions (Fen game)          = display (fenText game) >> display playText >> input (move game <|> fenB game <|> fen game <|>  resign game)
+instructions (FenB game)         = display (fenBText game) >> display playText >> input (move game <|> fenB game <|> fen game <|> resign game)
 instructions (Exit)              = display exitText >> stop
 instructions (End game outcome)  = display (outcomeText outcome) >> stop
 instructions (Resign game)       = display (resignText $ C.currentPlayer game) >> stop
