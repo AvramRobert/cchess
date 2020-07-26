@@ -389,6 +389,20 @@ king board = M.choice [try $ char' 'K'       >> (captureOrAdvance moves),
                        try $ string' "O-O"   >> (castle Chess.Short moves)]
     where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
+-- simpleUCIMove :: Chess.Board -> Parser Chess.Move
+-- simpleUCIMove board = do
+--         sx <- file
+--         sy <- rank
+--         ex <- file
+--         ey <- rank
+--         failWith (captureError (x, y) moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
+
+-- uciMove :: Chess.Board -> Parser Chess.Move
+-- uciMove board = do
+--     _ <- delimitation
+--     _ <- string' "bestmove" 
+--     _ <- delimitation 
+
 move :: Chess.Board -> Parser Chess.Move
 move board = M.choice [try $ pawn board,
                        try $ rook board,

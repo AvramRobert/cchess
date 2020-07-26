@@ -1,11 +1,13 @@
 Problems:
+    a) I've apparently written that pawn parsers don't see enpassant moves: verify
 
 Optimisations:
     a) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
     b) `king` and `pawn` parsers -> these two have a dependency on parse-order. This shouldn't be.
     c) ChessResult can be generalised and abstracted such that one may be able to define Monad et al. for it. -> would make working with chess transforms easier
     d) Add `parseMoves` and `parseApplyMoves` to support applying handling more than one move in a go
-    
+    e) Restructure the project a bit. You will provide parsers and writers for not just PGN, but also UCI and FEN. Make a `Parser` and `Writer` directories
+    f) `Parser` and `Writer` should support both short and long algebraic notation. PGN is generally written in short algebraic notation. 
 To Do:
      * 1. Add proper checkmate verification
      * 2. Implement proper rendering for the board

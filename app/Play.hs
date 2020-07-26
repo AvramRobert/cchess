@@ -20,7 +20,6 @@ newtype Parser a = Parser (M.Parsec C.Error String a)
 data State = Menu                
            | Play   G.Game
            | Fen    G.Game
-           | FenB   G.Game         
            | Resign G.Game
            | End    G.Game G.Reason   
            | Exit 
@@ -95,9 +94,6 @@ exitText = "One day at a time."
 fenText :: G.Game -> String
 fenText game = unlines ["", C.writeFen game]
 
-fenBText :: G.Game -> String
-fenBText game = unlines ["", C.writeFenBoard game]
-
 newGame :: Parser State
 newGame = Parser (MC.string' "new game" $> (Play C.quickGame))
 
@@ -116,14 +112,10 @@ resign game = Parser (M.choice [ MC.string' "resign", MC.string' "exit", MC.stri
 fen :: G.Game -> Parser State
 fen game = Parser (MC.string' "fen" ) $> (Fen game)
 
-fenB :: G.Game -> Parser State
-fenB game = Parser (MC.string' "fenboard") $> (FenB game)
-
 instructions :: State -> Instruction State
 instructions (Menu)              = display menuText >> input (newGame <|> exit)
-instructions (Play game)         = display (boardText game) >> display playText >> input (move game <|> fenB game <|> fen game <|> resign game)
-instructions (Fen game)          = display (fenText game) >> display playText >> input (move game <|> fenB game <|> fen game <|>  resign game)
-instructions (FenB game)         = display (fenBText game) >> display playText >> input (move game <|> fenB game <|> fen game <|> resign game)
+instructions (Play game)         = display (boardText game) >> display playText >> input (move game <|> fen game <|> resign game)
+instructions (Fen game)          = display (fenText game) >> display playText >> input (move game <|> fen game <|>  resign game)
 instructions (Exit)              = display exitText >> stop
 instructions (End game outcome)  = display (outcomeText outcome) >> stop
 instructions (Resign game)       = display (resignText $ C.currentPlayer game) >> stop

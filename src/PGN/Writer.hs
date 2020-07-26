@@ -1,4 +1,4 @@
-module PGN.Writer (writeMoves, writeApplyMove, writeMove, fen, fenBoard) where
+module PGN.Writer (writeMoves, writeApplyMove, writeMove, writeFen, writeSquareMove) where
 
 import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -186,17 +186,19 @@ fenElement (Pos Knight c _) = Just $ fenNormalise c "N"
 fenElement (Pos King c _)   = Just $ fenNormalise c "K"
 fenElement (Pos Queen c _)  = Just $ fenNormalise c "Q"
 
-fen :: Board -> String
-fen board = (fenBoard board) <> " " <> (fenPlayer board) <> " " <> (fenCastle board) <> " " <> (fenPassant board) <> " " <> (fenStats board)
+writeFen :: Board -> String
+writeFen board = (fenBoard board) <> " " <> (fenPlayer board) <> " " <> (fenCastle board) <> " " <> (fenPassant board) <> " " <> (fenStats board)
 
-tag :: Coord -> String
-tag c = file c <> rank c
 
--- rename this and `fen`
-square :: Move -> String
-square (Capture (Pos _ _ s) (Pos _ _ e))    = tag s <> tag e
-square (Advance (Pos _ _ s) e)              = tag s <> tag e
-square (Enpassant (Pos _ _ s) e _)          = tag s <> tag e
-square (Promote (Pos _ _ s) _ (Pos _ _ e))  = tag s <> tag e
-square (Castle (Pos _ _ (5, _), (7, _)) _)  = "O-O"
-square (Castle (Pos _ _ (5, _), (3, _)) _)  = "O-O-O"
+-- THIS FILE SHOULD PROVIDE LONG AND SHORT ALGEBRAIC NOTATION 
+
+-- this should be the long algebraic notation without piece moves
+writeSquareMove :: Move -> String
+writeSquareMove move = case move of 
+        (Capture (Pos _ _ s) (Pos _ _ e))   -> tag s <> tag e -- captures apparently still use an `x`
+        (Advance (Pos _ _ s) e)             -> tag s <> tag e
+        (Enpassant (Pos _ _ s) e _)         -> tag s <> tag e
+        (Promote (Pos _ _ s) _ (Pos _ _ e)) -> tag s <> tag e -- promotion: e7e8q
+        (Castle (Pos _ _ (5, _), (7, _)) _) -> "O-O" -- castling short:  e1g1
+        (Castle (Pos _ _ (5, _), (3, _)) _) -> "O-O-O" -- castling long: e1c1 
+    where tag c = file c <> rank c

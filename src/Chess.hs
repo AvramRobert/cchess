@@ -2,6 +2,7 @@ module Chess (
     ParserTie, ChessResult (Terminate, Continue, Retry), Error (Error), Variant (InputError, GameError, ParseError),
     C.Move (C.Castle, C.Promote, C.Advance, C.Capture, C.Enpassant), C.Castles,
     C.Position (C.Pos), C.Figure, C.Square, C.Colour (C.W, C.B), C.Coord, G.Game,
+    C.Piece (C.Pawn, C.Bishop, C.Rook, C.Knight, C.King, C.Queen),
     G.Event, G.Site, G.Date, G.Round, G.White, G.Black, G.Result, G.WhiteElo, G.BlackElo,
     G.WhiteTitle, G.BlackTitle, G.WhiteUSCF, G.BlackUSCF, G.WhiteNA, G.BlackNA, G.WhiteType,
     G.BlackType, G.EventDate, G.EventSponsor, G.Section, G.Stage, G.Board, G.Opening, G.Variation,
@@ -13,7 +14,7 @@ module Chess (
               G.Resignation, G.Stalemate, G.Infraction, G.TimeForfeit, G.Unterminated),
     newGame, quickGame, legalMoves, currentPlayer, appliedMoveParser, evaluatedMoveParser, moveParser, pgnFromFile,
     gamesFromFile, evaluate, writeMove, writeGame, parseGame, parseManyGames, terminationReason, variant, message,
-    applyMove, parseMove, parseApplyMove, writeFen, writeFenBoard, getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
+    applyMove, parseMove, parseApplyMove, writeFen, getInput, setInput, failWith, movesFor, currentPlayerMoves, G.entries, G.gameBoard,
     G.locate, G.tag, G.event, G.site, G.date, G.round, G.white, G.black, G.result, G.whiteElo, G.blackElo,
     G.whiteTitle, G.blackTitle, G.whiteUSCF, G.blackUSCF, G.whiteNA, G.blackNA, G.whiteType, G.blackType,
     G.subVariation, G.eco, G.nic, G.time, G.utcTime, G.utcDate, G.timeControl, G.setup, G.fen, G.termination,
@@ -118,10 +119,7 @@ writeMove :: C.Move -> Game -> Maybe String
 writeMove move = W.writeMove move . gameBoard
 
 writeFen :: Game -> String
-writeFen = W.fen . gameBoard
-
-writeFenBoard :: Game -> String
-writeFenBoard = W.fenBoard . gameBoard
+writeFen = W.writeFen . gameBoard
 
 applyMove :: C.Move -> Game -> ChessResult
 applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (gameBoard game) move 
