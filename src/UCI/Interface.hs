@@ -4,7 +4,7 @@ import qualified System.Process as P
 import qualified GHC.IO.Handle as H
 import qualified Chess.Game as G
 import qualified Chess.Internal as I
-import qualified PGN.Writer as W
+import qualified Writer.PGN as W
 
 stockfish = "/home/robert/Downloads/stockfish/Linux/stockfish" 
 

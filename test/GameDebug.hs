@@ -6,7 +6,7 @@ import Data.List
 import Data.Maybe
 import qualified Chess.Internal as C
 import qualified Chess.Game as G
-import qualified PGN.Writer as W
+import qualified Writer.PGN as W
 import qualified Chess as C
 import System.IO.Unsafe (unsafePerformIO)
 

@@ -1,4 +1,4 @@
-module PGN.Writer (writeMoves, writeApplyMove, writeMove, writeFen, writeSquareMove) where
+module Writer.PGN (writeMoves, writeApplyMove, writeMove, writeFen, writeSquareMove) where
 
 import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -7,11 +7,11 @@ import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        coord, movesPiece, past, permitApply, forceApply, emptyBoard, 
                        check, lookAt, coordinates, whiteCastle, blackCastle, player, 
                        halfmoves, fullmoves)
-import Lib.Coll
-import PGN.Common
+import Parser.Common (advancesTo, capturesAt, hasY, hasX)
 import Data.Char (toLower)
 import Data.Maybe (fromJust)
 import Control.Monad (mfilter)
+import Lib.Coll
 
 rows = 
     [

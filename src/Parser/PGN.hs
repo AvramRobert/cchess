@@ -1,4 +1,4 @@
-module PGN.Parser where
+module Parser.PGN where
 
 import qualified Chess.Internal as Chess
 import qualified Text.Megaparsec as M
@@ -20,20 +20,18 @@ import System.IO.Unsafe (unsafePerformIO)
 import Lib.Coll
 import Lib.Megaparsec
 import Chess.Display
-import PGN.Common
+import Parser.Common
 
-data ChessError = CaptureError Chess.Coord Chess.Figure |
-                  AdvanceError Chess.Coord Chess.Figure |
-                  PromoteError Chess.Coord Chess.Figure | 
-                  CastleError  Chess.Castles            | 
-                  IllegalMoveError                      |
-                  MissingMovesError                     |
-                  UnexpectedCheckError
-                  deriving (Eq, Show, Ord)
+data PGNError = CaptureError Chess.Coord Chess.Figure |
+                AdvanceError Chess.Coord Chess.Figure |
+                PromoteError Chess.Coord Chess.Figure | 
+                CastleError  Chess.Castles            | 
+                IllegalMoveError                      |
+                MissingMovesError                     |
+                UnexpectedCheckError
+                deriving (Eq, Show, Ord)
 
-type ParseError = M.ParseErrorBundle String ChessError
-
-instance M.ShowErrorComponent ChessError where
+instance M.ShowErrorComponent PGNError where
     showErrorComponent (CaptureError coord piece) = "Could not capture at " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (PromoteError coord piece) = "Could not promote at " <> (show coord) <> " to "   <> (show piece)
@@ -42,13 +40,11 @@ instance M.ShowErrorComponent ChessError where
     showErrorComponent (MissingMovesError)        = "No moves available"
     showErrorComponent (UnexpectedCheckError)     = "Board was not expected to be in check"
 
-type Parser a = Parsec ChessError String a
+type Parser a = Parsec PGNError String a
+
+type PGNParseError = ParseError PGNError
 
 data Turn = Ended | Moved deriving (Show, Eq)
-
-failWith :: ChessError -> Maybe a -> Parser a
-failWith error (Nothing) = M.fancyFailure $ S.fromList [M.ErrorCustom error]
-failWith error (Just a)  = return a
 
 extractGame :: [ByteString] -> (String, [ByteString])
 extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
@@ -57,12 +53,6 @@ extractGame lines = (C.unpack $ C.unlines (header <> gameLines), remaining)
               gameLines = takeWhile (not . headline) headless
               remaining = dropWhile (not . headline) headless
               headline  = every [not . C.null, (== '[') . C.head]
-
--- apparently there's no sane way to consume any arbitrary ascii characters between two quotes, without forcing the user to lookAhead for the quote
--- between (char '"') (char '"') (many asciiChar) will fail because (many asciiChar) will consume the last '"' thus `between` will never work
--- so it has to be this: between (char '"') (char '"') (manyTill asciiChar (lookAhead (char '"')))
-characters :: Parser String
-characters = M.manyTill asciiChar (M.lookAhead $ char '"')
 
 result :: Parser G.Outcome
 result = M.choice [try (string "1-0")     $> G.WhiteWin,
@@ -173,31 +163,6 @@ headline header p = do
         _ <- delimitation
         return a
 
-delimitation :: Parser ()
-delimitation = void $ many (try newline <|> try spaceChar)
-
-index :: Parser String
-index = M.someTill numberChar (char '.')
-
-file :: Parser Int
-file = M.choice [(char 'a' $> 1),
-                 (char 'b' $> 2), 
-                 (char 'c' $> 3),
-                 (char 'd' $> 4),
-                 (char 'e' $> 5),
-                 (char 'f' $> 6),
-                 (char 'g' $> 7),
-                 (char 'h' $> 8)]
-
-promotions :: Chess.Square -> Parser Chess.Position
-promotions (c, s) = M.choice [(char' 'Q' $> (Chess.Pos Chess.Queen c s)),
-                              (char' 'R' $> (Chess.Pos Chess.Rook c s)),
-                              (char' 'N' $> (Chess.Pos Chess.Knight c s)),
-                              (char' 'B' $> (Chess.Pos Chess.Bishop c s))]
-
-rank :: Parser Int
-rank = fmap digitToInt $ numberChar
-
 check :: Chess.Board -> Parser ()
 check board = (M.optional $ M.single '+') >>= verify
     where verify (Just _) | Chess.check board = return ()
@@ -207,15 +172,17 @@ check board = (M.optional $ M.single '+') >>= verify
 mate :: Parser Bool
 mate = fmap (maybe False (const True)) $ M.optional $ M.single '#'
 
-captureError :: Chess.Coord -> [Chess.Move] -> ChessError
+-- the [Chess.Move] list is here just so that I can extract figure information for it for the log
+-- I could replace it with the `Figure` itself to make it more explicit
+captureError :: Chess.Coord -> [Chess.Move] -> PGNError
 captureError _ []    = MissingMovesError
 captureError c (m:_) = CaptureError c (Chess.figure $ Chess.position m)
 
-promoteError :: Chess.Position -> [Chess.Move] -> ChessError
+promoteError :: Chess.Position -> [Chess.Move] -> PGNError
 promoteError _ []    = MissingMovesError
 promoteError p _     = PromoteError (Chess.coord p) (Chess.figure p)
 
-advanceError :: Chess.Coord -> [Chess.Move] -> ChessError
+advanceError :: Chess.Coord -> [Chess.Move] -> PGNError
 advanceError _ []    = MissingMovesError
 advanceError c (m:_) = AdvanceError c $ (Chess.figure $ Chess.position m)
 
@@ -329,8 +296,8 @@ promotePawn colour moves = do
         y <- rank
         _ <- char '='
         p <- promotions (colour, (x, y))
-        let coord  = pick colour (x, y)
-        failWith (promoteError p moves) $ find (promotesAs p) moves
+        let from = pick colour (x, y)
+        failWith (promoteError p moves) $ find (promotesAs p from) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1) 
 
@@ -343,8 +310,8 @@ capturePromotePawn colour moves = do
         y  <- rank
         _  <- char '='
         p  <- promotions (colour, (x, y))
-        let coord = pick colour (ox, y)
-        failWith (promoteError p moves) $ find (promotesAs p) moves
+        let from = pick colour (ox, y)
+        failWith (promoteError p moves) $ find (promotesAs p from) moves
     where pick Chess.W (x, y) = (x, y - 1)
           pick Chess.B (x, y) = (x, y + 1)
 
@@ -389,20 +356,6 @@ king board = M.choice [try $ char' 'K'       >> (captureOrAdvance moves),
                        try $ string' "O-O"   >> (castle Chess.Short moves)]
     where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
 
--- simpleUCIMove :: Chess.Board -> Parser Chess.Move
--- simpleUCIMove board = do
---         sx <- file
---         sy <- rank
---         ex <- file
---         ey <- rank
---         failWith (captureError (x, y) moves) $ find (every [capturesAt (x, y), hasCoord (ox, oy)]) moves
-
--- uciMove :: Chess.Board -> Parser Chess.Move
--- uciMove board = do
---     _ <- delimitation
---     _ <- string' "bestmove" 
---     _ <- delimitation 
-
 move :: Chess.Board -> Parser Chess.Move
 move board = M.choice [try $ pawn board,
                        try $ rook board,
@@ -411,7 +364,6 @@ move board = M.choice [try $ pawn board,
                        try $ queen board,
                        try $ king board]
 
--- Shouldn't this be force apply?
 applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
 applied move board = maybe illegal return $ Chess.permitApply board move
     where illegal = failWith IllegalMoveError Nothing
@@ -471,17 +423,17 @@ fromPGNFile' = fmap splitGames . B.readFile
 fromString' :: String -> [String]
 fromString' = splitGames . C.pack
 
-fromPGNFile :: String -> IO (Either ParseError [G.Game])
+fromPGNFile :: String -> IO (Either PGNParseError [G.Game])
 fromPGNFile = fmap (sequence . fmap (run gameParser)) . fromPGNFile'
 
-fromString :: String -> Either ParseError [G.Game]
+fromString :: String -> Either PGNParseError [G.Game]
 fromString = sequence . fmap (run gameParser) . splitGames . C.pack
 
-parseGame :: String -> Either ParseError G.Game
+parseGame :: String -> Either PGNParseError G.Game
 parseGame = run gameParser
 
-parseMove ::  String -> Chess.Board -> Either ParseError Chess.Move
+parseMove ::  String -> Chess.Board -> Either PGNParseError Chess.Move
 parseMove move board = run (moveParser board) move 
 
-parseBoard :: String -> Either ParseError Chess.Board
+parseBoard :: String -> Either PGNParseError Chess.Board
 parseBoard = fmap G.gameBoard . parseGame

@@ -11,7 +11,7 @@ import Chess.Internal (Piece (King, Queen, Rook, Bishop, Knight, Pawn, Empty),
                        Castles (Both, Long, Short, None), 
                        Square, Figure, Coord, Board, player, lookAt, figure, coordinates, other, colour)
 import qualified Chess.Game as G
-import qualified PGN.Writer as W
+import qualified Writer.PGN as W
 import Data.Maybe (maybe)
 import Lib.Coll (maxBy, chunksOf)
 import Data.List (intersperse, find, sort)

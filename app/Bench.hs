@@ -3,7 +3,7 @@ module Bench (runBench) where
 import Criterion.Main (defaultMain, bgroup, bench, whnf)
 import qualified Chess.Game as G
 import qualified Chess as C
-import qualified PGN.Writer as W
+import qualified Writer.PGN as W
 import System.IO.Unsafe (unsafePerformIO)
 
 pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"

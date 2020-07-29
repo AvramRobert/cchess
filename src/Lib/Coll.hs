@@ -1,5 +1,5 @@
-module Lib.Coll (first, spread, every, conjoin, consume, keepLast, mapFirst, 
-                 zipped, when, once, exactly, groupOn, asListOf, chunksOf, maxBy) where
+module Lib.Coll (first, spread, every, conjoin, consume, keepLast, mapFirst, zipped, 
+                 when, once, exactly, groupOn, asListOf, chunksOf, maxBy, oneOf) where
 
 import Debug.Trace (trace)
 import Control.Monad (foldM)
@@ -31,6 +31,10 @@ conjoin fs a = fs >>= (\f -> f a)
 every :: [a -> Bool] -> a -> Bool
 every (p : ps) a = p a && every ps a
 every [] _       = True
+
+oneOf :: [a -> Bool] -> a -> Bool
+oneOf (p : ps) a = p a || oneOf ps a
+oneOf []       _ = False
 
 first :: [a] -> Maybe a
 first []    = Nothing

@@ -8,6 +8,8 @@ Optimisations:
     d) Add `parseMoves` and `parseApplyMoves` to support applying handling more than one move in a go
     e) Restructure the project a bit. You will provide parsers and writers for not just PGN, but also UCI and FEN. Make a `Parser` and `Writer` directories
     f) `Parser` and `Writer` should support both short and long algebraic notation. PGN is generally written in short algebraic notation. 
+    e) Given that I now will have different parsers for different types of notations (each with their respective types of errors), I could define a 
+       type family that would sort of "house" all of them so that `Chess` can pattern match on them an find out what it needs to morph to the exposed `Error` type
 To Do:
      * 1. Add proper checkmate verification
      * 2. Implement proper rendering for the board

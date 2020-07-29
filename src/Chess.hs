@@ -24,13 +24,13 @@ import qualified Text.Megaparsec as M
 import qualified Chess.Internal as C
 import qualified Chess.Display as D
 import qualified Chess.Game as G
-import qualified PGN.Parser as P
-import qualified PGN.Writer as W
+import qualified Parser.PGN as P
+import qualified Writer.PGN as W
 import Chess.Game (Game (Game), entries, gameBoard, createGame, Reason)
 import Lib.Megaparsec (customError, run)
 import Data.Functor (($>))
 
-type ParserState a = M.State a P.ChessError
+type ParserState a = M.State a P.PGNError
 
 data Variant = InputError 
              | GameError 
@@ -51,8 +51,8 @@ class ParserTie p where
     setInput  :: String -> p ()
     failWith  :: Error -> p a
 
-deriveParseError :: P.ParseError -> Error
-deriveParseError = customError asError (const $ Error InputError "Unknown input")
+derivePGNParseError :: P.PGNParseError -> Error
+derivePGNParseError = customError asError (const $ Error InputError "Unknown input")
     where asError (P.MissingMovesError)    = Error GameError "Unavailable move"
           asError (P.IllegalMoveError)     = Error GameError "Illegal move" 
           asError (P.UnexpectedCheckError) = Error GameError "Board is not in check"
@@ -65,23 +65,25 @@ deriveParseError = customError asError (const $ Error InputError "Unknown input"
           showCastles                      = D.showCastles D.ErrorMode
           squareFrom (piece, colour) coord = (colour, coord)
     
-fromParseError :: Either P.ParseError a -> Either Error a
-fromParseError (Left err) = Left (deriveParseError err)
+fromParseError :: Either P.PGNParseError a -> Either Error a
+fromParseError (Left err) = Left (derivePGNParseError err)
 fromParseError (Right a)  = Right a
 
 runParser :: P.Parser a -> (a -> b) -> String -> Either Error b
-runParser parser f = either (Left . deriveParseError) (Right . f) . run parser 
+runParser parser f = either (Left . derivePGNParseError) (Right . f) . run parser 
 
-runOn :: String -> P.Parser a -> P.Parser (ParserState String, Either P.ParseError a)
+runOn :: String -> P.Parser a -> P.Parser (ParserState String, Either P.PGNParseError a)
 runOn input parser = do
         _     <- M.setInput input
         state <- M.getParserState
         return (M.runParser' parser state)
 
+-- type families for different types of parse errors?
+-- anywhore -> let's just make this work and hard code `ParseState` to the PGNParseError
 runInternalParser :: P.Parser a -> String -> (ParserState String, Either Error a)
 runInternalParser parser input = either (\_ -> error "this will never fail") id $ run conversion ""
     where convert (state, Right a)  = (state, Right a)
-          convert (state, Left err) = (state, Left (deriveParseError err))
+          convert (state, Left err) = (state, Left (derivePGNParseError err))
           conversion                = fmap convert $ runOn input parser          
 
 bootstrap :: (ParserTie p, Monad p) => P.Parser a -> p a
