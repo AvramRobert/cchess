@@ -98,13 +98,13 @@ move board = choice [try $ advance board moves,
                      try $ enpassant board moves, 
                      try $ promote board moves, 
                      castle board moves]
-        where moves = Chess.movesFor board (Chess.player board)
+        where moves = Chess.movesColour board (Chess.player board)
 
 stockfishMove :: Chess.Board -> Parser Chess.Move
 stockfishMove board = choice [try $ progress board moves,
                               try $ promote board moves,
                               castle board moves]
-        where moves = Chess.movesFor board (Chess.player board)
+        where moves = Chess.movesColour board (Chess.player board)
 
 
 moveParser :: Chess.Board -> Parser Chess.Move

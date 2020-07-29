@@ -141,7 +141,7 @@ currentPlayer :: Game -> C.Colour
 currentPlayer = C.player . gameBoard
 
 movesFor :: C.Colour -> Game -> [C.Move]
-movesFor colour game = C.movesFor (gameBoard game) colour
+movesFor colour game = C.movesColour (gameBoard game) colour
 
 currentPlayerMoves :: Game -> [C.Move]
 currentPlayerMoves game = movesFor (currentPlayer game) game

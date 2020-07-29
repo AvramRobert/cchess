@@ -1,5 +1,6 @@
 Problems:
     a) I've apparently written that pawn parsers don't see enpassant moves: verify
+    b) `permit` is not called in all Chess.Internal moves retrieval functions => after you do that, you can do `forceApply` in the parsers instead of `permitApply`
 
 Optimisations:
     a) `find move` -> when searching for moves, looking through a list instead of a set (use (Set Move) instead of [Move] ?)
