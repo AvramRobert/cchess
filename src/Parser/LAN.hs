@@ -8,6 +8,7 @@ import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar
 import Data.List (find)
 import Parser.Common
 import Lib.Coll
+import Chess.Display
 
 data MoveType = Advance 
               | Capture 
@@ -19,6 +20,26 @@ data MoveType = Advance
 
 data LANError = KnownError MoveType Chess.Position Chess.Coord 
               | UnknownError MoveType Chess.Square Chess.Coord  deriving (Ord, Eq)
+
+instance (M.ShowErrorComponent LANError) where
+    showErrorComponent (KnownError (Advance) position coord)     = "Cannot advance with " <> show position <> " to " <> show coord
+    showErrorComponent (KnownError (Capture) position coord)     = "Cannot capture with " <> show position <> " at " <> show coord
+    showErrorComponent (KnownError (Enpassant) position coord)   = "Cannot capture enpassant from " <> show position <> " at " <> show coord
+    showErrorComponent (KnownError (Progress) position coord)    = "Cannot progress from " <> show position <> " to " <>
+    
+     show coord
+    showErrorComponent (KnownError (Promote p) position coord)   = "Cannot promote to " <> show p <> " at " <> show coord
+    showErrorComponent (KnownError (LongCastle) position coord)  = "Cannot castle long"  
+    showErrorComponent (KnownError (ShortCastle) position coord) = "Cannot castle short"
+    
+    showErrorComponent (UnknownError (Advance) (_, s) coord)     = "Cannot advance from " <> show s <> " to " <> show coord
+    showErrorComponent (UnknownError (Capture) (_, s) coord)     = "Cannot capture from " <> show s <> " to " <> show coord
+    showErrorComponent (UnknownError (Enpassant) (_, s) coord)   = "Cannot capture enpassant from " <> show s <> " to " <> show coord
+    showErrorComponent (UnknownError (Progress) (_, s) coord)    = "Cannot progress from " <> show s <> " to " <> show coord
+    showErrorComponent (UnknownError (Promote p) (_, s) coord)   = "Cannot promote to " <> show p <> " at " <> show coord
+    showErrorComponent (UnknownError (LongCastle) (_, s) coord)  = "Cannot castle long"
+    showErrorComponent (UnknownError (ShortCastle) (_, s) coord) = "Cannot castle short"
+    
 
 type Parser a = Parsec LANError String a
 
@@ -92,6 +113,8 @@ longCastle board moves = choice [try $ (string' "e1c1" >> failFor Chess.W),
 castle :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
 castle board moves = choice [try $ shortCastle board moves, try $ longCastle board moves]
 
+
+-- moves also may contain pieces as far as i could tell
 move :: Chess.Board -> Parser Chess.Move
 move board = choice [try $ advance board moves, 
                      try $ capture board moves, 

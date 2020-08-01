@@ -4,7 +4,7 @@ import qualified Chess.Internal as Chess
 import Data.Set (fromList)
 import Text.Megaparsec (ErrorFancy (ErrorCustom), ParseErrorBundle, Parsec, 
                         fancyFailure, try, many, manyTill, someTill, choice,
-                        lookAhead)
+                        lookAhead, runParser)
 import Text.Megaparsec.Char (char, char', asciiChar, numberChar, spaceChar, newline)
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
@@ -84,4 +84,4 @@ promotesAs _ _ _                                           = False
 castlesTowards :: Chess.Dir -> Chess.Move -> Bool
 castlesTowards Chess.R (Chess.Castle (_, e) _) = e == (7, 1) || e == (7, 8)
 castlesTowards Chess.L (Chess.Castle (_, e) _) = e == (3, 1) || e == (3, 8)
-castlesTowards _ _                       = False
+castlesTowards _ _                             = False
