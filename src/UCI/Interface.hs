@@ -4,12 +4,14 @@ import qualified System.Process as P
 import qualified GHC.IO.Handle as H
 import qualified Chess.Game as G
 import qualified Chess.Internal as I
-import qualified Writer.PGN as W
+import qualified Writer.LAN as LAN
+import qualified Writer.FEN as FEN
+import qualified Writer.PGN as PGN
 
 stockfish = "/home/robert/Downloads/stockfish/Linux/stockfish" 
 
 position :: G.Game -> I.Move -> String
-position game move = "position fen " <> W.writeFen (G.gameBoard game) <> " moves " <> W.writeSquareMove move 
+position game move = "position fen " <> FEN.write (G.gameBoard game) <> " moves " <> LAN.write move 
 
 newgame :: String
 newgame = "ucinewgame"

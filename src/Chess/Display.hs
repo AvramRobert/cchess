@@ -196,7 +196,7 @@ showMove DebugMode = debugMove
 showMove ErrorMode = errorMove
 
 showPGNMove :: Move -> Board -> Maybe String
-showPGNMove = W.writeMove
+showPGNMove = W.write
 
 padBy :: Int -> String -> String
 padBy i s = halves <> s <> halves
@@ -309,7 +309,7 @@ showGameBoard mode = showBoard mode . G.gameBoard
 showGame :: DisplayMode -> G.Game -> String
 showGame _ game = unlines (tags <> padding <> moves <> gameOutcome <> padding)
       where tags                 = fmap (showHEntry GameMode) $ sort $ G.entries game
-            moves                = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeMoves $ G.gameBoard game
+            moves                = map (foldr (<>) "" . intersperse " ") $ chunksOf 6 $ W.writeFor $ G.gameBoard game
             padding              = ["", ""]
             gameOutcome          = maybe (return "") (return . outcome) $ G.locate G.Result game
 

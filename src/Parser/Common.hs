@@ -42,11 +42,14 @@ file = choice [(char 'a' $> 1),
 rank :: Ord e => Parsec e String Int
 rank = fmap digitToInt $ numberChar
 
+piece :: Ord e => Parsec e String Chess.Piece
+piece = choice [try (char' 'Q' $> Chess.Queen),
+                try (char' 'R' $> Chess.Rook),
+                try (char' 'N' $> Chess.Knight),
+                try (char' 'B' $> Chess.Bishop)]
+
 promotions :: Ord e => Chess.Square -> Parsec e String Chess.Position
-promotions (c, s) = choice [(char' 'Q' $> (Chess.Pos Chess.Queen c s)),
-                            (char' 'R' $> (Chess.Pos Chess.Rook c s)),
-                            (char' 'N' $> (Chess.Pos Chess.Knight c s)),
-                            (char' 'B' $> (Chess.Pos Chess.Bishop c s))]
+promotions (c, s) = fmap (\p -> Chess.Pos p c s) piece
 
 hasColour :: Chess.Colour -> Chess.Move -> Bool
 hasColour colour = (== colour) . Chess.colour . Chess.position

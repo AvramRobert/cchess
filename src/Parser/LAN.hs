@@ -1,5 +1,5 @@
 -- Long Algebraic Notation Parser
-module Parser.LAN where
+module Parser.LAN (moveParser, stockfishMoveParser, parse) where
 
 import qualified Text.Megaparsec as M
 import qualified Chess.Internal as Chess
@@ -8,6 +8,7 @@ import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar
 import Data.List (find)
 import Parser.Common
 import Lib.Coll
+import Lib.Megaparsec
 import Chess.Display
 
 data MoveType = Advance 
@@ -40,7 +41,6 @@ instance (M.ShowErrorComponent LANError) where
     showErrorComponent (UnknownError (LongCastle) (_, s) coord)  = "Cannot castle long"
     showErrorComponent (UnknownError (ShortCastle) (_, s) coord) = "Cannot castle short"
     
-
 type Parser a = Parsec LANError String a
 
 type LANParseError = ParseError LANError
@@ -49,6 +49,25 @@ lanError :: MoveType -> Chess.Board -> Chess.Coord -> Chess.Coord -> LANError
 lanError move board s e = case (Chess.lookAt board s) of
     (Just p)  -> KnownError move p e
     (Nothing) -> UnknownError move (Chess.player board, s) e
+
+
+promote :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
+promote board moves = do
+    sx <- file
+    sy <- rank
+    ex <- file
+    ey <- rank
+    p  <- promotions (Chess.player board, (sx, sy))
+    failWith (lanError (Promote $ Chess.piece p) board (sx, sy) (ex, ey)) $ find (promotesAs p (sx, sy)) moves
+
+enpassant :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
+enpassant board moves = do
+    sx <- file
+    sy <- rank
+    _  <- char' 'x'
+    ex <- file
+    ey <- rank
+    failWith (lanError Enpassant board (sx, sy) (ex, ey)) $ find (every [enpassantAt (ex, ey), hasCoord (sx, sy)]) moves
 
 advance :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
 advance board moves = do
@@ -67,33 +86,31 @@ capture board moves = do
     ey <- rank
     failWith (lanError Capture board (sx, sy) (ex, ey)) $ find (every [capturesAt (ex, ey), hasCoord (sx, sy)]) moves
 
-enpassant :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
-enpassant board moves = do
-    sx <- file
-    sy <- rank
-    _  <- char' 'x'
-    ex <- file
-    ey <- rank
-    failWith (lanError Enpassant board (sx, sy) (ex, ey)) $ find (every [enpassantAt (ex, ey), hasCoord (sx, sy)]) moves
+captureOrAdvance :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
+captureOrAdvance board moves = choice [try $ advance board moves, try $ capture board moves]
 
-progress :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
-progress board moves = do
-    sx <- file
-    sy <- rank
-    ex <- file
-    ey <- rank
-    failWith (lanError Progress board (sx, sy) (ex, ey)) $ find (oneOf [every [capturesAt (ex, ey), hasCoord (sx, sy)],
-                                                                        every [advancesTo (ex, ey), hasCoord (sx, sy)],
-                                                                        every [enpassantAt (ex, ey), hasCoord (sx, sy)]]) moves
+pawn :: Chess.Board -> Parser Chess.Move
+pawn board = choice [try $ advance board moves,
+                     try $ capture board moves,
+                     try $ enpassant board moves,
+                     try $ promote board moves]
+    where moves = Chess.movesPiece board (Chess.Pawn, Chess.player board)
 
-promote :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
-promote board moves = do
-    sx <- file
-    sy <- rank
-    ex <- file
-    ey <- rank
-    p  <- promotions (Chess.player board, (sx, sy))
-    failWith (lanError (Promote $ Chess.piece p) board (sx, sy) (ex, ey)) $ find (promotesAs p (sx, sy)) moves
+rook :: Chess.Board -> Parser Chess.Move
+rook board = char' 'R' >> (captureOrAdvance board moves)
+    where moves = Chess.movesPiece board (Chess.Rook, Chess.player board)
+
+knight :: Chess.Board -> Parser Chess.Move
+knight board = char' 'N' >> (captureOrAdvance board moves)
+    where moves = Chess.movesPiece board (Chess.Knight, Chess.player board)
+
+bishop :: Chess.Board -> Parser Chess.Move
+bishop board = char' 'B' >> (captureOrAdvance board moves)
+    where moves = Chess.movesPiece board (Chess.Bishop, Chess.player board)
+
+queen :: Chess.Board -> Parser Chess.Move
+queen board = char' 'Q' >> (captureOrAdvance board moves)
+    where moves = Chess.movesPiece board (Chess.Queen, Chess.player board)
 
 
 shortCastle :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
@@ -110,25 +127,37 @@ longCastle board moves = choice [try $ (string' "e1c1" >> failFor Chess.W),
           failFor Chess.B = failed (5,8) (3,8)
           failed s e      = failWith (lanError LongCastle board s e) $ find (castlesTowards Chess.L) moves
 
-castle :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
-castle board moves = choice [try $ shortCastle board moves, try $ longCastle board moves]
+king :: Chess.Board -> Parser Chess.Move
+king board = choice [try $ char' 'K' >> (captureOrAdvance board moves),
+                     try $ shortCastle board moves,
+                     try $ longCastle board moves]
+    where moves = Chess.movesPiece board (Chess.King, Chess.player board)
 
-
--- moves also may contain pieces as far as i could tell
+progress :: Chess.Board -> [Chess.Move] -> Parser Chess.Move
+progress board moves = do
+    sx <- file
+    sy <- rank
+    ex <- file
+    ey <- rank
+    failWith (lanError Progress board (sx, sy) (ex, ey)) $ find (oneOf [every [capturesAt (ex, ey), hasCoord (sx, sy)],
+                                                                        every [advancesTo (ex, ey), hasCoord (sx, sy)],
+                                                                        every [enpassantAt (ex, ey), hasCoord (sx, sy)]]) moves
+                                                                        
 move :: Chess.Board -> Parser Chess.Move
-move board = choice [try $ advance board moves, 
-                     try $ capture board moves, 
-                     try $ enpassant board moves, 
-                     try $ promote board moves, 
-                     castle board moves]
+move board = choice [try $ pawn board, 
+                     try $ knight board, 
+                     try $ bishop board, 
+                     try $ queen board,
+                     try $ rook board,
+                     king board]
         where moves = Chess.movesColour board (Chess.player board)
 
 stockfishMove :: Chess.Board -> Parser Chess.Move
 stockfishMove board = choice [try $ progress board moves,
                               try $ promote board moves,
-                              castle board moves]
+                              try $ shortCastle board moves,
+                              longCastle board moves]
         where moves = Chess.movesColour board (Chess.player board)
-
 
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
@@ -143,3 +172,6 @@ stockfishMoveParser board = do
     m <- stockfishMove board
     _ <- delimitation
     return m
+
+parse :: Chess.Board -> String -> Either LANParseError Chess.Move
+parse board = run (moveParser board)

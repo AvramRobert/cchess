@@ -23,7 +23,7 @@ runBench = defaultMain [ bgroup "Parser" [ bench "game1" $ whnf parseBoard $ (pg
                                            bench "game3" $ whnf parseBoard $ (pgnGames !! 2),
                                            bench "game4" $ whnf parseBoard $ (pgnGames !! 3) ],
                                             
-                         bgroup "Writer" [ bench "game1" $ whnf W.writeMoves $ (boards !! 0), 
-                                           bench "game2" $ whnf W.writeMoves $ (boards !! 1), 
-                                           bench "game3" $ whnf W.writeMoves $ (boards !! 2),
-                                           bench "game4" $ whnf W.writeMoves $ (boards !! 3) ]]
+                         bgroup "Writer" [ bench "game1" $ whnf W.writeFor $ (boards !! 0), 
+                                           bench "game2" $ whnf W.writeFor $ (boards !! 1), 
+                                           bench "game3" $ whnf W.writeFor $ (boards !! 2),
+                                           bench "game4" $ whnf W.writeFor $ (boards !! 3) ]]

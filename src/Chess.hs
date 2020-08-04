@@ -26,6 +26,7 @@ import qualified Chess.Display as D
 import qualified Chess.Game as G
 import qualified Parser.PGN as P
 import qualified Writer.PGN as W
+import qualified Writer.FEN as FEN
 import Chess.Game (Game (Game), entries, gameBoard, createGame, Reason)
 import Lib.Megaparsec (customError, run)
 import Data.Functor (($>))
@@ -78,7 +79,7 @@ runOn input parser = do
         state <- M.getParserState
         return (M.runParser' parser state)
 
--- type families for different types of parse errors?
+-- type families for different types of parse errors? -> Typeclasses would also do just fine here
 -- anywhore -> let's just make this work and hard code `ParseState` to the PGNParseError
 runInternalParser :: P.Parser a -> String -> (ParserState String, Either Error a)
 runInternalParser parser input = either (\_ -> error "this will never fail") id $ run conversion ""
@@ -115,13 +116,13 @@ parseManyGames :: String -> Either Error [Game]
 parseManyGames = sequence . fmap parseGame . P.fromString'
 
 writeGame :: Game -> String
-writeGame = unlines . W.writeMoves . gameBoard
+writeGame = unlines . W.writeFor . gameBoard
 
 writeMove :: C.Move -> Game -> Maybe String
-writeMove move = W.writeMove move . gameBoard
+writeMove move = W.write move . gameBoard
 
 writeFen :: Game -> String
-writeFen = W.writeFen . gameBoard
+writeFen = FEN.write . gameBoard
 
 applyMove :: C.Move -> Game -> ChessResult
 applyMove move game = maybe (Retry game) (evaluate . add) $ C.apply (gameBoard game) move 
