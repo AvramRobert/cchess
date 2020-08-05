@@ -62,6 +62,7 @@ promote (p, c) moves = do
     sy <- rank
     ex <- file
     ey <- rank
+    _  <- char '='
     np <- promotions (c, (ex, ey))
     let newPiece = Chess.piece np
     failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
@@ -73,6 +74,7 @@ promoteCapture (p, c) moves = do
     _  <- char' 'x'
     ex <- file
     ey <- rank
+    _  <- char '='
     np <- promotions (c, (ex, ey))
     let newPiece = Chess.piece np
     failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
@@ -90,6 +92,7 @@ advance :: Chess.Figure ->[Chess.Move] -> Parser Chess.Move
 advance figure moves = do
     sx <- file
     sy <- rank
+    _  <- M.optional (char '-')
     ex <- file
     ey <- rank
     failWith (knownError Advance figure (sx, sy) (ex, ey)) $ find (every [advancesTo (ex, ey), hasCoord (sx, sy)]) moves
@@ -149,10 +152,16 @@ longCastle figure moves = choice [try $ (string' "e1c1" >> failFor Chess.W),
           failFor Chess.B = failed (5,8) (3,8)
           failed s e      = failWith (knownError LongCastle figure s e) $ find (castlesTowards Chess.L) moves
 
+castle :: Chess.Castles -> Chess.Figure -> [Chess.Move] -> Parser Chess.Move
+castle Chess.Long  figure @ (_, Chess.W) = failWith (knownError LongCastle figure (5, 1) (7, 1)) . find (castlesTowards Chess.L)
+castle Chess.Short figure @ (_, Chess.W) = failWith (knownError ShortCastle figure (5, 1) (3, 1)) . find (castlesTowards Chess.R)
+castle Chess.Long  figure @ (_, Chess.B) = failWith (knownError LongCastle figure (5, 8) (7, 8)) . find (castlesTowards Chess.L)
+castle Chess.Short figure @ (_, Chess.B) = failWith (knownError ShortCastle figure (5, 8) (3, 8)) . find (castlesTowards Chess.R)
+
 king :: Chess.Board -> Parser Chess.Move
 king board = choice [try $ char' 'K' >> (captureOrAdvance figure moves),
-                     try $ shortCastle figure moves,
-                     try $ longCastle figure moves]
+                     try $ string' "O-O-O" >> (castle Chess.Long figure moves),
+                     try $ string' "O-O" >> (castle Chess.Short figure moves)]
     where figure = (Chess.King, Chess.player board)
           moves  = Chess.movesPiece board figure
 
@@ -191,7 +200,6 @@ applied :: Chess.Board -> Chess.Move -> Parser Chess.Board
 applied board move = maybe illegal return $ Chess.permitApply board move
     where illegal = failWith (IllegalError move) Nothing
 
--- do i need to look out for checks and mates? (probably)
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
@@ -212,7 +220,14 @@ stockfishMoveParser board = do
     m <- stockfishMove board
     _ <- delimitation
     return m
+
 -- somehow, LAN doesn't seem to be accurately specified anywhere
+-- This is apprently the grammar: 
+-- <LAN move descriptor piece moves> ::= <Piece symbol><from square>['-'|'x']<to square>
+-- <LAN move descriptor pawn moves>  ::= <from square>['-'|'x']<to square>[<promoted to>]
+-- <Piece symbol> ::= 'N' | 'B' | 'R' | 'Q' | 'K'
+
+-- https://en.wikipedia.org/wiki/Chess_notation -> website with examples (LAN includes checks)
 parse :: Chess.Board -> String -> Either LANParseError Chess.Move
 parse board = run (moveParser board)
 
