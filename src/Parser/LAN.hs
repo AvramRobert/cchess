@@ -212,7 +212,7 @@ stockfishMoveParser board = do
     m <- stockfishMove board
     _ <- delimitation
     return m
-
+-- somehow, LAN doesn't seem to be accurately specified anywhere
 parse :: Chess.Board -> String -> Either LANParseError Chess.Move
 parse board = run (moveParser board)
 
