@@ -36,9 +36,10 @@ computeGames = sequence . fmap compute . zip [1..]
 verifyLAN :: [C.Game] -> Either String [C.Game]
 verifyLAN = sequence . fmap verify
     where verify game         = fmap (const game) $ ((foldl check id $ I.past $ C.gameBoard game) (Right I.emptyBoard))
-          check f m (Right b) = case (LP.parseApply b (LW.write m)) of
-              (Right nb)  -> (Right b) `seq` f (Right nb)
-              (Left err)  -> Left ("Error while LAN-verifying move: " <> show m <> "\n\n" <> M.errorBundlePretty err)
+          check f m (Right b) = case (LP.parse b (LW.write m)) of
+              (Right m') | m == m' -> (Right b) `seq` f (Right $ I.forceApply b m')
+              (Right m')           -> Left ("Parsed move: " <> show m' <> " is not equal to played move: " <> show m)
+              (Left err)           -> Left ("Error while LAN-verifying move: " <> show m <> "\n\n" <> M.errorBundlePretty err)
 
 pgnFileSpec :: Spec
 pgnFileSpec = do
@@ -50,4 +51,4 @@ lanSpec :: Spec
 lanSpec = do
     describe "LAN games" $ do
         it "can be parsed, written and parsed again" $ do
-            computeGames [head pgnGames] <&> verifyLAN >>= (finalise "LAN games")
+            computeGames pgnGames <&> verifyLAN >>= (finalise "LAN games")

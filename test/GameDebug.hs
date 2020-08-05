@@ -17,7 +17,8 @@ pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"
 
 game = C.parseGame $ head pgnGames
 
-move = fmap (head . I.past . C.gameBoard) game
+move = fmap (take 2 . reverse . I.past . C.gameBoard) game
+
 
 runPrint :: String -> IO ()
 runPrint =  putStrLn . either M.errorBundlePretty show . run (L.moveParser I.emptyBoard)

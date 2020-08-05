@@ -62,7 +62,18 @@ promote (p, c) moves = do
     sy <- rank
     ex <- file
     ey <- rank
-    np <- promotions (c, (sx, sy))
+    np <- promotions (c, (ex, ey))
+    let newPiece = Chess.piece np
+    failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
+
+promoteCapture :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
+promoteCapture (p, c) moves = do
+    sx <- file
+    sy <- rank
+    _  <- char' 'x'
+    ex <- file
+    ey <- rank
+    np <- promotions (c, (ex, ey))
     let newPiece = Chess.piece np
     failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
 
@@ -96,10 +107,11 @@ captureOrAdvance :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
 captureOrAdvance figure moves = choice [try $ advance figure moves, try $ capture figure moves]
 
 pawn :: Chess.Board -> Parser Chess.Move
-pawn board = choice [try $ advance figure moves,
+pawn board = choice [try $ promote figure moves,
+                     try $ promoteCapture figure moves,
                      try $ capture figure moves,
                      try $ enpassant figure moves,
-                     try $ promote figure moves]
+                     try $ advance figure moves]
     where figure = (Chess.Pawn, Chess.player board)
           moves = Chess.movesPiece board figure
 
