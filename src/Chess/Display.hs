@@ -195,7 +195,7 @@ showMove GameMode  = gameMove
 showMove DebugMode = debugMove
 showMove ErrorMode = errorMove
 
-showPGNMove :: Move -> Board -> Maybe String
+showPGNMove :: Board -> Move -> Maybe String
 showPGNMove = W.write
 
 padBy :: Int -> String -> String

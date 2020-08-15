@@ -87,22 +87,22 @@ encodeCheck :: Board -> String
 encodeCheck board | check board = "+"
 encodeCheck board               = ""
 
-forceWriteApply :: Move -> Board -> (Board, String)
-forceWriteApply move board = encode $ forceApply board move
-    where encode board' = (board', encodeMove move board <> encodeCheck board')
+forceWriteApply :: Board -> Move -> (Board, String)
+forceWriteApply board move = let board' = forceApply board move
+                             in (board', encodeMove move board <> encodeCheck board')
 
 -- The check is visible after the move was applied. 
 -- In order to encode it properly, I have to use the board after the force apply
-writeApply :: Move -> Board -> Maybe (Board, String)
-writeApply move board = fmap encode $ permitApply board move
+writeApply :: Board -> Move -> Maybe (Board, String)
+writeApply board move = fmap encode $ permitApply board move
     where encode board' = (board', encodeMove move board <> encodeCheck board')
 
-write :: Move -> Board -> Maybe String
-write move = fmap snd . writeApply move
+write :: Board -> Move -> Maybe String
+write board = fmap snd . writeApply board
 
 writeFor :: Board -> [String]
 writeFor = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (emptyBoard, []) . past
-    where write move (board, mvs)   = accumulate mvs $ forceWriteApply move board
+    where write move (board, mvs)   = accumulate mvs $ forceWriteApply board move 
           accumulate mvs (board, m) = (board, m : mvs)
           index (i, m1:m2:_)        = show i <> "." <> m1 <> " " <> m2
           index (i, m1:[])          = show i <> "." <> m1 <> " "

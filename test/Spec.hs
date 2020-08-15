@@ -6,4 +6,4 @@ import GameSpec (pgnFileSpec, lanSpec)
 main :: IO ()
 main = do
     -- quickCheck gameConsistency
-    hspec lanSpec
+    hspec pgnFileSpec

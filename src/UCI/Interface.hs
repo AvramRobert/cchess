@@ -11,7 +11,7 @@ import qualified Writer.PGN as PGN
 stockfish = "/home/robert/Downloads/stockfish/Linux/stockfish" 
 
 position :: G.Game -> I.Move -> String
-position game move = "position fen " <> FEN.write (G.gameBoard game) <> " moves " <> LAN.write move 
+position game move = "position fen " <> FEN.write (G.gameBoard game) <> " moves " <> LAN.forceWrite (G.gameBoard game) move 
 
 newgame :: String
 newgame = "ucinewgame"

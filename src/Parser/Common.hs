@@ -4,7 +4,7 @@ import qualified Chess.Internal as Chess
 import Data.Set (fromList)
 import Text.Megaparsec (ErrorFancy (ErrorCustom), ParseErrorBundle, Parsec, 
                         fancyFailure, try, many, manyTill, someTill, choice,
-                        lookAhead, runParser)
+                        lookAhead, runParser, single, optional)
 import Text.Megaparsec.Char (char, char', asciiChar, numberChar, spaceChar, newline)
 import Data.Functor (($>))
 import Control.Applicative ((<|>))
@@ -47,6 +47,9 @@ piece = choice [try (char' 'Q' $> Chess.Queen),
                 try (char' 'R' $> Chess.Rook),
                 try (char' 'N' $> Chess.Knight),
                 try (char' 'B' $> Chess.Bishop)]
+
+mate :: Ord e => Parsec e String Bool
+mate = fmap (maybe False (const True)) $ optional $ single '#'
 
 promotions :: Ord e => Chess.Square -> Parsec e String Chess.Position
 promotions (c, s) = fmap (\p -> Chess.Pos p c s) piece

@@ -169,9 +169,6 @@ check board = (M.optional $ M.single '+') >>= verify
           verify (Nothing)                    = return ()
           verify (Just _)                     = failWith UnexpectedCheckError Nothing
 
-mate :: Parser Bool
-mate = fmap (maybe False (const True)) $ M.optional $ M.single '#'
-
 -- the [Chess.Move] list is here just so that I can extract figure information for it for the log
 -- I could replace it with the `Figure` itself to make it more explicit
 captureError :: Chess.Coord -> [Chess.Move] -> PGNError

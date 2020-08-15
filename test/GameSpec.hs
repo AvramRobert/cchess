@@ -12,19 +12,11 @@ import Data.Maybe (isJust)
 import Data.Functor ((<&>))
 import Control.Monad (join)
 
-
 data SpecError = SpecError String deriving (Show)
-
-finalise :: String -> Maybe SpecError -> IO ()
-finalise msg (Nothing)          = putStrLn (msg <> " was successful!")
-finalise msg (Just (SpecError e)) = error e
 
 -- put this somewhere else
 pgnGames :: [String]
 pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn" 
-
-bind :: Monad f => (a -> f b) -> f a -> f b
-bind f fa = fa >>= f
 
 computeGames :: [String] -> IO [C.Game]
 computeGames = sequence . fmap compute . zip [1..]
@@ -40,7 +32,7 @@ verifyLAN = sequence . fmap computeMoves
     where computeMoves game     = assert game $ foldl check id (I.past $ C.gameBoard game) (Right I.emptyBoard)
           assert game (Right _) = return game
           assert game (Left  e) = error e
-          check f m (Right b) = case (LP.parse b (LW.write m)) of
+          check f m (Right b) = case (LP.parse b (LW.forceWrite b m)) of
               (Right m') | m == m' -> (Right b) `seq` f (Right $ I.forceApply b m')
               (Right m')           -> Left ("Parsed move: " <> show m' <> " is not equal to played move: " <> show m)
               (Left err)           -> Left ("Error while LAN-verifying move: " <> show m <> "\n\n" <> M.errorBundlePretty err)

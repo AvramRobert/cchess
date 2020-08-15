@@ -3,7 +3,7 @@ module Parser.LAN (moveParser, appliedMoveParser, stockfishMoveParser, parse, pa
 
 import qualified Text.Megaparsec as M
 import qualified Chess.Internal as Chess
-import Text.Megaparsec (Parsec, (<|>), runParser, try, many, choice)
+import Text.Megaparsec (Parsec, (<|>), runParser, try, many, choice, single, optional)
 import Text.Megaparsec.Char (char, char', string, string', spaceChar, numberChar, asciiChar, newline)
 import Data.List (find)
 import Parser.Common
@@ -17,44 +17,52 @@ data MoveType = Advance
               | Progress 
               | Promote Chess.Piece
               | LongCastle 
-              | ShortCastle deriving (Ord, Eq)
+              | ShortCastle 
+              deriving (Ord, Eq)
 
-data LANError = KnownError MoveType Chess.Position Chess.Coord 
-              | UnknownError MoveType Chess.Square Chess.Coord  
-              | IllegalError Chess.Move deriving (Ord, Eq)
+data Details = Total Chess.Position Chess.Coord
+             | Partial Chess.Square Chess.Coord
+             deriving (Ord, Eq)
+
+data LANError = ImpossibleMoveError MoveType Details
+              | IllegalMoveError Chess.Move
+              | UnexpectedCheckError 
+              deriving (Ord, Eq)
 
 instance (M.ShowErrorComponent LANError) where
-    showErrorComponent = showLanError
+    showErrorComponent = show
 
 instance Show LANError where
-    show = showLanError
+    show (ImpossibleMoveError (Advance) details)     = "Cannot advance: " <> show details
+    show (ImpossibleMoveError (Capture) details)     = "Cannot capture: " <> show details
+    show (ImpossibleMoveError (Enpassant) details)   = "Cannot capture enpassant: " <> show details
+    show (ImpossibleMoveError (Progress) details)    = "Cannot progress " <> show details
+    show (ImpossibleMoveError (Promote p) details)   = "Cannot promote to " <> show p <> ": " <> show details
+    show (ImpossibleMoveError (LongCastle) details)  = "Cannot castle long"
+    show (ImpossibleMoveError (ShortCastle) details) = "Cannot castle short"
+    show (IllegalMoveError move)                     = "Illegal move: " <> show move
+    show (UnexpectedCheckError)                      = "Check not allowed. Board is not in check."
+
+
+instance Show Details where
+    show (Total (Chess.Pos p c s) e) = showFigure ErrorMode (p, c) <> " cannot go from " <> showCoord ErrorMode (c, s) <> " to " <> showCoord ErrorMode (c, e)
+    show (Partial (c, s) e)          = showColour ErrorMode c <> " cannot go from " <> showCoord ErrorMode (c, s) <> " to " <> showCoord ErrorMode (c, e)
 
 type Parser a = Parsec LANError String a
 
 type LANParseError = ParseError LANError
 
-showLanError :: LANError -> String
-showLanError (KnownError (Advance) position coord)     = "Cannot advance with " <> show position <> " to " <> show coord
-showLanError (KnownError (Capture) position coord)     = "Cannot capture with " <> show position <> " at " <> show coord
-showLanError (KnownError (Enpassant) position coord)   = "Cannot capture enpassant from " <> show position <> " at " <> show coord
-showLanError (KnownError (Progress) position coord)    = "Cannot progress from " <> show position <> " to " <> show coord
-showLanError (KnownError (Promote p) position coord)   = "Cannot promote to " <> show p <> " at " <> show coord
-showLanError (KnownError (LongCastle) position coord)  = "Cannot castle long"  
-showLanError (KnownError (ShortCastle) position coord) = "Cannot castle short"
-    
-showLanError (UnknownError (Advance) (_, s) coord)     = "Cannot advance from " <> show s <> " to " <> show coord
-showLanError (UnknownError (Capture) (_, s) coord)     = "Cannot capture from " <> show s <> " to " <> show coord
-showLanError (UnknownError (Enpassant) (_, s) coord)   = "Cannot capture enpassant from " <> show s <> " to " <> show coord
-showLanError (UnknownError (Progress) (_, s) coord)    = "Cannot progress from " <> show s <> " to " <> show coord
-showLanError (UnknownError (Promote p) (_, s) coord)   = "Cannot promote to " <> show p <> " at " <> show coord
-showLanError (UnknownError (LongCastle) (_, s) coord)  = "Cannot castle long"
-showLanError (UnknownError (ShortCastle) (_, s) coord) = "Cannot castle short"
+check :: Chess.Board -> Parser ()
+check board = (optional $ single '+') >>= verify
+    where verify (Just _) | Chess.check board = return ()
+          verify (Nothing)                    = return ()
+          verify (Just _)                     = failWith UnexpectedCheckError Nothing
 
-knownError :: MoveType -> Chess.Figure -> Chess.Coord -> Chess.Coord -> LANError
-knownError m (p, c) s = KnownError m (Chess.Pos p c s)
+totalError :: MoveType -> Chess.Position -> Chess.Coord -> LANError
+totalError move position = ImpossibleMoveError move . Total position
 
-unknownError :: MoveType -> Chess.Colour -> Chess.Coord -> Chess.Coord -> LANError
-unknownError m c s = UnknownError m (c, s)
+partialError :: MoveType -> Chess.Square -> Chess.Coord -> LANError
+partialError move square = ImpossibleMoveError move . Partial square
 
 promote :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
 promote (p, c) moves = do
@@ -65,7 +73,8 @@ promote (p, c) moves = do
     _  <- char '='
     np <- promotions (c, (ex, ey))
     let newPiece = Chess.piece np
-    failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
+    let error    = totalError (Promote newPiece) (Chess.Pos p c (sx, sy)) (ex, ey)
+    failWith error $ find (promotesAs np (sx, sy)) moves
 
 promoteCapture :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
 promoteCapture (p, c) moves = do
@@ -77,34 +86,38 @@ promoteCapture (p, c) moves = do
     _  <- char '='
     np <- promotions (c, (ex, ey))
     let newPiece = Chess.piece np
-    failWith (knownError (Promote newPiece) (p, c) (sx, sy) (ex, ey)) $ find (promotesAs np (sx, sy)) moves
+    let error    = totalError (Promote newPiece) (Chess.Pos p c (sx, sy)) (ex, ey)
+    failWith error $ find (promotesAs np (sx, sy)) moves
 
 enpassant :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
-enpassant figure moves = do
+enpassant (p, c) moves = do
     sx <- file
     sy <- rank
     _  <- char' 'x'
     ex <- file
     ey <- rank
-    failWith (knownError Enpassant figure (sx, sy) (ex, ey)) $ find (every [enpassantAt (ex, ey), hasCoord (sx, sy)]) moves
+    let error = totalError Enpassant (Chess.Pos p c (sx ,sy)) (ex, ey) 
+    failWith error $ find (every [enpassantAt (ex, ey), hasCoord (sx, sy)]) moves
 
 advance :: Chess.Figure ->[Chess.Move] -> Parser Chess.Move
-advance figure moves = do
+advance (p, c) moves = do
     sx <- file
     sy <- rank
     _  <- M.optional (char '-')
     ex <- file
     ey <- rank
-    failWith (knownError Advance figure (sx, sy) (ex, ey)) $ find (every [advancesTo (ex, ey), hasCoord (sx, sy)]) moves
+    let error = totalError Advance (Chess.Pos p c (sx, sy)) (ex, ey)
+    failWith error $ find (every [advancesTo (ex, ey), hasCoord (sx, sy)]) moves
 
 capture :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
-capture figure moves = do
+capture (p, c) moves = do
     sx <- file
     sy <- rank
     _  <- char' 'x'
     ex <- file
     ey <- rank
-    failWith (knownError Capture figure (sx, sy) (ex, ey)) $ find (every [capturesAt (ex, ey), hasCoord (sx, sy)]) moves
+    let error = totalError Capture (Chess.Pos p c (sx, sy)) (ex, ey)
+    failWith error $ find (every [capturesAt (ex, ey), hasCoord (sx, sy)]) moves
 
 captureOrAdvance :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
 captureOrAdvance figure moves = choice [try $ advance figure moves, try $ capture figure moves]
@@ -138,25 +151,11 @@ queen board = char' 'Q' >> (captureOrAdvance figure moves)
     where figure = (Chess.Queen, Chess.player board)
           moves  = Chess.movesPiece board figure
 
-shortCastle :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
-shortCastle figure moves = choice [try $ (string' "e1g1" >> failFor Chess.W), 
-                                   try $ (string' "e8g8" >> failFor Chess.B)]
-    where failFor Chess.W  = failed (5,1) (7,1)
-          failFor Chess.B  = failed (5,8) (7,8)
-          failed s e       = failWith (knownError ShortCastle figure s e) $ find (castlesTowards Chess.R) moves
-
-longCastle :: Chess.Figure -> [Chess.Move] -> Parser Chess.Move
-longCastle figure moves = choice [try $ (string' "e1c1" >> failFor Chess.W), 
-                                  try $ (string' "e8c8" >> failFor Chess.B)]
-    where failFor Chess.W = failed (5,1) (3,1)
-          failFor Chess.B = failed (5,8) (3,8)
-          failed s e      = failWith (knownError LongCastle figure s e) $ find (castlesTowards Chess.L) moves
-
 castle :: Chess.Castles -> Chess.Figure -> [Chess.Move] -> Parser Chess.Move
-castle Chess.Long  figure @ (_, Chess.W) = failWith (knownError LongCastle figure (5, 1) (7, 1)) . find (castlesTowards Chess.L)
-castle Chess.Short figure @ (_, Chess.W) = failWith (knownError ShortCastle figure (5, 1) (3, 1)) . find (castlesTowards Chess.R)
-castle Chess.Long  figure @ (_, Chess.B) = failWith (knownError LongCastle figure (5, 8) (7, 8)) . find (castlesTowards Chess.L)
-castle Chess.Short figure @ (_, Chess.B) = failWith (knownError ShortCastle figure (5, 8) (3, 8)) . find (castlesTowards Chess.R)
+castle Chess.Long  (k, Chess.W) = failWith (totalError LongCastle (Chess.Pos k Chess.W (5, 1)) (7, 1)) . find (castlesTowards Chess.L)
+castle Chess.Short (k, Chess.W) = failWith (totalError ShortCastle (Chess.Pos k Chess.W (5, 1)) (3, 1)) . find (castlesTowards Chess.R)
+castle Chess.Long  (k, Chess.B) = failWith (totalError LongCastle (Chess.Pos k Chess.B (5, 8)) (7, 8)) . find (castlesTowards Chess.L)
+castle Chess.Short (k, Chess.B) = failWith (totalError ShortCastle (Chess.Pos k Chess.B (5, 8)) (3, 8)) . find (castlesTowards Chess.R)
 
 king :: Chess.Board -> Parser Chess.Move
 king board = choice [try $ char' 'K' >> (captureOrAdvance figure moves),
@@ -173,9 +172,10 @@ progress colour moves = do
     ey <- rank
     let start = (sx, sy)
     let end   = (ex, ey)
-    failWith (unknownError Progress colour start end) $ find (oneOf [every [capturesAt end, hasCoord start],
-                                                                     every [advancesTo end, hasCoord start],
-                                                                     every [enpassantAt end, hasCoord start]]) moves
+    let error = partialError Progress (colour, start) end
+    failWith error $ find (oneOf [every [capturesAt end, hasCoord start],
+                                  every [advancesTo end, hasCoord start],
+                                  every [enpassantAt end, hasCoord start]]) moves
                                                                         
 move :: Chess.Board -> Parser Chess.Move
 move board = choice [try $ pawn board, 
@@ -189,16 +189,14 @@ move board = choice [try $ pawn board,
 stockfishMove :: Chess.Board -> Parser Chess.Move
 stockfishMove board = choice [try $ progress colour moves,
                               try $ promote pawn moves,
-                              try $ shortCastle king moves,
-                              longCastle king moves]
+                              king board]
         where colour = Chess.player board
-              pawn   = (Chess.Pawn, colour)
-              king   = (Chess.King, colour) 
+              pawn   = (Chess.Pawn, colour) 
               moves  = Chess.movesColour board colour
 
 applied :: Chess.Board -> Chess.Move -> Parser Chess.Board
 applied board move = maybe illegal return $ Chess.permitApply board move
-    where illegal = failWith (IllegalError move) Nothing
+    where illegal = failWith (IllegalMoveError move) Nothing
 
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
@@ -211,6 +209,8 @@ appliedMoveParser :: Chess.Board -> Parser Chess.Board
 appliedMoveParser board = do
     m <- moveParser board
     b <- applied board m
+    _ <- check b
+    _ <- mate
     _ <- delimitation
     return b
 
@@ -220,12 +220,6 @@ stockfishMoveParser board = do
     m <- stockfishMove board
     _ <- delimitation
     return m
-
--- somehow, LAN doesn't seem to be accurately specified anywhere
--- This is apprently the grammar: 
--- <LAN move descriptor piece moves> ::= <Piece symbol><from square>['-'|'x']<to square>
--- <LAN move descriptor pawn moves>  ::= <from square>['-'|'x']<to square>[<promoted to>]
--- <Piece symbol> ::= 'N' | 'B' | 'R' | 'Q' | 'K'
 
 -- https://en.wikipedia.org/wiki/Chess_notation -> website with examples (LAN includes checks)
 parse :: Chess.Board -> String -> Either LANParseError Chess.Move

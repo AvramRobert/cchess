@@ -119,7 +119,7 @@ writeGame :: Game -> String
 writeGame = unlines . W.writeFor . gameBoard
 
 writeMove :: C.Move -> Game -> Maybe String
-writeMove move = W.write move . gameBoard
+writeMove move game = W.write (gameBoard game) move
 
 writeFen :: Game -> String
 writeFen = FEN.write . gameBoard
