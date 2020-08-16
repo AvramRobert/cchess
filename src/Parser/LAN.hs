@@ -126,27 +126,27 @@ pawn board = choice [try $ promote figure moves,
                      try $ enpassant figure moves,
                      try $ advance figure moves]
     where figure = (Chess.Pawn, Chess.player board)
-          moves = Chess.movesPiece board figure
+          moves = Chess.movesFigure board figure
 
 rook :: Chess.Board -> Parser Chess.Move
 rook board = char' 'R' >> (captureOrAdvance figure moves)
     where figure = (Chess.Rook, Chess.player board)
-          moves = Chess.movesPiece board figure
+          moves = Chess.movesFigure board figure
 
 knight :: Chess.Board -> Parser Chess.Move
 knight board = char' 'N' >> (captureOrAdvance figure moves)
     where figure = (Chess.Knight, Chess.player board) 
-          moves = Chess.movesPiece board figure
+          moves = Chess.movesFigure board figure
 
 bishop :: Chess.Board -> Parser Chess.Move
 bishop board = char' 'B' >> (captureOrAdvance figure moves)
     where figure = (Chess.Bishop, Chess.player board)
-          moves  = Chess.movesPiece board figure
+          moves  = Chess.movesFigure board figure
 
 queen :: Chess.Board -> Parser Chess.Move
 queen board = char' 'Q' >> (captureOrAdvance figure moves)
     where figure = (Chess.Queen, Chess.player board)
-          moves  = Chess.movesPiece board figure
+          moves  = Chess.movesFigure board figure
 
 castle :: Chess.Castles -> Chess.Figure -> [Chess.Move] -> Parser Chess.Move
 castle Chess.Long  (k, Chess.W) = failWith (totalError LongCastle (Chess.Pos k Chess.W (5, 1)) (7, 1)) . find (castlesTowards Chess.L)
@@ -159,7 +159,7 @@ king board = choice [try $ char' 'K' >> (captureOrAdvance figure moves),
                      try $ string' "O-O-O" >> (castle Chess.Long figure moves),
                      try $ string' "O-O" >> (castle Chess.Short figure moves)]
     where figure = (Chess.King, Chess.player board)
-          moves  = Chess.movesPiece board figure
+          moves  = Chess.movesFigure board figure
 
 progress :: Chess.Colour -> [Chess.Move] -> Parser Chess.Move
 progress colour moves = do

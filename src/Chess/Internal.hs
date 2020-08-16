@@ -287,25 +287,32 @@ movesForThreats board colour = M.foldrWithKey gatherMoves [] $ maybe M.empty id 
             gatherMoves Pawn coords moves   = foldr (accumulateWith pawnMoves) moves coords
             gatherMoves _    _ moves        = moves
 
-movesAt :: Board -> Square -> [Move]
-movesAt board = filter (isJust . permit board) . join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
+allMovesSquare :: Board -> Square -> [Move]
+allMovesSquare board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
 
--- I should call `permit`
+movesSquare :: Board -> Square -> [Move]
+movesSquare board = filter (isJust . permit board) . allMovesSquare board
+
+allMovesPosition :: Board -> Position -> [Move]
+allMovesPosition board (Pos Pawn c s)   = pawnMoves board (c, s)
+allMovesPosition board (Pos King c s)   = kingMoves board (c, s)
+allMovesPosition board (Pos Rook c s)   = rookMoves board (c, s)
+allMovesPosition board (Pos Bishop c s) = bishopMoves board (c, s)
+allMovesPosition board (Pos Queen c s)  = queenMoves board (c, s)
+allMovesPosition board (Pos Knight c s) = knightMoves board (c, s)
+allMovesPosition board (Pos Empty _ _)  = []
+
 movesPosition :: Board -> Position -> [Move]
-movesPosition board = filter (isJust . permit board) . moves
-      where moves (Pos Pawn c s)   = pawnMoves board (c, s)
-            moves (Pos King c s)   = kingMoves board (c, s)
-            moves (Pos Rook c s)   = rookMoves board (c, s)
-            moves (Pos Bishop c s) = bishopMoves board (c, s)
-            moves (Pos Queen c s)  = queenMoves board (c, s)
-            moves (Pos Knight c s) = knightMoves board (c, s)
-            moves (Pos Empty _ _)  = []
+movesPosition board = filter (isJust . permit board) . allMovesPosition board
 
-movesPiece :: Board -> Figure -> [Move]
-movesPiece board = filter (isJust . permit board) . join . map (movesPosition board) . findPieces board 
+allMovesFigure :: Board -> Figure -> [Move]
+allMovesFigure board = join . map (allMovesPosition board) . findPieces board
 
-movesColour :: Board -> Colour -> [Move]
-movesColour board colour = filter (isJust . permit board) $ M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup colour $ pieces board
+movesFigure :: Board -> Figure -> [Move]
+movesFigure board = filter (isJust . permit board) . allMovesFigure board 
+
+allMovesColour :: Board -> Colour -> [Move]
+allMovesColour board colour = M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup colour $ pieces board
       where accumulateWith f coord moves    = foldr (:) moves $ f board (colour, coord) 
             gatherMoves King coords moves   = foldr (accumulateWith kingMoves) moves coords 
             gatherMoves Queen coords moves  = foldr (accumulateWith queenMoves) moves coords
@@ -314,6 +321,9 @@ movesColour board colour = filter (isJust . permit board) $ M.foldrWithKey gathe
             gatherMoves Knight coords moves = foldr (accumulateWith knightMoves) moves coords
             gatherMoves Pawn coords moves   = foldr (accumulateWith pawnMoves) moves coords
             gatherMoves _    _ moves        = moves
+
+movesColour :: Board -> Colour -> [Move]
+movesColour board = filter (isJust . permit board) . allMovesColour board
 
 findPieces :: Board -> Figure -> [Position]
 findPieces board (p, c) = maybe [] (asListOf (Pos p c)) $ M.lookup p $ maybe M.empty id $ M.lookup c $ pieces board

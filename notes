@@ -8,6 +8,9 @@ Optimisations:
     d) Add `parseMoves` and `parseApplyMoves` to support applying handling more than one move in a go
     e) Given that I now will have different parsers for different types of notations (each with their respective types of errors), I could define a 
        type family that would sort of "house" all of them so that `Chess` can pattern match on them an find out what it needs to morph to the exposed `Error` type
+    f) When I check if a move is permitted, I forceApply the move, which does more than what I actually need, namely see if, by applying the move, the king is checked
+       I could just change the placement of the board and then quickly compute the check
+
 To Do:
      * 1. Add proper checkmate verification
      * 2. Implement proper rendering for the board

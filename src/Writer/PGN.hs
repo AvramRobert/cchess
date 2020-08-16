@@ -4,7 +4,7 @@ import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Castles (None, Both, Long, Short),
                        Position (Pos), Square, Board, Coord, Colour (W, B),
-                       movesPiece, past, permitApply, forceApply, emptyBoard, 
+                       allMovesFigure, past, permitApply, forceApply, emptyBoard, 
                        check, lookAt, coordinates, whiteCastle, blackCastle, player, 
                        halfmoves, fullmoves)
 import Parser.Common (advancesTo, capturesAt, hasY, hasX)
@@ -12,7 +12,7 @@ import Writer.Common
 import Lib.Coll
 
 movesFor :: Position -> Board -> [Move]
-movesFor (Pos p c _) board = movesPiece board (p, c)
+movesFor (Pos p c _) board = allMovesFigure board (p, c)
 
 unambigous :: Position -> [Move] -> Bool
 unambigous (Pos p c (x, y)) = (== 1) . length

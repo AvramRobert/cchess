@@ -4,7 +4,7 @@ import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
                        Castles (None, Both, Long, Short),
                        Position (Pos), Square, Board, Coord, Colour (W, B),
-                       coord, movesPiece, past, permitApply, forceApply, emptyBoard, 
+                       coord, past, permitApply, forceApply, emptyBoard, 
                        check, lookAt, coordinates, whiteCastle, blackCastle, player, 
                        halfmoves, fullmoves)
 import Data.Char (toLower)

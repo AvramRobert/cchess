@@ -327,21 +327,21 @@ pawn board = M.choice [try $ promotePawn colour moves,
                        try $ capturePawn moves,
                        try $ enpassantPawn moves,
                        try $ advancePawn moves]
-        where moves  = Chess.movesPiece board (Chess.Pawn, colour)
+        where moves  = Chess.movesFigure board (Chess.Pawn, colour)
               colour = Chess.player board 
                 
 
 rook :: Chess.Board -> Parser Chess.Move
-rook board = char' 'R' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Rook, Chess.player board))
+rook board = char' 'R' >> (captureOrAdvance $ Chess.movesFigure board (Chess.Rook, Chess.player board))
 
 bishop :: Chess.Board -> Parser Chess.Move
-bishop board = char' 'B' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Bishop, Chess.player board))
+bishop board = char' 'B' >> (captureOrAdvance $ Chess.movesFigure board (Chess.Bishop, Chess.player board))
 
 knight :: Chess.Board -> Parser Chess.Move
-knight board = char' 'N' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Knight, Chess.player board))
+knight board = char' 'N' >> (captureOrAdvance $ Chess.movesFigure board (Chess.Knight, Chess.player board))
 
 queen :: Chess.Board -> Parser Chess.Move
-queen board = char' 'Q' >> (captureOrAdvance $ Chess.movesPiece board (Chess.Queen, Chess.player board))
+queen board = char' 'Q' >> (captureOrAdvance $ Chess.movesFigure board (Chess.Queen, Chess.player board))
 
 -- there's an ordering problem here due to `string`
 -- if `O-O` comes before `O-O-O`, `string` will catch a long castle with it
@@ -349,7 +349,7 @@ king :: Chess.Board -> Parser Chess.Move
 king board = M.choice [try $ char' 'K'       >> (captureOrAdvance moves),
                        try $ string' "O-O-O" >> (castle Chess.Long moves),
                        try $ string' "O-O"   >> (castle Chess.Short moves)]
-    where moves  = Chess.movesPiece board (Chess.King, Chess.player board)
+    where moves  = Chess.movesFigure board (Chess.King, Chess.player board)
 
 move :: Chess.Board -> Parser Chess.Move
 move board = M.choice [try $ pawn board,
