@@ -25,7 +25,6 @@ data Details = Total Chess.Position Chess.Coord
              deriving (Ord, Eq)
 
 data LANError = ImpossibleMoveError MoveType Details
-              | IllegalMoveError Chess.Move
               | UnexpectedCheckError 
               deriving (Ord, Eq)
 
@@ -40,9 +39,7 @@ instance Show LANError where
     show (ImpossibleMoveError (Promote p) details)   = "Cannot promote to " <> show p <> ": " <> show details
     show (ImpossibleMoveError (LongCastle) details)  = "Cannot castle long"
     show (ImpossibleMoveError (ShortCastle) details) = "Cannot castle short"
-    show (IllegalMoveError move)                     = "Illegal move: " <> show move
     show (UnexpectedCheckError)                      = "Check not allowed. Board is not in check."
-
 
 instance Show Details where
     show (Total (Chess.Pos p c s) e) = showFigure ErrorMode (p, c) <> " cannot go from " <> showCoord ErrorMode (c, s) <> " to " <> showCoord ErrorMode (c, e)
@@ -194,10 +191,6 @@ stockfishMove board = choice [try $ progress colour moves,
               pawn   = (Chess.Pawn, colour) 
               moves  = Chess.movesColour board colour
 
-applied :: Chess.Board -> Chess.Move -> Parser Chess.Board
-applied board move = maybe illegal return $ Chess.permitApply board move
-    where illegal = failWith (IllegalMoveError move) Nothing
-
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
@@ -208,7 +201,7 @@ moveParser board = do
 appliedMoveParser :: Chess.Board -> Parser Chess.Board
 appliedMoveParser board = do
     m <- moveParser board
-    b <- applied board m
+    let b = Chess.forceApply board m
     _ <- check b
     _ <- mate
     _ <- delimitation

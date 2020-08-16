@@ -288,24 +288,24 @@ movesForThreats board colour = M.foldrWithKey gatherMoves [] $ maybe M.empty id 
             gatherMoves _    _ moves        = moves
 
 movesAt :: Board -> Square -> [Move]
-movesAt board = join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
+movesAt board = filter (isJust . permit board) . join . spread [pawnMoves board, kingMoves board, rookMoves board, bishopMoves board, knightMoves board, queenMoves board]
 
 -- I should call `permit`
 movesPosition :: Board -> Position -> [Move]
-movesPosition board (Pos Pawn c s)   = pawnMoves board (c, s)
-movesPosition board (Pos King c s)   = kingMoves board (c, s)
-movesPosition board (Pos Rook c s)   = rookMoves board (c, s)
-movesPosition board (Pos Bishop c s) = bishopMoves board (c, s)
-movesPosition board (Pos Queen c s)  = queenMoves board (c, s)
-movesPosition board (Pos Knight c s) = knightMoves board (c, s)
-movesPosition board (Pos Empty _ _)  = []
+movesPosition board = filter (isJust . permit board) . moves
+      where moves (Pos Pawn c s)   = pawnMoves board (c, s)
+            moves (Pos King c s)   = kingMoves board (c, s)
+            moves (Pos Rook c s)   = rookMoves board (c, s)
+            moves (Pos Bishop c s) = bishopMoves board (c, s)
+            moves (Pos Queen c s)  = queenMoves board (c, s)
+            moves (Pos Knight c s) = knightMoves board (c, s)
+            moves (Pos Empty _ _)  = []
 
 movesPiece :: Board -> Figure -> [Move]
 movesPiece board = filter (isJust . permit board) . join . map (movesPosition board) . findPieces board 
 
--- I should call `permit`
 movesColour :: Board -> Colour -> [Move]
-movesColour board colour = M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup colour $ pieces board
+movesColour board colour = filter (isJust . permit board) $ M.foldrWithKey gatherMoves [] $ maybe M.empty id $ M.lookup colour $ pieces board
       where accumulateWith f coord moves    = foldr (:) moves $ f board (colour, coord) 
             gatherMoves King coords moves   = foldr (accumulateWith kingMoves) moves coords 
             gatherMoves Queen coords moves  = foldr (accumulateWith queenMoves) moves coords
@@ -340,7 +340,6 @@ computeCastles move board = case move of
             shortOrNone Long   = None
             shortOrNone castle = castle
 
--- If I keep `Empty`, it will be slower
 reconstruct :: Board -> [Either Position Position] -> Board
 reconstruct board updates = patch $ foldr rewrite (coordinates board, pieces board) updates
       where patch (coordinates, pieces) = board { coordinates = coordinates, pieces = pieces }

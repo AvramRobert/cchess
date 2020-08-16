@@ -26,7 +26,6 @@ data PGNError = CaptureError Chess.Coord Chess.Figure |
                 AdvanceError Chess.Coord Chess.Figure |
                 PromoteError Chess.Coord Chess.Figure | 
                 CastleError  Chess.Castles            | 
-                IllegalMoveError                      |
                 MissingMovesError                     |
                 UnexpectedCheckError
                 deriving (Eq, Show, Ord)
@@ -36,7 +35,6 @@ instance M.ShowErrorComponent PGNError where
     showErrorComponent (AdvanceError coord piece) = "Could not advance to " <> (show coord) <> " with " <> (show piece)
     showErrorComponent (PromoteError coord piece) = "Could not promote at " <> (show coord) <> " to "   <> (show piece)
     showErrorComponent (CastleError c)            = "Could not castle: " <> (show c) 
-    showErrorComponent (IllegalMoveError)         = "This move is illegal"
     showErrorComponent (MissingMovesError)        = "No moves available"
     showErrorComponent (UnexpectedCheckError)     = "Board was not expected to be in check"
 
@@ -361,10 +359,6 @@ move board = M.choice [try $ pawn board,
                        try $ queen board,
                        try $ king board]
 
-applied :: Chess.Move -> Chess.Board -> Parser Chess.Board
-applied move board = maybe illegal return $ Chess.permitApply board move
-    where illegal = failWith IllegalMoveError Nothing
-
 moveParser :: Chess.Board -> Parser Chess.Move
 moveParser board = do
     _ <- delimitation
@@ -375,7 +369,7 @@ moveParser board = do
 appliedMoveParser :: Chess.Board -> Parser (Chess.Board, Chess.Move)
 appliedMoveParser board = do
     m  <- moveParser board
-    b' <- applied m board
+    let b' = Chess.forceApply board m
     _  <- check b'
     _  <- mate
     _  <- delimitation
@@ -430,7 +424,7 @@ parseGame :: String -> Either PGNParseError G.Game
 parseGame = run gameParser
 
 parseMove ::  String -> Chess.Board -> Either PGNParseError Chess.Move
-parseMove move board = run (moveParser board) move 
+parseMove move board = run (moveParser board) move
 
 parseBoard :: String -> Either PGNParseError Chess.Board
 parseBoard = fmap G.gameBoard . parseGame

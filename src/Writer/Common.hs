@@ -1,6 +1,7 @@
-module Writer.Common (piece, file, coord, rank) where
+module Writer.Common (piece, file, coord, rank, writeWith) where
 
 import qualified Chess.Internal as Chess
+import Lib.Coll (chunksOf)
 
 piece :: Chess.Piece -> String
 piece Chess.Pawn   = ""
@@ -26,3 +27,11 @@ rank (x, y) = show y
 
 coord :: Chess.Coord -> String
 coord c = Writer.Common.file c <> rank c
+
+writeWith :: (Chess.Board -> Chess.Move -> (Chess.Board, String)) -> Chess.Board -> [String]
+writeWith writeApply = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (Chess.emptyBoard, []) . Chess.past
+    where write move (board, mvs)   = accumulate mvs $ writeApply board move 
+          accumulate mvs (board, m) = (board, m : mvs)
+          index (i, m1:m2:_)        = show i <> "." <> m1 <> " " <> m2
+          index (i, m1:[])          = show i <> "." <> m1 <> " "
+          index (i, [])             = ""

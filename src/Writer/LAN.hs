@@ -1,4 +1,4 @@
-module Writer.LAN (write, forceWrite) where
+module Writer.LAN (write, forceWrite, writeFor) where
 
 import Chess.Internal (Piece (Pawn, Knight, Bishop, Rook, Queen, King, Empty),
                        Move (Capture, Advance, Enpassant, Promote, Castle),
@@ -34,3 +34,6 @@ write board = fmap snd . writeApply board
 
 forceWrite :: Board -> Move -> String
 forceWrite move = snd . forceWriteApply move
+
+writeFor :: Board -> [String]
+writeFor = writeWith forceWriteApply

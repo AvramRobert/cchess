@@ -101,9 +101,4 @@ write :: Board -> Move -> Maybe String
 write board = fmap snd . writeApply board
 
 writeFor :: Board -> [String]
-writeFor = map index . zip [1..] . chunksOf 2 . reverse . snd . foldr write (emptyBoard, []) . past
-    where write move (board, mvs)   = accumulate mvs $ forceWriteApply board move 
-          accumulate mvs (board, m) = (board, m : mvs)
-          index (i, m1:m2:_)        = show i <> "." <> m1 <> " " <> m2
-          index (i, m1:[])          = show i <> "." <> m1 <> " "
-          index (i, [])             = ""
+writeFor = writeWith forceWriteApply  

@@ -55,7 +55,6 @@ class ParserTie p where
 derivePGNParseError :: P.PGNParseError -> Error
 derivePGNParseError = customError asError (const $ Error InputError "Unknown input")
     where asError (P.MissingMovesError)    = Error GameError "Unavailable move"
-          asError (P.IllegalMoveError)     = Error GameError "Illegal move" 
           asError (P.UnexpectedCheckError) = Error GameError "Board is not in check"
           asError (P.CaptureError c f)     = Error GameError ("Cannot capture "    <> showFigure f <> " at " <> showCoord (squareFrom f c))
           asError (P.AdvanceError c f)     = Error GameError ("Cannot advance "    <> showFigure f <> " to " <> showCoord (squareFrom f c)) 

@@ -9,6 +9,7 @@ import qualified Text.Megaparsec as M
 import qualified Chess.Game as G
 import qualified Writer.LAN as W
 import qualified Parser.LAN as L
+import qualified Writer.PGN as P
 import qualified Chess as C
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Either (fromRight)
@@ -17,8 +18,9 @@ pgnGames = unsafePerformIO $ C.pgnFromFile "./test/resources/games/carlsen.pgn"
 
 game = C.parseGame $ head pgnGames
 
-move = fmap (take 2 . reverse . I.past . C.gameBoard) game
+right x = case x of (Right a) -> a
 
+pgnVersion = right $ fmap (P.writeFor . G.gameBoard) game
+lanVersion = right $ fmap (W.writeFor . G.gameBoard) game
 
-runPrint :: String -> IO ()
-runPrint =  putStrLn . either M.errorBundlePretty show . run (L.moveParser I.emptyBoard)
+complete = unlines $ fmap (\(a, b) -> a <> " :: " <> b) $ zip pgnVersion lanVersion
