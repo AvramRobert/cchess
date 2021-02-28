@@ -494,4 +494,4 @@ And, as mentioned, individual moves can be written-out in PGN notation.
 
 *Why does this need a Game?* - you ask
 
-Well, given the algebraic nature of PGN notation, the moves themselves can be written-out in a simplified from by using the games current state.
+Well.. given the algebraic nature of PGN notation, the current state of the game is required in order to write-out the moves in their simplifed form.
