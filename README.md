@@ -1,6 +1,12 @@
  # cchess
  ### `chess, but in the console`
 
+![console board](./images/console-board.png)
+
+ ## Disclaimer
+ **STILL IN ACTIVE DEVELOPMENT**  
+ For a list of the things that currently may or may not work, take a look at the [current feature set](./docs/FEATURESET.md).
+
 #### What is this?
 1. A Haskell library for chess:
    * Contains all necessary functionality a creator of a chess app or chess engine might need
@@ -10,5 +16,5 @@
 
 
 For more information, take a look at:
-* <a href="/API.md"> Using the chess library </a>
-* <a href="/GAME.md"> Playing a round of chess </a>
+* [Using the chess library](./docs/API.md)
+* [Playing a round of chess](./docs/GAME.md)
